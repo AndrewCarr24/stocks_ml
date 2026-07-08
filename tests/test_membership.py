@@ -52,6 +52,20 @@ def test_multi_stint_ticker():
     assert pd.isna(stints.iloc[1].end_date)
 
 
+def test_same_date_add_and_remove_in_separate_rows_is_order_independent():
+    current = pd.DataFrame({"ticker": ["AAA"], "sector": ["Tech"]})
+    d = "2020-01-06"
+    for rows in ([(d, None, "AAA"), (d, "AAA", None)],
+                 [(d, "AAA", None), (d, None, "AAA")]):
+        mem = build_membership(current, _changes(rows), FLOOR)
+        stints = mem[mem.ticker == "AAA"].sort_values("start_date")
+        assert len(stints) == 2
+        assert stints.iloc[0].start_date == FLOOR
+        assert stints.iloc[0].end_date == pd.Timestamp(d)
+        assert stints.iloc[1].start_date == pd.Timestamp(d)
+        assert pd.isna(stints.iloc[1].end_date)
+
+
 def test_members_asof():
     current = pd.DataFrame({"ticker": ["AAA", "ZZZ"], "sector": ["Tech", "Retail"]})
     changes = _changes([("2020-05-01", "ZZZ", None), ("2010-02-01", None, "ZZZ")])

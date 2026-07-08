@@ -18,23 +18,32 @@ def build_membership(current: pd.DataFrame, changes: pd.DataFrame, floor_date: p
     Invariant while walking (dates descending): `open_stints` maps ticker -> the
     stint whose start date we have not yet discovered. An 'added' row closes that
     discovery (sets start). A 'removed' row opens a new earlier stint ending then.
+
+    Within a single change date, all 'added' events are applied before any
+    'removed' events so that a same-date add+remove of one ticker (in separate
+    rows) yields the same two stints regardless of row order.
     """
-    sectors = dict(zip(current["ticker"], current["sector"]))
+    tickers = current["ticker"].map(normalize_symbol)
+    sectors = dict(zip(tickers, current["sector"]))
     open_stints: dict[str, dict] = {
-        t: {"ticker": t, "start_date": pd.NaT, "end_date": pd.NaT} for t in current["ticker"]
+        t: {"ticker": t, "start_date": pd.NaT, "end_date": pd.NaT} for t in tickers
     }
     done: list[dict] = []
 
-    for _, row in changes.sort_values("date", ascending=False).iterrows():
-        added = normalize_symbol(row["added"]) if pd.notna(row["added"]) else None
-        removed = normalize_symbol(row["removed"]) if pd.notna(row["removed"]) else None
-        if added and added in open_stints:
-            stint = open_stints.pop(added)
-            stint["start_date"] = row["date"]
-            done.append(stint)
-        if removed:
-            # ticker was a member before this date; start unknown so far
-            open_stints[removed] = {"ticker": removed, "start_date": pd.NaT, "end_date": row["date"]}
+    ordered = changes.sort_values("date", ascending=False, kind="stable")
+    for date, group in ordered.groupby("date", sort=False):
+        for _, row in group.iterrows():
+            if pd.notna(row["added"]):
+                added = normalize_symbol(row["added"])
+                if added in open_stints:
+                    stint = open_stints.pop(added)
+                    stint["start_date"] = date
+                    done.append(stint)
+        for _, row in group.iterrows():
+            if pd.notna(row["removed"]):
+                removed = normalize_symbol(row["removed"])
+                # ticker was a member before this date; start unknown so far
+                open_stints[removed] = {"ticker": removed, "start_date": pd.NaT, "end_date": date}
 
     for stint in open_stints.values():
         stint["start_date"] = floor_date
