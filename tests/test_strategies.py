@@ -60,6 +60,13 @@ def test_drawdown_guard_and_hysteresis():
     assert released == pytest.approx(full, rel=1e-6)
 
 
+def test_vol_scaled_rejects_invalid_rho():
+    with pytest.raises(ValueError):
+        VolScaledTopK(k=3, vol_target=0.15, rho=-0.9, dd_derisk=0.15, dd_full=0.25)
+    with pytest.raises(ValueError):
+        VolScaledTopK(k=3, vol_target=0.15, rho=1.0, dd_derisk=0.15, dd_full=0.25)
+
+
 def test_kelly_sizing_caps_and_renormalizes():
     strat = FractionalKelly(fraction=0.25, cap=0.20)
     w = strat.propose_weights(PREDS, VOLS, OK)

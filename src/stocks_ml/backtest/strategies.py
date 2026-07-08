@@ -42,6 +42,8 @@ class VolScaledTopK(Strategy):
 
     def __init__(self, k: int, vol_target: float, rho: float,
                  dd_derisk: float, dd_full: float):
+        if not 0.0 <= rho < 1.0:
+            raise ValueError(f"rho must be in [0, 1) for a valid equicorrelation matrix, got {rho}")
         self.k, self.vol_target, self.rho = k, vol_target, rho
         self.dd_derisk, self.dd_full = dd_derisk, dd_full
         self._guarded = False
@@ -69,7 +71,7 @@ class VolScaledTopK(Strategy):
         var = (w**2 * v**2).sum()
         cross = np.outer(w * v, w * v)
         cov = self.rho * (cross.sum() - np.trace(cross))
-        port_vol = float(np.sqrt(var + cov))
+        port_vol = float(np.sqrt(max(var + cov, 0.0)))
         if port_vol > self.vol_target:
             w = w * (self.vol_target / port_vol)
         return w * exposure
