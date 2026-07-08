@@ -38,3 +38,4 @@ packages = ["src/stocks_ml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
