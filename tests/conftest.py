@@ -79,7 +79,7 @@ def tiny_cfg(tmp_path):
         rebalance_weekday=4, retrain_weeks=4, backtest_start=pd.Timestamp("2021-01-04"),
         holdout_years=0, n_cv_folds=3, train_sample_rows=None, top_k=2, vol_target=0.15,
         avg_correlation=0.3, dd_derisk=0.15, dd_full=0.25, kelly_fraction=0.25,
-        kelly_cap=0.20, cost_bps=5.0, membership_floor=pd.Timestamp("2015-01-01"),
+        kelly_cap=0.20, cost_bps=5.0, live_strategy="vol_scaled", membership_floor=pd.Timestamp("2015-01-01"),
         fred_series={"VIXCLS": 1, "DTB3": 1},
         edgar_concepts={},
     )

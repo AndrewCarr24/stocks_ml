@@ -27,6 +27,7 @@ class Config:
     kelly_fraction: float
     kelly_cap: float
     cost_bps: float
+    live_strategy: str
     membership_floor: pd.Timestamp
     fred_series: dict = field(default_factory=dict)
     edgar_concepts: dict = field(default_factory=dict)
@@ -53,6 +54,7 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         kelly_fraction=float(raw["kelly_fraction"]),
         kelly_cap=float(raw["kelly_cap"]),
         cost_bps=float(raw["cost_bps"]),
+        live_strategy=raw["live_strategy"],
         membership_floor=pd.Timestamp(raw["membership_floor"]),
         fred_series=dict(raw["fred_series"]),
         edgar_concepts={k: list(v) for k, v in raw["edgar_concepts"].items()},

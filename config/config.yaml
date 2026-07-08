@@ -16,6 +16,7 @@ dd_full: 0.25              # drawdown to go fully to cash
 kelly_fraction: 0.25
 kelly_cap: 0.20
 cost_bps: 5.0              # one-way slippage/spread, basis points of traded value
+live_strategy: vol_scaled  # strategy used by `stocks-ml signals`
 membership_floor: "1996-01-01"   # earliest membership start when unknown
 fred_series:               # series_id: publication lag in calendar days
   VIXCLS: 1
