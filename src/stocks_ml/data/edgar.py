@@ -8,6 +8,7 @@ import requests
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 MONEY_UNIT, SHARE_UNIT = "USD", "shares"
+EDGAR_COLS = ["ticker", "concept", "start", "end", "filed", "val", "form"]
 
 
 def load_cik_map(user_agent: str) -> dict[str, int]:
@@ -33,6 +34,7 @@ def extract_facts(cf_json: dict, ticker: str, concept_map: dict) -> pd.DataFrame
             node = gaap.get(tag) or dei.get(tag)
             if not node or unit not in node.get("units", {}):
                 continue
+            n_before = len(rows)
             for item in node["units"][unit]:
                 if item.get("val") is None or not item.get("filed"):
                     continue
@@ -43,9 +45,9 @@ def extract_facts(cf_json: dict, ticker: str, concept_map: dict) -> pd.DataFrame
                     "filed": pd.to_datetime(item["filed"]),
                     "val": float(item["val"]), "form": item.get("form", ""),
                 })
-            break  # first tag with data wins
-    cols = ["ticker", "concept", "start", "end", "filed", "val", "form"]
-    return pd.DataFrame(rows, columns=cols)
+            if len(rows) > n_before:
+                break  # first tag that yields data wins
+    return pd.DataFrame(rows, columns=EDGAR_COLS)
 
 
 def ingest_edgar(store, tickers, concept_map, user_agent,
@@ -53,7 +55,8 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
     fetch_facts = fetch_facts_fn or _fetch_facts
     ciks = cik_map or load_cik_map(user_agent)
     existing = store.read("edgar") if store.exists("edgar") else None
-    have = set(existing["ticker"].unique()) if existing is not None else set()
+    have = (set(existing["ticker"].unique())
+            if existing is not None and "ticker" in existing.columns else set())
 
     frames, failed = [], []
     for t in tickers:
@@ -70,8 +73,9 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
         if fetch_facts_fn is None:
             time.sleep(0.12)  # SEC rate limit: 10 req/s
 
-    new = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    df = pd.concat([existing, new], ignore_index=True) if existing is not None else new
+    new = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=EDGAR_COLS)
+    parts = [f for f in (existing, new) if f is not None and not f.empty]
+    df = pd.concat(parts, ignore_index=True) if parts else new
     if not df.empty:
         df = df.drop_duplicates().sort_values(["ticker", "concept", "filed"]).reset_index(drop=True)
     store.write("edgar", df)

@@ -49,3 +49,29 @@ def test_ingest_edgar_records_failures(tmp_path):
     assert summary["failed_tickers"] == ["BBB"]
     df = store.read("edgar")
     assert set(df.ticker.unique()) == {"AAA"}
+
+
+def test_total_failure_run_does_not_corrupt_store(tmp_path):
+    store = DataStore(tmp_path)
+
+    def failing_facts(cik, user_agent):
+        raise RuntimeError("403")
+
+    s1 = ingest_edgar(store, ["AAA"], {"net_income": ["NetIncomeLoss"]}, "ua",
+                      fetch_facts_fn=failing_facts, cik_map={"AAA": 1})
+    assert s1["failed_tickers"] == ["AAA"]
+    # second run must not crash and must succeed for AAA
+    s2 = ingest_edgar(store, ["AAA"], {"net_income": ["NetIncomeLoss"]}, "ua",
+                      fetch_facts_fn=lambda cik, ua: CF_JSON, cik_map={"AAA": 1})
+    assert s2["failed_tickers"] == []
+    assert "AAA" in set(store.read("edgar").ticker.unique())
+
+
+def test_fallback_tag_used_when_first_tag_has_no_usable_rows():
+    cf = {"facts": {"us-gaap": {
+        "TagA": {"units": {"USD": [{"end": "2022-12-31", "val": 1.0, "form": "10-K"}]}},  # no 'filed' -> unusable
+        "TagB": {"units": {"USD": [{"end": "2022-12-31", "filed": "2023-02-15", "val": 2.0, "form": "10-K"}]}},
+    }}}
+    df = extract_facts(cf, "AAA", {"net_income": ["TagA", "TagB"]})
+    assert len(df) == 1
+    assert df.iloc[0]["val"] == 2.0
