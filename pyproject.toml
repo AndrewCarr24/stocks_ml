@@ -39,3 +39,12 @@ packages = ["src/stocks_ml"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    # shap 0.52.0 (pulled in transitively by automl-tool) calls colormap
+    # set_bad/set_over/set_under at import time in shap/plots/colors/_colors.py;
+    # matplotlib 3.11 marks those as pending-deprecated. Third-party import-time
+    # noise we cannot fix here — filtered narrowly by message, category, module.
+    "ignore:The set_bad function will be deprecated:PendingDeprecationWarning:shap.plots.colors._colors",
+    "ignore:The set_over function will be deprecated:PendingDeprecationWarning:shap.plots.colors._colors",
+    "ignore:The set_under function will be deprecated:PendingDeprecationWarning:shap.plots.colors._colors",
+]

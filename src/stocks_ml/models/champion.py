@@ -14,13 +14,23 @@ from stocks_ml.models.cv import CandidateResult, evaluate_candidate, make_splits
 
 
 def select_champion(results: dict[str, CandidateResult], baselines=BASELINE_NAMES) -> str:
-    baseline_best = max(results[b].mean_ic for b in baselines if b in results)
+    def _ic(r):
+        return r.mean_ic if r.mean_ic == r.mean_ic else 0.0  # NaN -> no skill -> 0.0
+
+    baseline_best = max((_ic(results[b]) for b in baselines if b in results), default=0.0)
     contenders = {n: r for n, r in results.items() if n not in baselines}
     if contenders:
-        best = max(contenders.values(), key=lambda r: (r.mean_ic if r.mean_ic == r.mean_ic else -9e9))
+        best = max(contenders.values(), key=lambda r: r.mean_ic if r.mean_ic == r.mean_ic else float("-inf"))
         if best.mean_ic == best.mean_ic and best.mean_ic > baseline_best:
             return best.name
     return "momentum"
+
+
+def holdout_start_date(dates, holdout_years: int):
+    h = holdout_years * 52
+    if h <= 0 or h >= len(dates):
+        return None
+    return dates[len(dates) - h]
 
 
 def extract_recipe(name: str, fitted_estimator):
@@ -46,7 +56,7 @@ def run_training(store, cfg, candidates: dict | None = None, out_dir="models") -
                for name, est in candidates.items()}
 
     champ = select_champion(results)
-    holdout_start = dates[-cfg.holdout_years * 52] if cfg.holdout_years else None
+    holdout_start = holdout_start_date(dates, cfg.holdout_years)
     fit_df = labeled if holdout_start is None else labeled[labeled["date"] < holdout_start]
     fitted = clone(candidates[champ]).fit(fit_df[fcols], fit_df["label"])
     recipe = extract_recipe(champ, fitted)

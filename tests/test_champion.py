@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 from stocks_ml.models.cv import CandidateResult
 from stocks_ml.models.champion import (
-    extract_recipe, load_champion, run_training, select_champion,
+    extract_recipe, holdout_start_date, load_champion, run_training, select_champion,
 )
 
 
@@ -22,6 +22,23 @@ def test_select_champion_falls_back_to_momentum():
     results = {"zero": _res("zero", 0.0), "momentum": _res("momentum", 0.05),
                "xgb": _res("xgb", 0.02)}
     assert select_champion(results) == "momentum"
+
+
+def test_select_champion_nan_baseline_does_not_poison_gate():
+    results = {"zero": _res("zero", float("nan")), "momentum": _res("momentum", 0.03),
+               "xgb": _res("xgb", 0.08)}
+    assert select_champion(results) == "xgb"          # NaN zero must not block a real winner
+    results["xgb"] = _res("xgb", 0.01)
+    assert select_champion(results) == "momentum"      # still must beat momentum
+    results["xgb"] = _res("xgb", float("nan"))
+    assert select_champion(results) == "momentum"      # NaN contender never wins
+
+
+def test_holdout_start_date_edges():
+    dates = pd.DatetimeIndex(pd.date_range("2020-01-03", periods=100, freq="W-FRI"))
+    assert holdout_start_date(dates, 0) is None
+    assert holdout_start_date(dates, 1) == dates[48]   # 100 - 52
+    assert holdout_start_date(dates, 5) is None        # 260 >= 100 -> no usable holdout
 
 
 class Signal(BaseEstimator, RegressorMixin):
