@@ -45,3 +45,25 @@ def test_candidates_registry_and_cloneability(tiny_cfg):
 def test_automl_adapter_interface():
     est = AutoMLRegressor()
     assert hasattr(est, "fit") and hasattr(est, "predict")
+
+
+def test_automl_adapter_coerces_inputs_and_does_not_mutate_caller_X(monkeypatch):
+    import automl_tool.automl as automl_mod
+
+    received = {}
+
+    class FakeAutoML:
+        def __init__(self, X, y, outcome):
+            received["X"], received["y"], received["outcome"] = X, y, outcome
+
+        def fit_pipeline(self):
+            received["X"]["flag"] = received["X"]["flag"].astype(int)  # simulate automl_tool's in-place mutation
+
+    monkeypatch.setattr(automl_mod, "AutoML", FakeAutoML)
+
+    X = pd.DataFrame({"f_mom_26w": [0.1, 0.2, 0.3], "flag": [True, False, True]})
+    y = np.array([0.01, -0.02, 0.03])
+    AutoMLRegressor().fit(X, y)
+    assert isinstance(received["y"], pd.Series) and received["y"].name == "label"
+    assert received["outcome"] == "label"
+    assert X["flag"].dtype == bool  # caller's frame untouched despite FakeAutoML's mutation

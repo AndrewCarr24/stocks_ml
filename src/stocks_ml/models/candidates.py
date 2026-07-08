@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from xgboost import XGBRegressor
 
@@ -35,7 +36,8 @@ class AutoMLRegressor(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
         from automl_tool.automl import AutoML
 
-        y = y.rename("label") if hasattr(y, "rename") else y
+        X = pd.DataFrame(X).copy()
+        y = pd.Series(np.asarray(y), index=X.index, name="label")
         self.automl_ = AutoML(X, y, "label")
         self.automl_.fit_pipeline()
         return self
