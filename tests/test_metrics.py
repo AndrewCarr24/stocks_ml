@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 
 from stocks_ml.backtest.metrics import (
-    cagr, deflated_sharpe, max_drawdown, nav_to_returns, regime_flags,
-    regime_summaries, summarize,
+    cagr, deflated_sharpe, longest_underwater, max_drawdown, nav_to_returns,
+    regime_flags, regime_summaries, summarize,
 )
 
 
@@ -44,6 +44,18 @@ def test_regime_flags():
     assert bool(flags["bull"].iloc[249])
     assert not bool(flags["bull"].iloc[-1])
     assert bool(flags["high_vol"].iloc[-1])
+
+
+def test_longest_underwater_peak_to_recovery():
+    idx = pd.bdate_range("2020-01-01", periods=7)
+    nav = pd.Series([100, 120, 90, 95, 100, 130, 125.0], index=idx)
+    assert longest_underwater(nav) == (idx[5] - idx[1]).days   # peak day1 -> recovery day5
+    nav2 = pd.Series([100, 90, 105.0], index=idx[:3])
+    assert longest_underwater(nav2) == (idx[2] - idx[0]).days  # 1-day dip is NOT zero
+    rising = pd.Series([100, 101, 102.0], index=idx[:3])
+    assert longest_underwater(rising) == 0
+    never_recovers = pd.Series([100, 90, 80.0], index=idx[:3])
+    assert longest_underwater(never_recovers) == (idx[2] - idx[0]).days  # open spell runs to end
 
 
 def test_summaries_have_expected_keys():

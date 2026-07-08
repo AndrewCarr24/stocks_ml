@@ -39,9 +39,17 @@ def longest_underwater(nav: pd.Series) -> int:
     underwater = nav < nav.cummax()
     if not underwater.any():
         return 0
+    idx = nav.index
     groups = (~underwater).cumsum()[underwater]
-    spans = nav.index.to_series()[underwater].groupby(groups).agg(["min", "max"])
-    return int((spans["max"] - spans["min"]).dt.days.max())
+    dates = idx.to_series()[underwater]
+    longest = 0
+    for _, span in dates.groupby(groups):
+        start_pos = idx.get_loc(span.iloc[0])
+        peak_date = idx[start_pos - 1]  # row 0 is always its own cummax, so start_pos >= 1
+        end_pos = idx.get_loc(span.iloc[-1])
+        recovery_date = idx[end_pos + 1] if end_pos + 1 < len(idx) else idx[-1]
+        longest = max(longest, (recovery_date - peak_date).days)
+    return int(longest)
 
 
 def worst_week(nav: pd.Series) -> float:
