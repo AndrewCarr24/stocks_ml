@@ -37,6 +37,35 @@ def test_ingest_is_incremental_and_dedupes(tmp_path):
     assert not df.duplicated(subset=["date", "ticker"]).any()
 
 
+def test_new_ticker_on_second_run_gets_full_history(tmp_path):
+    calls = []
+
+    def recording_fetch(tickers, start, end):
+        calls.append((tuple(sorted(tickers)), str(pd.Timestamp(start).date())))
+        return fake_fetch(tickers, start, end)
+
+    store = DataStore(tmp_path)
+    ingest_prices(store, ["AAA"], "2024-01-02", "2024-01-10", fetch_fn=recording_fetch)
+    ingest_prices(store, ["AAA", "NEWCO"], "2024-01-02", "2024-01-10", fetch_fn=recording_fetch)
+    # NEWCO must be fetched from the original start, not from AAA's max date
+    newco_calls = [c for c in calls if "NEWCO" in c[0]]
+    assert newco_calls and newco_calls[0][1] == "2024-01-02"
+    df = store.read("prices")
+    assert df[df.ticker == "NEWCO"].date.min() == pd.Timestamp("2024-01-02")
+
+
+def test_rerun_with_no_new_rows_reports_no_false_failures(tmp_path):
+    store = DataStore(tmp_path)
+    ingest_prices(store, ["AAA"], "2024-01-02", "2024-01-10", fetch_fn=fake_fetch)
+
+    def empty_fetch(tickers, start, end):
+        return pd.DataFrame(columns=["date", "ticker", "open", "high", "low", "close", "volume"])
+
+    summary = ingest_prices(store, ["AAA"], "2024-01-02", "2024-01-10", fetch_fn=empty_fetch)
+    assert summary["failed_tickers"] == []
+    assert summary["n_ok"] == 1
+
+
 def test_all_tickers_ever_includes_spy():
     mem = pd.DataFrame({"ticker": ["AAA", "OLD"], "start_date": pd.to_datetime(["2000-01-01"] * 2),
                         "end_date": [pd.NaT, pd.Timestamp("2010-01-01")], "sector": ["T", None]})

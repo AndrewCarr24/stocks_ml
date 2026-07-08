@@ -18,16 +18,16 @@ def _fetch_yfinance(tickers: list[str], start, end) -> pd.DataFrame:
     frames = []
     for i in range(0, len(tickers), BATCH):
         chunk = tickers[i : i + BATCH]
+        raw = None
         for attempt in range(3):
             try:
                 raw = yf.download(chunk, start=start, end=end, auto_adjust=True,
                                   group_by="ticker", progress=False, threads=True)
                 break
             except Exception:
-                if attempt == 2:
-                    raise
-                time.sleep(5 * (attempt + 1))
-        if raw.empty:
+                if attempt < 2:
+                    time.sleep(5 * (attempt + 1))
+        if raw is None or raw.empty:  # persistent failure surfaces via failed_tickers
             continue
         if not isinstance(raw.columns, pd.MultiIndex):  # single-ticker shape
             raw = pd.concat({chunk[0]: raw}, axis=1)
@@ -43,22 +43,36 @@ def _fetch_yfinance(tickers: list[str], start, end) -> pd.DataFrame:
 
 def ingest_prices(store, tickers: list[str], start, end=None, fetch_fn=None) -> dict:
     fetch = fetch_fn or _fetch_yfinance
-    fetch_start = start
     existing = store.read("prices") if store.exists("prices") else None
+
+    fetched = []
     if existing is not None and not existing.empty:
-        fetch_start = existing["date"].max()  # refetch last day; dedupe below
+        # Per-ticker cursor: known tickers resume from the stored max date
+        # (refetch last day; dedupe below); new tickers get full history.
+        known = set(existing["ticker"].unique())
+        known_tickers = [t for t in tickers if t in known]
+        new_tickers = [t for t in tickers if t not in known]
+        if known_tickers:
+            fetched.append(fetch(known_tickers, existing["date"].max(), end))
+        if new_tickers:
+            fetched.append(fetch(new_tickers, start, end))
+    else:
+        fetched.append(fetch(tickers, start, end))
 
-    new = fetch(tickers, fetch_start, end)
+    new = pd.concat(fetched, ignore_index=True)
     new["date"] = pd.to_datetime(new["date"])
-    got = set(new["ticker"].unique())
-    failed = sorted(set(tickers) - got)
 
-    df = pd.concat([existing, new], ignore_index=True) if existing is not None else new
+    parts = [f for f in (existing, new) if f is not None and not f.empty]
+    df = pd.concat(parts, ignore_index=True) if parts else new
     df = (df.drop_duplicates(subset=["date", "ticker"], keep="last")
             .sort_values(["ticker", "date"]).reset_index(drop=True))
     store.write("prices", df)
 
-    summary = {"n_ok": len(got), "failed_tickers": failed,
+    # Judge success against the final combined frame so an idempotent re-run
+    # that fetches zero new rows does not mark stored tickers as failed.
+    present = set(df["ticker"].unique())
+    failed = sorted(set(tickers) - present)
+    summary = {"n_ok": len(set(tickers) & present), "failed_tickers": failed,
                "last_date": str(df["date"].max().date()) if not df.empty else None}
     store.set_manifest("prices", summary)
     return summary
