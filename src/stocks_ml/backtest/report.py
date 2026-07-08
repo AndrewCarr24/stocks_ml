@@ -19,7 +19,9 @@ N_CANDIDATES = 4  # zero, momentum, xgb, automl — for deflated-Sharpe trial co
 def benchmark_navs(prices, fred, index: pd.DatetimeIndex) -> dict:
     spy = (prices[prices.ticker == "SPY"].set_index("date")["close"]
            .sort_index().reindex(index).ffill())
-    spy_nav = 100.0 * spy / spy.iloc[0]
+    first_valid = spy.first_valid_index()
+    base = spy.loc[first_valid] if first_valid is not None else np.nan
+    spy_nav = 100.0 * (spy / base)
     dtb3 = (fred[fred.series == "DTB3"].set_index("date")["value"]
             .sort_index().reindex(index).ffill().fillna(0.0))
     daily = (1 + dtb3 / 100.0) ** (1 / 252)
