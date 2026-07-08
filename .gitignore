@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+.venv/
+/data/
+/models/
+reports/
+signals/
+ledger.json
+.pytest_cache/
+.superpowers/
