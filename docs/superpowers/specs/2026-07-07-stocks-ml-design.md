@@ -22,13 +22,15 @@ account goes to zero, the game is over.
 | Architecture | Custom modular Python package with purpose-built walk-forward backtester (Approach A) |
 | Constraints | Long-only, no leverage, no shorting, cash is the fallback asset |
 | Data | Free/open sources only; daily bars only (no hourly, no paywalls) |
+| Fundamentals | Point-in-time value/quality features from SEC EDGAR XBRL (free, filing-dated), to balance momentum and reduce regime overfitting |
+| Feature scaling | All features cross-sectionally rank-normalized to [-1,1] per rebalance date (Gu–Kelly–Xiu practice), so the model sees relative standing, not trending levels |
 
 ## Architecture
 
 ```
                 ┌─────────────────────────────────────────────┐
                 │                data store (parquet)          │
-                │  prices/  membership/  fred/  manifest.json  │
+                │ prices/ membership/ fred/ edgar/ manifest.json│
                 └───────▲──────────────────────────┬───────────┘
    ingest (network) ────┘                          │ read-only
                                                    ▼
@@ -85,6 +87,16 @@ the local store; `--full` forces a rebuild).
    Each series carries a per-series publication lag (config) and is shifted by
    that lag before use, so the model never sees a value before its real-world
    release date.
+4. **Fundamentals** — SEC EDGAR XBRL `companyfacts` API (official, free, no
+   key; 10 req/s limit with mandatory User-Agent header; ticker→CIK via SEC's
+   `company_tickers.json`). For each S&P 500 member, pull the core 10-K/10-Q
+   facts needed for value/quality factors: revenues, net income, gross profit,
+   total assets, stockholders' equity, total liabilities, shares outstanding,
+   operating cash flow. Every fact is stored with both its period end date and
+   its **filing date**; downstream joins use the latest fact *filed* before the
+   rebalance date — true point-in-time, no restatement or pre-release leakage.
+   XBRL coverage is thin before ~2009 (mandate phased in 2009–2011); coverage
+   by year is recorded in the manifest.
 
 **Storage:** parquet files partitioned by source; `manifest.json` records last
 fetch dates, ticker failures, and row counts. No database server.
@@ -107,9 +119,25 @@ models.
 - Volume: dollar-volume trend, abnormal volume
 - Price position: distance from 52-week high/low
 - Sector: GICS sector (categorical)
+- Fundamentals (point-in-time from EDGAR, joined on filing date):
+  - Value: earnings yield (E/P), book-to-market, sales-to-price,
+    cash-flow-to-price
+  - Quality/profitability: ROE, gross profitability (gross profit / assets),
+    operating cash flow / assets
+  - Investment: year-over-year asset growth (low is good, per Fama–French)
+  - Balance sheet: leverage (liabilities / assets), log market cap (size)
 - Market context: SPY trailing returns and realized vol
 - Macro: lagged FRED series levels and changes
 - Calendar: month, week-of-quarter
+
+**Feature scaling:** every numeric feature is rank-normalized cross-sectionally
+to [-1,1] at each rebalance date (the Gu–Kelly–Xiu convention). The model never
+sees absolute levels that trend over time — only each stock's relative standing
+among peers that week. This is the primary defense against learning
+"tech went up for a decade, so buy tech": in rank space, a regime-long uptrend
+carries no signal unless it changes the *ordering* of stocks. Fundamentals are
+missing before ~2009 and for recent index adds; tree models receive NaN
+natively, and the report tracks feature coverage by year.
 
 **Label:** forward `horizon` (default 5) trading-day return, measured from the
 next trading day's open to the open `horizon` days later (matching how the
@@ -138,6 +166,10 @@ trains on all data up to time t, skips a purge gap of `horizon` days (so no
 train label overlaps a test feature window), and tests on the following block.
 **Primary metric: mean Spearman rank IC** per week on test folds (how well the
 model orders the cross-section); secondary: RMSE, IC t-stat, decile spread.
+IC is additionally reported **per fold and per market regime** (see Component
+4's regime definitions): a candidate whose edge exists only in the post-2015
+bull market is visibly weaker than one with stable IC across regimes, and the
+selection write-up must note it.
 
 **Champion selection:** best mean rank IC across folds wins, subject to beating
 both baselines. The champion's *recipe* (model family + hyperparameters) is
@@ -183,7 +215,16 @@ risk_state) -> weights` — pure function, pluggable, independently testable.
 - "$100 → $X" terminal wealth over the full test window and per-year
 - CAGR, Sharpe, Sortino, max drawdown, worst week, longest underwater spell
 - Time-in-cash %, annual turnover, total cost drag
-- Stress windows called out separately: 2018 Q4, Feb–Mar 2020, 2022
+- **Regime-sliced results:** every metric reported per regime, where regimes
+  are defined mechanically (bull = SPY above its 200-day average, bear = below;
+  high-vol = VIX above its long-run median). A strategy that only wins in
+  bull-regime weeks is flagged as regime-dependent. Named stress windows
+  (2008–09 if data coverage allows, 2018 Q4, Feb–Mar 2020, 2022) are also
+  called out individually.
+- **Selection-bias honesty:** the report states how many strategy/model
+  combinations were compared and shows the winner's deflated Sharpe ratio
+  (Bailey–López de Prado), which discounts the Sharpe for the number of trials
+  — guarding against crowning a lucky configuration.
 - Champion vs. baselines rank-IC table alongside, so model quality and
   strategy quality are visible independently
 
@@ -219,7 +260,8 @@ stocks-ml ledger mark       # record fills / update NAV with latest prices
 
 Single `config/config.yaml`: horizon (5), rebalance cadence (weekly), retrain
 cadence (4 weeks), top-k, vol target, drawdown thresholds, Kelly fraction,
-cost bps, FRED series list + lags, backtest start date (2005), CV fold spec.
+cost bps, FRED series list + lags, EDGAR fact/XBRL-tag list, backtest start
+date (2005), CV fold spec.
 Switching to daily = change horizon + cadence; code paths are identical.
 
 ## Testing
@@ -250,6 +292,35 @@ Switching to daily = change horizon + cadence; code paths are identical.
   rebalancing feasible at commission-free brokers; cost model still charges
   spread. The report includes cost drag so we see if the account is too small
   for the strategy's turnover.
+- **Regime overfitting** (a decade-long bull market teaches "buy tech, buy
+  beta"): mitigated in four layers — relative labels (market-neutral ranking),
+  cross-sectional rank-normalized features (levels can't trend), fundamentals
+  factors that historically work in different regimes than momentum, and
+  regime-sliced evaluation that makes any remaining regime dependence visible
+  rather than hidden in an aggregate Sharpe.
+- **EDGAR fundamentals coverage**: XBRL data is sparse before ~2009, so
+  fundamentals features are NaN early in the backtest window. Tree models
+  tolerate this, and per-year feature coverage is reported; if pre-2010
+  results differ materially from post-2010, the report must present them
+  separately rather than blended.
+
+## Research grounding
+
+- **Gu, Kelly & Xiu (2020), "Empirical Asset Pricing via Machine Learning"**
+  (Review of Financial Studies): the benchmark study for ML on the stock
+  cross-section. Source of the ~90-characteristic feature philosophy
+  (fundamentals + momentum + liquidity), the per-period rank-normalization of
+  features to [-1,1], and evidence that boosted trees/shallow NNs beat linear
+  models. https://academic.oup.com/rfs/article/33/5/2223/5758276
+- **Fama & French five-factor model (2015)**: value, profitability, and
+  investment factors — the fundamentals features here map directly onto them;
+  they diversify momentum across regimes.
+- **Bailey & López de Prado**: purged/embargoed cross-validation (adopted in
+  Component 3) and the deflated Sharpe ratio (adopted in Component 4's
+  report). https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551
+- **SEC EDGAR XBRL APIs** (companyfacts): free, official, filing-dated
+  fundamentals enabling point-in-time joins.
+  https://www.sec.gov/search-filings/edgar-application-programming-interfaces
 
 ## Out of scope (v1)
 
