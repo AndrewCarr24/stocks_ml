@@ -111,8 +111,9 @@ models.
 - Macro: lagged FRED series levels and changes
 - Calendar: month, week-of-quarter
 
-**Label:** forward `horizon` (default 5) trading-day return minus the
-cross-sectional median return that week. Relative labels make the task
+**Label:** forward `horizon` (default 5) trading-day return, measured from the
+next trading day's open to the open `horizon` days later (matching how the
+backtester executes), minus the cross-sectional median of that same return. Relative labels make the task
 "rank stocks," which is what the strategies consume. Raw forward return is
 also stored for the backtester's accounting.
 
