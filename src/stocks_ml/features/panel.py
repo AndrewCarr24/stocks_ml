@@ -98,3 +98,55 @@ def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int) -> 
     med = labels.groupby("date")["fwd_ret"].transform("median")
     labels["label"] = labels["fwd_ret"] - med
     return labels
+
+
+def build_panel(store, cfg) -> pd.DataFrame:
+    from stocks_ml.data.fred import load_fred_lagged
+    from stocks_ml.data.membership import members_asof
+    from stocks_ml.features.fundamentals import fundamental_features
+    from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
+
+    prices = store.read("prices")
+    membership = store.read("membership")
+    edgar = store.read("edgar")
+    fred_lagged = load_fred_lagged(store, cfg.fred_series)
+
+    cal = trading_calendar(prices)
+    warmup_start = cfg.backtest_start - pd.Timedelta(days=450)
+    dates = rebalance_dates(cal, max(warmup_start, cal.min()), cal.max(),
+                            cfg.rebalance_weekday)
+
+    base_rows = []
+    for t in dates:
+        for ticker in members_asof(membership, t):
+            base_rows.append((t, ticker))
+    base = pd.DataFrame(base_rows, columns=["date", "ticker"])
+
+    pfeats = price_features(prices, dates)
+    panel = base.merge(pfeats, on=["date", "ticker"], how="inner")
+
+    close_wide = _wide(prices, "close").reindex(dates)
+    close_wide.index.name = "date"
+    close = close_wide.stack(future_stack=True).rename("close")
+    close_df = close.reset_index()
+    close_df.columns = ["date", "ticker", "close"]
+    panel = panel.merge(close_df, on=["date", "ticker"], how="left")
+    panel = fundamental_features(edgar, panel)
+
+    panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
+    panel = panel.merge(calendar_features(dates), on="date", how="left")
+    panel = panel.merge(make_labels(prices, dates, cfg.horizon_days),
+                        on=["date", "ticker"], how="left")
+
+    sector = membership.dropna(subset=["sector"]).drop_duplicates("ticker")
+    panel["sector"] = panel["ticker"].map(dict(zip(sector["ticker"], sector["sector"])))
+    dummies = pd.get_dummies(panel["sector"], prefix="f_sec", prefix_sep="_", dtype=float)
+    dummies.columns = [c.lower().replace(" ", "_") for c in dummies.columns]
+    panel = pd.concat([panel.drop(columns=["sector", "close"]), dummies], axis=1)
+
+    ranked_cols = [c for c in feature_cols(panel) if not c.startswith(RANK_EXEMPT_PREFIXES)]
+    panel = rank_normalize(panel, ranked_cols)
+
+    panel = panel[panel["date"] >= cfg.backtest_start].reset_index(drop=True)
+    store.write("panel", panel)
+    return panel
