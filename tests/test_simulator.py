@@ -79,3 +79,35 @@ def test_weights_recorded(tiny_cfg):
     panel, prices, _ = _world()
     res = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg)
     assert (res.weights["AAA"].dropna() == 1.0).all()
+
+
+class RecordingFirst(AlwaysFirst):
+    def __init__(self):
+        self.seen = []
+
+    def propose_weights(self, preds, vols, risk):
+        self.seen.append(risk.drawdown)
+        return super().propose_weights(preds, vols, risk)
+
+
+def test_drawdown_reflects_intraweek_peak(tiny_cfg):
+    dates = pd.bdate_range("2021-01-04", periods=280)
+    spike_day = dates[(dates.weekday == 2)][40]        # a mid-span Wednesday, well after first fit
+    px = np.where(dates < spike_day, 100.0, 106.0)
+    px[dates == spike_day] = 120.0
+    prices = pd.concat([
+        pd.DataFrame({"date": dates, "ticker": t, "open": px, "high": px,
+                      "low": px, "close": px, "volume": 1e6})
+        for t in [*TICKERS, "SPY"]
+    ], ignore_index=True)
+    rdates = pd.DatetimeIndex([d for d in dates if d.weekday() == 4][4:-2])
+    panel = pd.DataFrame({
+        "date": np.repeat(rdates, len(TICKERS)),
+        "ticker": TICKERS * len(rdates),
+        "f_x": 0.5, "aux_vol": 0.2, "fwd_ret": 0.0, "label": 0.0,
+    })
+    strat = RecordingFirst()
+    run_backtest(panel, prices, strat, Flat(), replace(tiny_cfg, cost_bps=0.0))
+    # NAV peaks at the Wednesday spike (120) then settles at 106: the next signal
+    # must see dd = 1 - 106/120, not 0
+    assert max(strat.seen) == pytest.approx(1 - 106.0 / 120.0, abs=1e-6)

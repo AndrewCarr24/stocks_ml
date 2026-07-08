@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 from sklearn.base import clone
 
 from stocks_ml.backtest.strategies import RiskState
 from stocks_ml.features.panel import feature_cols
 
-MIN_TRAIN_ROWS = 50
+MIN_TRAIN_ROWS = 50  # low floor: one real week has ~500 rows; small value keeps synthetic tests tradeable
 
 
 @dataclass
@@ -56,12 +55,13 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None) 
 
         rows = panel[panel["date"] == t]
         preds = pd.Series(model.predict(rows[fcols]), index=rows["ticker"].values)
+        preds = preds.dropna()
         vols = pd.Series(rows["aux_vol"].values, index=rows["ticker"].values)
 
-        # drawdown as of t: NAV marks so far end at t (never beyond — see marking below)
+        # drawdown as of t: NAV marks so far end at t (never beyond — see marking
+        # below); hwm is maintained from every daily mark, so intra-week peaks count
         past_navs = pd.Series(navs).sort_index()
         nav_t = past_navs.iloc[-1] if not past_navs.empty else 100.0
-        hwm = max(hwm, nav_t)
         dd = 1.0 - nav_t / hwm
 
         weights = strategy.propose_weights(preds, vols, RiskState(drawdown=dd))
@@ -93,6 +93,7 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None) 
         span_end = rdates[i + 1] if i + 1 < len(rdates) else cal[-1]
         for day in cal[(cal >= exec_day) & (cal <= span_end)]:
             navs[day] = mark(day)
+            hwm = max(hwm, navs[day])
 
     nav = pd.Series(navs).sort_index()
     weights_df = pd.DataFrame(weight_rows).T.fillna(0.0)
