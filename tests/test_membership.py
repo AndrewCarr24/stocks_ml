@@ -66,6 +66,23 @@ def test_same_date_add_and_remove_in_separate_rows_is_order_independent():
         assert pd.isna(stints.iloc[1].end_date)
 
 
+def test_clean_wiki_tables_real_structure():
+    from stocks_ml.data.membership import _clean_wiki_tables
+
+    current_raw = pd.DataFrame({"Symbol": ["AAPL", "BRK.B"], "GICS Sector": ["Tech", "Financials"]})
+    cols = pd.MultiIndex.from_tuples([
+        ("Effective Date", "Effective Date"), ("Added", "Ticker"), ("Added", "Security"),
+        ("Removed", "Ticker"), ("Removed", "Security"), ("Reason", "Reason"),
+    ])
+    changes_raw = pd.DataFrame(
+        [["June 30, 2025", "NEWCO", "New Co", "OLDCO", "Old Co", "Index change"]], columns=cols)
+    current, changes = _clean_wiki_tables(current_raw, changes_raw)
+    assert list(current.ticker) == ["AAPL", "BRK-B"]
+    assert changes.iloc[0]["added"] == "NEWCO"
+    assert changes.iloc[0]["removed"] == "OLDCO"
+    assert changes.iloc[0]["date"] == pd.Timestamp("2025-06-30")
+
+
 def test_members_asof():
     current = pd.DataFrame({"ticker": ["AAA", "ZZZ"], "sector": ["Tech", "Retail"]})
     changes = _changes([("2020-05-01", "ZZZ", None), ("2010-02-01", None, "ZZZ")])

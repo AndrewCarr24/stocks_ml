@@ -63,28 +63,34 @@ def members_asof(membership: pd.DataFrame, date) -> list[str]:
     return sorted(live["ticker"].unique())
 
 
-def fetch_sp500_tables(user_agent: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Network: fetch and clean Wikipedia's current-constituents and changes tables."""
-    resp = requests.get(WIKI_URL, headers={"User-Agent": user_agent}, timeout=30)
-    resp.raise_for_status()
-    tables = pd.read_html(StringIO(resp.text))
-    current_raw, changes_raw = tables[0], tables[1]
-
+def _clean_wiki_tables(current_raw: pd.DataFrame, changes_raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     current = pd.DataFrame({
         "ticker": current_raw["Symbol"].map(normalize_symbol),
         "sector": current_raw["GICS Sector"].astype(str),
     })
-
-    changes_raw.columns = ["_".join(str(c) for c in col).lower() for col in changes_raw.columns]
-    date_col = next(c for c in changes_raw.columns if c.startswith("date"))
-    added_col = next(c for c in changes_raw.columns if "added" in c and "ticker" in c)
-    removed_col = next(c for c in changes_raw.columns if "removed" in c and "ticker" in c)
+    cols = changes_raw.columns
+    if isinstance(cols, pd.MultiIndex):
+        flat = ["_".join(str(c) for c in col).lower() for col in cols]
+    else:
+        flat = [str(c).lower() for c in cols]
+    changes_raw = changes_raw.set_axis(flat, axis=1)
+    date_col = next(c for c in flat if "date" in c)
+    added_col = next(c for c in flat if "added" in c and "ticker" in c)
+    removed_col = next(c for c in flat if "removed" in c and "ticker" in c)
     changes = pd.DataFrame({
         "date": pd.to_datetime(changes_raw[date_col], errors="coerce"),
         "added": changes_raw[added_col],
         "removed": changes_raw[removed_col],
     }).dropna(subset=["date"])
     return current, changes
+
+
+def fetch_sp500_tables(user_agent: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Network: fetch and clean Wikipedia's current-constituents and changes tables."""
+    resp = requests.get(WIKI_URL, headers={"User-Agent": user_agent}, timeout=30)
+    resp.raise_for_status()
+    tables = pd.read_html(StringIO(resp.text))
+    return _clean_wiki_tables(tables[0], tables[1])
 
 
 def ingest_membership(store, cfg, fetch_fn=None) -> pd.DataFrame:
