@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import date
 from pathlib import Path
 
@@ -60,11 +61,13 @@ def cmd_signals(args, cfg):
     out.mkdir(exist_ok=True)
     path = out / f"{date.today()}.md"
     path.write_text(md)
-    print(f"wrote {path} ({len(trades)} trades suggested)")
+    trades_path = out / f"{date.today()}-trades.json"
+    trades_path.write_text(json.dumps([[t, d, p] for t, d, p in trades]))
+    print(f"wrote {path} and {trades_path} ({len(trades)} trades suggested)")
 
 
 def cmd_ledger(args, cfg):
-    from stocks_ml.live.ledger import Ledger
+    from stocks_ml.live.ledger import Ledger, latest_closes
 
     path = Path("ledger.json")
     ledger = Ledger.load(path)
@@ -75,10 +78,22 @@ def cmd_ledger(args, cfg):
     elif args.action == "mark":
         store = _store(cfg)
         prices = store.read("prices")
-        closes = prices[prices["date"] == prices["date"].max()].set_index("ticker")["close"]
-        nav = ledger.mark(closes, prices["date"].max())
+        nav = ledger.mark(latest_closes(prices), prices["date"].max())
         ledger.save(path)
         print(f"NAV: ${nav:,.2f}")
+    elif args.action == "apply":
+        if args.file:
+            tpath = Path(args.file)
+        else:
+            candidates = sorted(Path("signals").glob("*-trades.json"))
+            if not candidates:
+                raise SystemExit("no signals/*-trades.json found; run `stocks-ml signals` first")
+            tpath = candidates[-1]
+        trades = [(t, float(d), float(p)) for t, d, p in json.loads(tpath.read_text())]
+        ledger.apply_trades(trades, date.today())
+        ledger.save(path)
+        print(f"applied {len(trades)} trades from {tpath}")
+        print(f"cash: ${ledger.cash:,.2f}  positions: {ledger.positions}")
     else:  # show
         print(f"cash: ${ledger.cash:,.2f}  positions: {ledger.positions}")
         for d, n in ledger.nav_history[-10:]:
@@ -96,8 +111,10 @@ def main():
     sub.add_parser("backtest", help="run all strategies and write the report")
     sub.add_parser("signals", help="generate this week's trade signals")
     p_led = sub.add_parser("ledger", help="paper ledger operations")
-    p_led.add_argument("action", choices=["init", "mark", "show"])
+    p_led.add_argument("action", choices=["init", "mark", "show", "apply"])
     p_led.add_argument("--cash", type=float, default=100.0)
+    p_led.add_argument("--file", default=None,
+                       help="trades JSON to apply (default: newest signals/*-trades.json)")
 
     args = parser.parse_args()
     cfg = load_config(args.config)

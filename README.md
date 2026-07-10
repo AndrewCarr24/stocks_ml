@@ -14,8 +14,9 @@ ML stock forecasting, backtesting, and paper trading on free data
 ## Weekly live cycle (after Friday close)
 
     uv run stocks-ml ingest
-    uv run stocks-ml signals             # -> signals/YYYY-MM-DD.md
+    uv run stocks-ml signals             # -> signals/YYYY-MM-DD.md + -trades.json
     # execute the trade list at your broker (fractional shares)
+    uv run stocks-ml ledger apply        # record the executed trades
     uv run stocks-ml ledger mark         # record NAV
 
 Initialize the paper ledger once: `uv run stocks-ml ledger init --cash 100`

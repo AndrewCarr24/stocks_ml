@@ -7,6 +7,11 @@ from pathlib import Path
 import pandas as pd
 
 
+def latest_closes(prices: pd.DataFrame) -> pd.Series:
+    """Last available close per ticker (forward-fill convention, matching the simulator)."""
+    return prices.sort_values("date").groupby("ticker")["close"].last()
+
+
 @dataclass
 class Ledger:
     cash: float = 0.0
@@ -38,12 +43,20 @@ class Ledger:
         return nav
 
     def apply_trades(self, trades: list, date) -> None:
-        for ticker, delta, price in trades:
+        # Process sells before buys so sale proceeds can fund purchases.
+        ordered = ([t for t in trades if t[1] < 0] +
+                   [t for t in trades if t[1] >= 0])
+        for ticker, delta, price in ordered:
             held = self.positions.get(ticker, 0.0)
             delta = max(delta, -held)  # cannot sell more than held
             if delta == 0:
                 continue
-            self.cash -= delta * price
+            cost = delta * price
+            if delta > 0 and self.cash - cost < -1e-9:
+                raise ValueError(
+                    f"trade would overdraw cash: buy {delta:.4f} {ticker} @ "
+                    f"${price:,.2f} costs ${cost:,.2f}, cash ${self.cash:,.2f}")
+            self.cash -= cost
             new = held + delta
             if abs(new) < 1e-9:
                 self.positions.pop(ticker, None)

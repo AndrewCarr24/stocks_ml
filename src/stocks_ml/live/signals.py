@@ -5,6 +5,7 @@ from sklearn.base import clone
 
 from stocks_ml.backtest.strategies import RiskState, make_strategies
 from stocks_ml.features.panel import feature_cols
+from stocks_ml.live.ledger import latest_closes
 from stocks_ml.models.champion import load_champion
 
 
@@ -22,8 +23,7 @@ def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list
     preds = pd.Series(model.predict(rows[fcols]), index=rows["ticker"].values)
     vols = pd.Series(rows["aux_vol"].values, index=rows["ticker"].values)
 
-    closes = (prices[prices["date"] == prices["date"].max()]
-              .set_index("ticker")["close"])
+    closes = latest_closes(prices)
     nav = ledger.nav(closes) if (ledger.positions or ledger.cash) else 100.0
 
     hwm = max((n for _, n in ledger.nav_history), default=nav)
@@ -51,5 +51,6 @@ def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list
                      f"| {cur:.4f} | {delta:+.4f} |")
     cash_w = 1.0 - float(weights.sum())
     lines += ["", f"Cash target: {cash_w:.1%} (${cash_w * nav:,.2f})", "",
-              "Execute at next market open; then run `stocks-ml ledger mark`."]
+              "Execute at next market open; then run `stocks-ml ledger apply` "
+              "and `stocks-ml ledger mark`."]
     return "\n".join(lines), trades
