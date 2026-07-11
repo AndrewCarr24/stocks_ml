@@ -1,0 +1,39 @@
+data_dir: data
+user_agent: "stocks_ml research carr.andrewjohn@gmail.com"
+horizon_days: 5            # forecast horizon in trading days
+purge_days: 10             # calendar-day gap between train data and prediction date
+rebalance_weekday: 4       # 0=Mon ... 4=Fri; rebalance = last trading day <= each Friday
+retrain_weeks: 4
+backtest_start: "2005-01-03"
+holdout_years: 2           # most recent years excluded from champion selection folds
+n_cv_folds: 5
+train_sample_rows: null    # optional cap on training rows (most recent kept); null = all
+top_k: 8
+vol_target: 0.15           # annualized portfolio vol cap (VolScaledTopK)
+avg_correlation: 0.3       # assumed pairwise correlation for portfolio vol estimate
+dd_derisk: 0.15            # drawdown to halve exposure
+dd_full: 0.25              # drawdown to go fully to cash
+kelly_fraction: 0.25
+kelly_cap: 0.20
+cost_bps: 5.0              # one-way slippage/spread, basis points of traded value
+live_strategy: vol_scaled  # strategy used by `stocks-ml signals`
+membership_floor: "1996-01-01"   # earliest membership start when unknown
+fred_series:               # series_id: publication lag in calendar days
+  VIXCLS: 1
+  T10Y2Y: 1
+  DTB3: 1
+  ICSA: 5
+  CPIAUCSL: 14
+  FEDFUNDS: 1
+  UNRATE: 7
+  UMCSENT: 14
+  DTWEXBGS: 3
+edgar_concepts:            # canonical name: us-gaap XBRL tag fallbacks (first match wins)
+  revenues: [Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, SalesRevenueNet, SalesRevenueGoodsNet]
+  net_income: [NetIncomeLoss]
+  gross_profit: [GrossProfit]
+  assets: [Assets]
+  equity: [StockholdersEquity, StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest]
+  liabilities: [Liabilities]
+  ocf: [NetCashProvidedByUsedInOperatingActivities]
+  shares: [CommonStockSharesOutstanding, EntityCommonStockSharesOutstanding]

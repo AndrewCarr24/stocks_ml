@@ -1,0 +1,50 @@
+[project]
+name = "stocks-ml"
+version = "0.1.0"
+description = "ML stock forecasting, backtesting, and paper-trading system"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "pandas>=2.2,<3",
+    "numpy>=1.26,<2.4",
+    "pyarrow>=15.0",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "lxml>=5.0",
+    "yfinance>=0.2.40",
+    "scikit-learn>=1.4,<=1.5.1",
+    "xgboost>=2.0",
+    "scipy>=1.11",
+    "numba>=0.60",
+    "matplotlib>=3.8",
+    "joblib>=1.3",
+    "automl-tool",
+]
+
+[project.scripts]
+stocks-ml = "stocks_ml.cli:main"
+
+[tool.uv.sources]
+automl-tool = { git = "https://github.com/AndrewCarr24/automl_tool" }
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stocks_ml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = [
+    # shap 0.52.0 (pulled in transitively by automl-tool) calls colormap
+    # set_bad/set_over/set_under at import time in shap/plots/colors/_colors.py;
+    # matplotlib 3.11 marks those as pending-deprecated. Third-party import-time
+    # noise we cannot fix here — filtered narrowly by message, category, module.
+    "ignore:The set_bad function will be deprecated:PendingDeprecationWarning:shap.plots.colors._colors",
+    "ignore:The set_over function will be deprecated:PendingDeprecationWarning:shap.plots.colors._colors",
+    "ignore:The set_under function will be deprecated:PendingDeprecationWarning:shap.plots.colors._colors",
+]
