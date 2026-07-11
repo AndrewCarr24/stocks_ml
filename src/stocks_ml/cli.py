@@ -90,7 +90,7 @@ def cmd_ledger(args, cfg):
                 raise SystemExit("no signals/*-trades.json found; run `stocks-ml signals` first")
             tpath = candidates[-1]
         if tpath.name in ledger.applied_files and not args.force:
-            print(f"{tpath.name} already applied; use --force to re-apply")
+            print(f"already applied {tpath.name}; skipping (use --force to re-apply)")
             return
         trades = [(t, float(d), float(p)) for t, d, p in json.loads(tpath.read_text())]
         ledger.apply_trades(trades, date.today())
