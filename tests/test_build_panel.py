@@ -33,3 +33,21 @@ def test_build_panel_shape_and_membership(synthetic_store, tiny_cfg):
     assert panel["aux_vol"].dropna().max() > 0.05
     # panel persisted
     assert synthetic_store.exists("panel")
+
+
+def test_build_panel_drops_corrupt_tickers(synthetic_store, tiny_cfg):
+    import numpy as np
+    prices = synthetic_store.read("prices")
+    bad = prices[prices.ticker == "AAA"].copy()
+    bad["ticker"] = "BADCO"
+    doubles = bad.index[::100]
+    for col in ("open", "high", "low", "close"):
+        bad.loc[doubles, col] = bad.loc[doubles, col] * 4  # repeated 4x spikes
+    synthetic_store.write("prices", pd.concat([prices, bad], ignore_index=True))
+    mem = synthetic_store.read("membership")
+    mem = pd.concat([mem, pd.DataFrame({"ticker": ["BADCO"], "start_date": [pd.Timestamp("2015-01-01")],
+                                        "end_date": [pd.NaT], "sector": ["Tech"]})], ignore_index=True)
+    synthetic_store.write("membership", mem)
+    panel = build_panel(synthetic_store, tiny_cfg)
+    assert "BADCO" not in panel.ticker.values
+    assert "BADCO" in synthetic_store.manifest["corrupt_tickers"]

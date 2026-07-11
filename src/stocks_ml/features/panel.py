@@ -103,10 +103,14 @@ def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int) -> 
 def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.fred import load_fred_lagged
     from stocks_ml.data.membership import members_asof
+    from stocks_ml.data.prices import drop_corrupt_series
     from stocks_ml.features.fundamentals import fundamental_features
     from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
 
     prices = store.read("prices")
+    prices, corrupt = drop_corrupt_series(prices)
+    if corrupt:
+        store.set_manifest("corrupt_tickers", corrupt)
     membership = store.read("membership")
     edgar = store.read("edgar")
     fred_lagged = load_fred_lagged(store, cfg.fred_series)
