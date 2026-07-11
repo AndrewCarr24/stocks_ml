@@ -9,6 +9,19 @@ from stocks_ml.live.ledger import latest_closes
 from stocks_ml.models.champion import load_champion
 
 
+def replay_guard_state(nav_history, dd_derisk: float, dd_full: float) -> bool:
+    """Replay the drawdown-guard hysteresis over the ledger's NAV history."""
+    guarded, hwm = False, 0.0
+    for _, nav in nav_history:
+        hwm = max(hwm, nav)
+        dd = 1.0 - nav / hwm if hwm > 0 else 0.0
+        if dd >= dd_derisk:
+            guarded = True
+        elif dd < dd_derisk / 2:
+            guarded = False
+    return guarded
+
+
 def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list]:
     panel = store.read("panel")
     prices = store.read("prices")
@@ -29,6 +42,8 @@ def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list
     hwm = max((n for _, n in ledger.nav_history), default=nav)
     dd = max(0.0, 1.0 - nav / hwm) if hwm > 0 else 0.0
     strategy = make_strategies(cfg)[cfg.live_strategy]
+    if hasattr(strategy, "restore_guard"):
+        strategy.restore_guard(replay_guard_state(ledger.nav_history, cfg.dd_derisk, cfg.dd_full))
     weights = strategy.propose_weights(preds, vols, RiskState(drawdown=dd))
 
     lines = [f"# Signals for {pd.Timestamp(latest).date()}",

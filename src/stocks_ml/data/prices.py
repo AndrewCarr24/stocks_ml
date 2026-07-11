@@ -63,8 +63,10 @@ def ingest_prices(store, tickers: list[str], start, end=None, fetch_fn=None) -> 
 
     fetched = []
     if existing is not None and not existing.empty:
-        # Per-ticker cursor: known tickers resume from the stored max date
-        # (refetch last day; dedupe below); new tickers get full history.
+        # Global-max cursor: all known tickers resume from the store's overall
+        # max date (refetch last day; dedupe below), not a per-ticker max, so
+        # this does NOT repair per-ticker gaps. New tickers get full history
+        # from the caller's start; per-ticker gaps are repaired via `ingest --full`.
         known = set(existing["ticker"].unique())
         known_tickers = [t for t in tickers if t in known]
         new_tickers = [t for t in tickers if t not in known]

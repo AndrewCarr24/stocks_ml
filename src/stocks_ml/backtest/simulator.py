@@ -65,6 +65,8 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None) 
         dd = 1.0 - nav_t / hwm
 
         weights = strategy.propose_weights(preds, vols, RiskState(drawdown=dd))
+        if len(weights) and ((weights < -1e-9).any() or weights.sum() > 1 + 1e-9):
+            raise ValueError(f"strategy {strategy.name!r} violated long-only/no-leverage invariant")
         weight_rows[t] = weights
 
         ei = cal.searchsorted(t, side="right")

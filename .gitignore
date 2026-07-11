@@ -3,8 +3,8 @@ __pycache__/
 .venv/
 /data/
 /models/
-reports/
-signals/
+/reports/
+/signals/
 ledger.json
 .pytest_cache/
 .superpowers/

@@ -18,6 +18,7 @@ class Ledger:
     positions: dict = field(default_factory=dict)
     nav_history: list = field(default_factory=list)
     trades: list = field(default_factory=list)
+    applied_files: list = field(default_factory=list)
 
     @classmethod
     def load(cls, path: str | Path) -> "Ledger":
@@ -26,12 +27,14 @@ class Ledger:
             return cls()
         raw = json.loads(p.read_text())
         return cls(cash=raw["cash"], positions=raw["positions"],
-                   nav_history=raw["nav_history"], trades=raw["trades"])
+                   nav_history=raw["nav_history"], trades=raw["trades"],
+                   applied_files=raw.get("applied_files", []))
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(
             {"cash": self.cash, "positions": self.positions,
-             "nav_history": self.nav_history, "trades": self.trades}, indent=2))
+             "nav_history": self.nav_history, "trades": self.trades,
+             "applied_files": self.applied_files}, indent=2))
 
     def nav(self, closes: pd.Series) -> float:
         return self.cash + sum(s * float(closes.get(t, 0.0))

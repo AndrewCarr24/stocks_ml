@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 
@@ -18,6 +20,22 @@ def test_ledger_roundtrip_and_mark(tmp_path):
     again = Ledger.load(path)
     assert again.positions == {"AAA": 2.0}
     assert again.nav_history[-1][1] == 104.0
+
+
+def test_applied_files_roundtrip(tmp_path):
+    path = tmp_path / "ledger.json"
+    led = Ledger.load(path)
+    led.applied_files.append("2026-07-06-trades.json")
+    led.save(path)
+    again = Ledger.load(path)
+    assert again.applied_files == ["2026-07-06-trades.json"]
+
+
+def test_load_tolerates_old_format_without_applied_files(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(json.dumps({"cash": 5.0, "positions": {}, "nav_history": [], "trades": []}))
+    led = Ledger.load(path)
+    assert led.applied_files == []
 
 
 def test_sell_more_than_held_is_capped(tmp_path):

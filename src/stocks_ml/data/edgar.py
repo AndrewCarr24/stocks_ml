@@ -9,6 +9,7 @@ TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 MONEY_UNIT, SHARE_UNIT = "USD", "shares"
 EDGAR_COLS = ["ticker", "concept", "start", "end", "filed", "val", "form"]
+REFRESH_DAYS = 90  # a ticker's facts are refetched once its newest filing is older than this
 
 
 def load_cik_map(user_agent: str) -> dict[str, int]:
@@ -55,12 +56,15 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
     fetch_facts = fetch_facts_fn or _fetch_facts
     ciks = cik_map or load_cik_map(user_agent)
     existing = store.read("edgar") if store.exists("edgar") else None
-    have = (set(existing["ticker"].unique())
-            if existing is not None and "ticker" in existing.columns else set())
+    cutoff = pd.Timestamp.today() - pd.Timedelta(days=REFRESH_DAYS)
+    fresh = set()
+    if existing is not None and "ticker" in existing.columns:
+        max_filed = existing.groupby("ticker")["filed"].max()
+        fresh = set(max_filed[max_filed >= cutoff].index)
 
     frames, failed = [], []
     for t in tickers:
-        if t in have:
+        if t in fresh:
             continue
         cik = ciks.get(t)
         if cik is None:

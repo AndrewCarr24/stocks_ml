@@ -48,6 +48,10 @@ class VolScaledTopK(Strategy):
         self.dd_derisk, self.dd_full = dd_derisk, dd_full
         self._guarded = False
 
+    def restore_guard(self, guarded: bool) -> None:
+        """Warm-start the hysteresis state (live runs replay it from NAV history)."""
+        self._guarded = bool(guarded)
+
     def _exposure(self, dd: float) -> float:
         if dd >= self.dd_full:
             self._guarded = True

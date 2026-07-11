@@ -47,6 +47,21 @@ def _world(daily=0.01, periods=280):
     return panel, prices, rdates
 
 
+class Overleveraged(Strategy):
+    """Violates the long-only/no-leverage invariant by returning weights summing to 1.5."""
+    name = "overleveraged"
+
+    def propose_weights(self, preds, vols, risk):
+        t = sorted(preds.dropna().index)[0]
+        return pd.Series({t: 1.5})
+
+
+def test_simulator_rejects_leveraged_weights(tiny_cfg):
+    panel, prices, _ = _world()
+    with pytest.raises(ValueError):
+        run_backtest(panel, prices, Overleveraged(), Flat(), tiny_cfg)
+
+
 def test_zero_cost_nav_tracks_asset(tiny_cfg):
     panel, prices, rdates = _world()
     cfg = replace(tiny_cfg, cost_bps=0.0)

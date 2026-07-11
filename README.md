@@ -24,3 +24,13 @@ Initialize the paper ledger once: `uv run stocks-ml ledger init --cash 100`
 ## Tests
 
     uv run pytest
+
+## Operational notes
+
+- `manifest.json` writes are not atomic. If it becomes corrupted (e.g. the
+  process was killed mid-write), delete it and re-run `ingest`.
+- `ingest --full` re-fetches prices from scratch but keeps `manifest.json`.
+- `ledger apply` records fills at signal-time prices. If your actual fills
+  differed, edit the trades JSON prices before applying.
+- An empty, un-initialized ledger makes `signals` assume a $100 portfolio.
+  Run `ledger init` first.
