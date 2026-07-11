@@ -41,6 +41,14 @@ def test_holdout_start_date_edges():
     assert holdout_start_date(dates, 5) is None        # 260 >= 100 -> no usable holdout
 
 
+def test_degenerate_fold_candidate_ineligible():
+    results = {"zero": _res("zero", float("nan")), "momentum": _res("momentum", 0.001),
+               "auto": CandidateResult(name="auto", mean_ic=0.05,
+                                       fold_ics=[float("nan"), 0.05, 0.05], n_test_weeks=30),
+               "xgb": _res("xgb", 0.01)}
+    assert select_champion(results) == "xgb"   # auto's higher IC can't win with a NaN fold
+
+
 class Signal(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
         return self
@@ -64,3 +72,26 @@ def test_run_training_writes_artifacts(synthetic_store, tiny_cfg, tmp_path):
     name, est = load_champion(out)
     assert name in {"sig", "momentum"}
     assert not hasattr(est, "automl_")  # unfitted recipe
+
+
+class Constant(BaseEstimator, RegressorMixin):
+    def fit(self, X, y):
+        return self
+
+    def predict(self, X):
+        return np.zeros(len(X))
+
+
+def test_final_fit_constant_predictor_is_excluded(synthetic_store, tiny_cfg, tmp_path):
+    from stocks_ml.features.panel import build_panel
+    from stocks_ml.models.candidates import MomentumRank, ZeroForecast
+
+    build_panel(synthetic_store, tiny_cfg)
+    out = tmp_path / "models"
+    candidates = {"zero": ZeroForecast(), "momentum": MomentumRank(), "sig": Signal(),
+                  "const": Constant()}
+    run_training(synthetic_store, tiny_cfg, candidates=candidates, out_dir=out)
+    name, est = load_champion(out)
+    assert name in {"sig", "momentum"}          # const can never be persisted as champion
+    text = (out / "selection.md").read_text()
+    assert "selection" in text.lower()
