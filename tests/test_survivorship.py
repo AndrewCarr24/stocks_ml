@@ -111,6 +111,31 @@ def test_measure_post_removal_skips_tickers_with_no_price_data():
     assert out.empty
 
 
+def test_measure_post_removal_records_event_with_no_post_removal_data():
+    """The clearest delisting case -- price data stops AT (or before) the
+    removal date -- must NOT be silently dropped: it is recorded as a
+    truncated, unmeasurable (NaN post_ret) event so it appears in the
+    evidence counts and (via the fallback chain) still receives a haircut.
+    A ticker with genuinely NO price data anywhere (never tradable at all)
+    is the one case that legitimately stays skipped -- see
+    test_measure_post_removal_skips_tickers_with_no_price_data.
+    """
+    dates = pd.bdate_range("2020-01-02", periods=50)
+    removal_date = dates[-1]  # data ends exactly AT the removal date
+    close = pd.Series(np.linspace(100.0, 60.0, len(dates)), index=dates)
+    prices = _close_frame("WWW", dates, close)
+    removals = pd.DataFrame({"ticker": ["WWW"], "date": [removal_date],
+                             "reason": ["Chapter 11 bankruptcy"]})
+
+    out = measure_post_removal(prices, removals, horizon_days=126)
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["ticker"] == "WWW"
+    assert row["truncated"] == True  # noqa: E712
+    assert pd.isna(row["post_ret"])
+    assert row["reason_class"] == "decline"
+
+
 # ---------------------------------------------------------------------------
 # compute_haircuts
 # ---------------------------------------------------------------------------
@@ -132,7 +157,7 @@ def test_compute_haircuts_maps_class_medians_and_q25_to_haircuts():
     ])
 
     out = compute_haircuts(measured)
-    assert set(out.keys()) == {"class_haircuts", "per_event"}
+    assert set(out.keys()) == {"class_haircuts", "per_event", "class_stats"}
 
     # decline: non-truncated post_rets = [-0.6, -0.4, -0.2] -> median -0.4 -> haircut 0.4
     assert out["class_haircuts"]["decline"] == pytest.approx(0.4)
@@ -159,6 +184,81 @@ def test_compute_haircuts_nonneg_median_class_gets_zero():
     ])
     out = compute_haircuts(measured)
     assert out["class_haircuts"]["restructuring"] == 0.0
+
+
+def test_compute_haircuts_all_truncated_class_falls_back_to_decline_q25():
+    """A class with zero non-truncated events has no median/q25 of its own.
+    Its truncated events must NOT fall back to a 0.0 haircut (that silently
+    understates risk) -- they take the 'decline' class's q25 instead.
+    """
+    measured = pd.DataFrame([
+        # "decline": all non-truncated -> a measurable q25 of its own
+        {"ticker": "D1", "date": pd.Timestamp("2010-01-01"), "reason_class": "decline",
+         "post_ret": -0.6, "truncated": False},
+        {"ticker": "D2", "date": pd.Timestamp("2011-01-01"), "reason_class": "decline",
+         "post_ret": -0.4, "truncated": False},
+        {"ticker": "D3", "date": pd.Timestamp("2012-01-01"), "reason_class": "decline",
+         "post_ret": -0.2, "truncated": False},
+        # "unknown": every event truncated -- no stats of its own
+        {"ticker": "X1", "date": pd.Timestamp("2013-01-01"), "reason_class": "unknown",
+         "post_ret": float("nan"), "truncated": True},
+        {"ticker": "X2", "date": pd.Timestamp("2014-01-01"), "reason_class": "unknown",
+         "post_ret": float("nan"), "truncated": True},
+    ])
+    out = compute_haircuts(measured)
+
+    # decline's own q25 of [-0.6, -0.4, -0.2] = -0.5 -> haircut 0.5
+    decline_q25_haircut = pytest.approx(0.5)
+    per_event = out["per_event"].set_index("ticker")
+    assert per_event.loc["X1", "haircut"] == decline_q25_haircut
+    assert per_event.loc["X2", "haircut"] == decline_q25_haircut
+
+    # the class-level report figure must reflect the fallback, not read 0.0
+    assert out["class_haircuts"]["unknown"] == decline_q25_haircut
+    assert out["class_stats"]["unknown"]["fallback"] == "decline"
+    assert out["class_stats"]["decline"]["fallback"] == "own"
+
+
+def test_compute_haircuts_all_truncated_falls_back_to_global_q25_without_decline():
+    """When the event's own class AND 'decline' both have no measurable
+    stats, fall back further to the q25 across ALL non-truncated events.
+    """
+    measured = pd.DataFrame([
+        # "acquisition": non-truncated, positive -- gives a global q25 to fall back to
+        {"ticker": "A1", "date": pd.Timestamp("2010-01-01"), "reason_class": "acquisition",
+         "post_ret": 0.10, "truncated": False},
+        {"ticker": "A2", "date": pd.Timestamp("2011-01-01"), "reason_class": "acquisition",
+         "post_ret": -0.02, "truncated": False},
+        # "unknown": every event truncated, and there is no "decline" class at all
+        {"ticker": "X1", "date": pd.Timestamp("2013-01-01"), "reason_class": "unknown",
+         "post_ret": float("nan"), "truncated": True},
+    ])
+    out = compute_haircuts(measured)
+    assert out["class_stats"]["unknown"]["fallback"] == "global"
+    # global q25 of [0.10, -0.02] = -0.02 + 0.25*(0.10-(-0.02)) = -0.02+0.03 = 0.01 -> haircut 0.0
+    global_q25 = pd.Series([0.10, -0.02]).quantile(0.25)
+    expected_haircut = max(0.0, -global_q25)
+    per_event = out["per_event"].set_index("ticker")
+    assert per_event.loc["X1", "haircut"] == pytest.approx(expected_haircut)
+
+
+def test_compute_haircuts_all_truncated_falls_back_to_zero_with_warning(capsys):
+    """When NOTHING anywhere is measurable (every event in every class is
+    truncated), the only remaining fallback is 0.0 -- but this must be logged
+    as an explicit warning, not silently accepted.
+    """
+    measured = pd.DataFrame([
+        {"ticker": "X1", "date": pd.Timestamp("2013-01-01"), "reason_class": "unknown",
+         "post_ret": float("nan"), "truncated": True},
+    ])
+    out = compute_haircuts(measured)
+    assert out["class_stats"]["unknown"]["fallback"] == "none"
+    assert out["class_haircuts"]["unknown"] == 0.0
+    per_event = out["per_event"].set_index("ticker")
+    assert per_event.loc["X1", "haircut"] == 0.0
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out
+    assert "unknown" in captured.out
 
 
 # ---------------------------------------------------------------------------

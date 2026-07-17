@@ -26,13 +26,18 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
     close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
     cal = close_w.index
 
-    # survivorship-torture hook: {ticker: (removal_date, haircut)}. None (the
-    # default) skips the block below entirely, leaving every run byte-identical
-    # to before this parameter existed.
+    # survivorship-torture hook: {ticker: [(removal_date, haircut), ...]}. A
+    # ticker can be removed more than once (re-added, then removed again), so
+    # every event is kept -- collapsing to "last one wins" would silently
+    # un-haircut an earlier liquidation whose date is >35 days from the later
+    # event's. None (the default) skips the block below entirely, leaving
+    # every run byte-identical to before this parameter existed.
     removal_lookup = None
     if removal_haircuts is not None:
-        removal_lookup = {row.ticker: (pd.Timestamp(row.date), float(row.haircut))
-                          for row in removal_haircuts.itertuples()}
+        removal_lookup = {}
+        for row in removal_haircuts.itertuples():
+            removal_lookup.setdefault(row.ticker, []).append(
+                (pd.Timestamp(row.date), float(row.haircut)))
 
     rdates = pd.DatetimeIndex(sorted(panel["date"].unique()))
     if start:
@@ -90,16 +95,20 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         # liquidated this rebalance (held but no longer re-targeted) and that
         # matches a real index-removal event near this exec day takes an
         # empirically measured proceeds haircut before sizing the new trade.
+        # If several of the ticker's removal events fall within the tolerance
+        # window (shouldn't normally happen, but conservative either way), the
+        # largest haircut applies.
         if removal_lookup is not None:
             for tk, s in shares.items():
                 if tk in tradable:
                     continue
-                event = removal_lookup.get(tk)
-                if event is None:
+                events = removal_lookup.get(tk)
+                if not events:
                     continue
-                removal_date, haircut = event
-                if abs(exec_day - removal_date) <= pd.Timedelta(days=35):
-                    port_val -= s * opens.get(tk, 0.0) * haircut
+                matching = [hc for removal_date, hc in events
+                           if abs(exec_day - removal_date) <= pd.Timedelta(days=35)]
+                if matching:
+                    port_val -= s * opens.get(tk, 0.0) * max(matching)
 
         # first pass sizes the trade to estimate cost, then invest NET of cost so
         # cash can never go negative (no implicit leverage)

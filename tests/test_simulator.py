@@ -149,6 +149,50 @@ def test_removal_haircut_reduces_nav_of_liquidated_position(tiny_cfg):
                                    check_names=False)
 
 
+def test_removal_haircut_applies_to_first_of_two_removal_events_for_same_ticker(tiny_cfg):
+    """AAA is removed, re-added, then removed again -- two distinct removal
+    events for the same ticker, far enough apart (112 days) that a 35-day
+    tolerance window never spans both. removal_haircuts carries a row for
+    EACH event with a different haircut. A dict keyed only by ticker (keeping
+    "last one wins") would silently drop the first event's haircut, since the
+    second event's date is >35 days from the first liquidation's exec day.
+    Both haircuts must independently apply.
+    """
+    panel, prices, rdates = _world()
+    first_drop, readd, second_drop = rdates[20], rdates[28], rdates[36]
+    mask_gone = ((panel["ticker"] == "AAA") &
+                (((panel["date"] >= first_drop) & (panel["date"] < readd)) |
+                 (panel["date"] >= second_drop)))
+    panel = panel[~mask_gone].reset_index(drop=True)
+    cfg = replace(tiny_cfg, cost_bps=0.0)
+
+    close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
+    cal = close_w.index
+    exec_day1 = cal[cal.searchsorted(first_drop, side="right")]
+    exec_day2 = cal[cal.searchsorted(second_drop, side="right")]
+    assert (exec_day2 - exec_day1).days > 35  # the two events must not overlap the tolerance window
+
+    res_plain = run_backtest(panel, prices, AlwaysFirst(), Flat(), cfg)
+    haircuts = pd.DataFrame({"ticker": ["AAA", "AAA"], "date": [exec_day1, exec_day2],
+                             "haircut": [0.3, 0.6]})
+    res_haircut = run_backtest(panel, prices, AlwaysFirst(), Flat(), cfg,
+                               removal_haircuts=haircuts)
+
+    before1 = res_plain.nav.index < exec_day1
+    mid = (res_plain.nav.index >= exec_day1) & (res_plain.nav.index < exec_day2)
+    after2 = res_plain.nav.index >= exec_day2
+    assert before1.sum() > 0 and mid.sum() > 0 and after2.sum() > 0
+
+    pd.testing.assert_series_equal(res_haircut.nav[before1], res_plain.nav[before1])
+    # the FIRST event's 0.3 haircut must already show up here, well before the
+    # second event's date -- this is what a "last one wins" dict would miss
+    pd.testing.assert_series_equal(res_haircut.nav[mid], 0.7 * res_plain.nav[mid],
+                                   check_names=False)
+    # both haircuts compound: (1-0.3) * (1-0.6) = 0.28
+    pd.testing.assert_series_equal(res_haircut.nav[after2], 0.28 * res_plain.nav[after2],
+                                   check_names=False)
+
+
 def test_drawdown_reflects_intraweek_peak(tiny_cfg):
     dates = pd.bdate_range("2021-01-04", periods=280)
     spike_day = dates[(dates.weekday == 2)][40]        # a mid-span Wednesday, well after first fit

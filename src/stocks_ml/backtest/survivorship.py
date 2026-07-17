@@ -62,26 +62,45 @@ def measure_post_removal(prices: pd.DataFrame, removals: pd.DataFrame,
     the series ends sooner. `truncated` flags events whose price series ends
     within `TRUNCATION_DAYS` trading days of removal -- the ticker's data
     effectively disappears, which is itself evidence of a bad outcome, but the
-    magnitude is unmeasurable from this (free) price source.
+    magnitude is unmeasurable from this (free) price source. Events with NO
+    post-removal price data at all (the clearest delisting/bankruptcy cases)
+    are still recorded here -- truncated=True, post_ret=NaN -- so they appear
+    in the evidence counts and receive a (fallback-derived, see
+    compute_haircuts) haircut instead of silently vanishing and leaking
+    optimism into exactly the cases this test exists to penalize.
     """
     close = prices.pivot(index="date", columns="ticker", values="close").sort_index()
     rows = []
     for _, ev in removals.iterrows():
         ticker = ev["ticker"]
         if ticker not in close.columns:
+            # No price data for this ticker anywhere in the store: it could
+            # never have been bought or held by the simulator in the first
+            # place, so there is nothing to measure or penalize -- correctly
+            # (and only) skipped case.
             continue
         rdate = pd.Timestamp(ev["date"])
         series = close[ticker].dropna()
         before = series[series.index <= rdate]
-        after = series[series.index > rdate]
-        if before.empty or after.empty:
+        if before.empty:
+            # No anchor price exists (the series starts after the removal
+            # date) -- cannot compute even an unmeasurable event; skip.
             continue
         anchor = before.iloc[-1]
+        reason_class = classify_reason(ev.get("reason"))
+        after = series[series.index > rdate]
+        if after.empty:
+            # The clearest delisting case: price data stops at/before the
+            # removal date. Record it -- unmeasurable magnitude (NaN
+            # post_ret) but a very real, maximally truncated event.
+            rows.append({"ticker": ticker, "date": rdate, "reason_class": reason_class,
+                        "post_ret": float("nan"), "truncated": True})
+            continue
         outcome = after.iloc[horizon_days - 1] if len(after) >= horizon_days else after.iloc[-1]
         rows.append({
             "ticker": ticker,
             "date": rdate,
-            "reason_class": classify_reason(ev.get("reason")),
+            "reason_class": reason_class,
             "post_ret": float(outcome / anchor - 1),
             "truncated": bool(len(after) < TRUNCATION_DAYS),
         })
@@ -90,8 +109,10 @@ def measure_post_removal(prices: pd.DataFrame, removals: pd.DataFrame,
 
 def _class_stats(measured: pd.DataFrame) -> dict:
     """Per reason_class: n events, n truncated, median/q25 post_ret of the
-    non-truncated (reliably measured) events. NaN median/q25 (no non-truncated
-    events in the class) reads as 0.0 downstream, never as a punitive haircut.
+    non-truncated (reliably measured) events. NaN median/q25 means the class
+    has zero non-truncated events (nothing of its own is measurable) --
+    compute_haircuts resolves that through a fallback chain, never silently
+    as 0.0.
     """
     stats = {}
     for cls, grp in measured.groupby("reason_class"):
@@ -111,28 +132,70 @@ def compute_haircuts(measured: pd.DataFrame) -> dict:
     Per class: haircut = max(0, -median(post_ret of non-truncated events)) --
     classes whose empirical median post-removal return is non-negative
     (expected: acquisition, restructuring) get 0.0, the empirical outcome, not
-    an assumption. Truncated events (price series disappears near removal --
-    unmeasurable, and disappearing correlates with worse outcomes) are instead
-    assigned their class's more punitive 25th-percentile loss,
-    max(0, -quantile(post_ret, 0.25)).
+    an assumption. Truncated events (price series disappears near/at removal
+    -- unmeasurable, and disappearing correlates with worse outcomes) are
+    instead assigned a more punitive 25th-percentile-loss haircut, resolved
+    through a fallback chain when the event's own class has no measurable
+    non-truncated events to compute a q25 from (e.g. a class that is 100%
+    truncated): own class q25 -> 'decline' class q25 -> global q25 (across all
+    non-truncated events of any class) -> 0.0, logged as an explicit warning
+    (this is the one case that UNDERSTATES risk -- nothing anywhere is
+    measurable).
+
+    Returns {"class_haircuts": {...}, "per_event": DataFrame[ticker, date,
+    haircut], "class_stats": {cls: {n, n_truncated, median, q25, fallback,
+    haircut}}}. class_stats records which fallback tier each class actually
+    used, surfaced in the torture report's evidence table.
     """
     stats = _class_stats(measured)
-    median_haircut = {cls: (max(0.0, -s["median"]) if s["median"] == s["median"] else 0.0)
-                      for cls, s in stats.items()}
-    q25_haircut = {cls: (max(0.0, -s["q25"]) if s["q25"] == s["q25"] else 0.0)
-                  for cls, s in stats.items()}
 
+    def _haircut(q):
+        return max(0.0, -q) if q == q else float("nan")
+
+    global_non_trunc = measured.loc[~measured["truncated"], "post_ret"]
+    global_q25 = float(global_non_trunc.quantile(0.25)) if len(global_non_trunc) else float("nan")
+    decline_q25 = stats.get("decline", {}).get("q25", float("nan"))
+
+    truncated_haircut, fallback = {}, {}
     for cls, s in stats.items():
+        if s["q25"] == s["q25"]:
+            truncated_haircut[cls], fallback[cls] = _haircut(s["q25"]), "own"
+        elif decline_q25 == decline_q25:
+            truncated_haircut[cls], fallback[cls] = _haircut(decline_q25), "decline"
+        elif global_q25 == global_q25:
+            truncated_haircut[cls], fallback[cls] = _haircut(global_q25), "global"
+        else:
+            truncated_haircut[cls], fallback[cls] = 0.0, "none"
+            print(f"[survivorship] WARNING: class={cls} has no measurable q25 at any "
+                  "fallback level (own/decline/global all unmeasurable) -- its "
+                  "truncated events get a 0.0 haircut, UNDERSTATING risk")
+
+    median_haircut = {}
+    for cls, s in stats.items():
+        if s["median"] == s["median"]:
+            median_haircut[cls] = _haircut(s["median"])
+        else:
+            # A class with zero non-truncated events has no median of its
+            # own; reporting 0.0 here would misleadingly read as "no penalty"
+            # even though every event in the class needed the fallback chain
+            # above -- surface the resolved fallback haircut instead.
+            median_haircut[cls] = truncated_haircut[cls]
+
+    class_stats = {cls: {**s, "fallback": fallback[cls], "haircut": median_haircut[cls]}
+                   for cls, s in stats.items()}
+
+    for cls, s in class_stats.items():
+        fb_note = "" if s["fallback"] == "own" else f" fallback={s['fallback']}"
         print(f"[survivorship] class={cls} n={s['n']} n_truncated={s['n_truncated']} "
               f"median_post_ret={s['median']:.2%} q25_post_ret={s['q25']:.2%} "
-              f"haircut={median_haircut[cls]:.2%}")
+              f"haircut={s['haircut']:.2%}{fb_note}")
 
     per_event = measured[["ticker", "date"]].copy()
     per_event["haircut"] = [
-        q25_haircut[cls] if truncated else median_haircut[cls]
+        truncated_haircut[cls] if truncated else median_haircut[cls]
         for cls, truncated in zip(measured["reason_class"], measured["truncated"])
     ]
-    return {"class_haircuts": median_haircut, "per_event": per_event}
+    return {"class_haircuts": median_haircut, "per_event": per_event, "class_stats": class_stats}
 
 
 def _parse_row(line: str) -> list[str]:
@@ -179,8 +242,8 @@ def _window_return(nav: pd.Series, start, end) -> float:
     return float(sub.iloc[-1] / sub.iloc[0] - 1) if len(sub) > 1 else float("nan")
 
 
-def build_torture_report(measured: pd.DataFrame, class_haircuts: dict, results: dict,
-                         baseline: dict, champion_name: str) -> str:
+def build_torture_report(class_stats: dict, results: dict, baseline: dict,
+                         champion_name: str) -> str:
     lines = ["# Survivorship torture test", "",
              f"Champion model: **{champion_name}** (same fitted estimator as the "
              "committed baseline). Empirically measured removal-haircut stress "
@@ -190,13 +253,14 @@ def build_torture_report(measured: pd.DataFrame, class_haircuts: dict, results: 
              "delisted-price data.", ""]
 
     lines += ["## Measured post-removal outcomes (the empirical evidence)", "",
-              "| reason class | n events | n truncated | median post_ret | q25 post_ret | haircut |",
-              "|---|---|---|---|---|---|"]
-    stats = _class_stats(measured)
-    for cls in sorted(stats):
-        s = stats[cls]
+              "| reason class | n events | n truncated | median post_ret | q25 post_ret | "
+              "haircut | fallback |",
+              "|---|---|---|---|---|---|---|"]
+    for cls in sorted(class_stats):
+        s = class_stats[cls]
+        fb_note = "–" if s["fallback"] == "own" else f"fallback: {s['fallback']}"
         lines.append(f"| {cls} | {s['n']} | {s['n_truncated']} | {_fmt_pct(s['median'])} | "
-                     f"{_fmt_pct(s['q25'])} | {_fmt_pct(class_haircuts.get(cls, 0.0))} |")
+                     f"{_fmt_pct(s['q25'])} | {_fmt_pct(s['haircut'])} | {fb_note} |")
 
     lines += ["", "## Headline: committed baseline (reports/backtest.md) vs. tortured", "",
               "| strategy | baseline $100→ | tortured $100→ | baseline CAGR | "
@@ -253,7 +317,7 @@ def run_torture(store, cfg, models_dir="models", out_dir="reports",
               for name, strat in strategies.items()}
 
     baseline = parse_baseline_report(baseline_report)
-    report = build_torture_report(measured, haircuts["class_haircuts"], results, baseline, champ_name)
+    report = build_torture_report(haircuts["class_stats"], results, baseline, champ_name)
     path = out / "survivorship_torture.md"
     path.write_text(report)
     return path
