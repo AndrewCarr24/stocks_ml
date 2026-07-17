@@ -81,6 +81,46 @@ def test_clean_wiki_tables_real_structure():
     assert changes.iloc[0]["added"] == "NEWCO"
     assert changes.iloc[0]["removed"] == "OLDCO"
     assert changes.iloc[0]["date"] == pd.Timestamp("2025-06-30")
+    assert changes.iloc[0]["reason"] == "Index change"
+
+
+def test_clean_wiki_tables_reason_kept_nan_where_absent():
+    from stocks_ml.data.membership import _clean_wiki_tables
+
+    current_raw = pd.DataFrame({"Symbol": ["AAPL"], "GICS Sector": ["Tech"]})
+    cols = pd.MultiIndex.from_tuples([
+        ("Effective Date", "Effective Date"), ("Added", "Ticker"), ("Added", "Security"),
+        ("Removed", "Ticker"), ("Removed", "Security"), ("Reason", "Reason"),
+    ])
+    changes_raw = pd.DataFrame(
+        [["June 30, 2025", "NEWCO", "New Co", None, None, None]], columns=cols)
+    _, changes = _clean_wiki_tables(current_raw, changes_raw)
+    assert pd.isna(changes.iloc[0]["reason"])
+
+
+def test_ingest_membership_writes_removals_dataset(tmp_path):
+    from types import SimpleNamespace
+
+    from stocks_ml.data.membership import ingest_membership
+    from stocks_ml.data.store import DataStore
+
+    current = pd.DataFrame({"ticker": ["AAA"], "sector": ["Tech"]})
+    changes = _changes([
+        ("2018-03-05", "AAA", "old"),      # same-date add+remove event -> a removal row for OLD
+        ("2019-01-10", "NEWCO2", None),    # add-only event -> must NOT appear in removals
+    ])
+    changes["reason"] = ["Acquired by BigCo", None]
+    cfg = SimpleNamespace(membership_floor=FLOOR)
+
+    store = DataStore(tmp_path)
+    ingest_membership(store, cfg, fetch_fn=lambda: (current, changes))
+    removals = store.read("removals")
+
+    assert list(removals.columns) == ["ticker", "date", "reason"]
+    assert removals.iloc[0]["ticker"] == "OLD"          # normalized
+    assert removals.iloc[0]["date"] == pd.Timestamp("2018-03-05")
+    assert removals.iloc[0]["reason"] == "Acquired by BigCo"
+    assert len(removals) == 1                           # add-only event excluded
 
 
 def test_members_asof():

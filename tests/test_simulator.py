@@ -105,6 +105,50 @@ class RecordingFirst(AlwaysFirst):
         return super().propose_weights(preds, vols, risk)
 
 
+def test_removal_haircuts_none_is_byte_identical_to_default(tiny_cfg):
+    panel, prices, _ = _world()
+    baseline = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg)
+    explicit_none = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg,
+                                 removal_haircuts=None)
+    pd.testing.assert_series_equal(baseline.nav, explicit_none.nav)
+    pd.testing.assert_frame_equal(baseline.weights, explicit_none.weights)
+    assert baseline.total_costs == explicit_none.total_costs
+    assert baseline.n_fits == explicit_none.n_fits
+
+
+def test_removal_haircut_reduces_nav_of_liquidated_position(tiny_cfg):
+    """AAA is dropped from the panel (simulating index removal) at a known
+    rebalance date, so AlwaysFirst switches entirely into BBB from that point.
+    Since the portfolio is 100% in AAA right up to the liquidation (cost_bps=0,
+    no cash), a haircut=0.5 on that removal event must exactly halve the
+    liquidation proceeds -- and therefore exactly halve NAV from that exec day
+    onward -- versus the same run without haircuts.
+    """
+    panel, prices, rdates = _world()
+    # index 25 (of 50 weekly rebalances) is comfortably after the model's first
+    # fit -- AAA must actually be held for a while before it is "removed", or
+    # there is nothing to liquidate
+    drop_date = rdates[25]
+    panel = panel[~((panel["date"] >= drop_date) & (panel["ticker"] == "AAA"))].reset_index(drop=True)
+    cfg = replace(tiny_cfg, cost_bps=0.0)
+
+    close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
+    cal = close_w.index
+    exec_day = cal[cal.searchsorted(drop_date, side="right")]
+
+    res_plain = run_backtest(panel, prices, AlwaysFirst(), Flat(), cfg)
+    haircuts = pd.DataFrame({"ticker": ["AAA"], "date": [exec_day], "haircut": [0.5]})
+    res_haircut = run_backtest(panel, prices, AlwaysFirst(), Flat(), cfg,
+                               removal_haircuts=haircuts)
+
+    before = res_plain.nav.index < exec_day
+    pd.testing.assert_series_equal(res_haircut.nav[before], res_plain.nav[before])
+    on_or_after = res_plain.nav.index >= exec_day
+    assert on_or_after.sum() > 0
+    pd.testing.assert_series_equal(res_haircut.nav[on_or_after], 0.5 * res_plain.nav[on_or_after],
+                                   check_names=False)
+
+
 def test_drawdown_reflects_intraweek_peak(tiny_cfg):
     dates = pd.bdate_range("2021-01-04", periods=280)
     spike_day = dates[(dates.weekday == 2)][40]        # a mid-span Wednesday, well after first fit

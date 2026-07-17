@@ -77,10 +77,12 @@ def _clean_wiki_tables(current_raw: pd.DataFrame, changes_raw: pd.DataFrame) -> 
     date_col = next(c for c in flat if "date" in c)
     added_col = next(c for c in flat if "added" in c and "ticker" in c)
     removed_col = next(c for c in flat if "removed" in c and "ticker" in c)
+    reason_col = next(c for c in flat if "reason" in c)
     changes = pd.DataFrame({
         "date": pd.to_datetime(changes_raw[date_col], errors="coerce"),
         "added": changes_raw[added_col],
         "removed": changes_raw[removed_col],
+        "reason": changes_raw[reason_col],
     }).dropna(subset=["date"])
     return current, changes
 
@@ -100,4 +102,13 @@ def ingest_membership(store, cfg, fetch_fn=None) -> pd.DataFrame:
     store.write("membership", mem)
     store.set_manifest("membership", {"n_tickers": int(mem["ticker"].nunique()),
                                       "n_stints": int(len(mem))})
+
+    removed = changes[changes["removed"].notna()]
+    removals = pd.DataFrame({
+        "ticker": removed["removed"].map(normalize_symbol),
+        "date": removed["date"],
+        "reason": removed["reason"],
+    }).reset_index(drop=True)
+    store.write("removals", removals)
+
     return mem

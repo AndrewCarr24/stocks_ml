@@ -51,6 +51,13 @@ def cmd_backtest(args, cfg):
     print(f"wrote {path}")
 
 
+def cmd_torture(args, cfg):
+    from stocks_ml.backtest.survivorship import run_torture
+
+    path = run_torture(_store(cfg), cfg)
+    print(f"wrote {path}")
+
+
 def cmd_signals(args, cfg):
     from stocks_ml.live.ledger import Ledger
     from stocks_ml.live.signals import generate_signals
@@ -105,8 +112,9 @@ def cmd_ledger(args, cfg):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="stocks-ml",
-                                     description="ML stock forecasting: ingest | train | backtest | signals | ledger")
+    parser = argparse.ArgumentParser(
+        prog="stocks-ml",
+        description="ML stock forecasting: ingest | train | backtest | signals | ledger | torture")
     parser.add_argument("--config", default="config/config.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
     p_ingest = sub.add_parser("ingest", help="fetch data and build the panel")
@@ -114,6 +122,9 @@ def main():
     sub.add_parser("train", help="champion model selection")
     sub.add_parser("backtest", help="run all strategies and write the report")
     sub.add_parser("signals", help="generate this week's trade signals")
+    sub.add_parser("torture", help="survivorship torture test: empirical removal haircuts "
+                                   "(requires `ingest` to have been re-run once for the "
+                                   "removals dataset)")
     p_led = sub.add_parser("ledger", help="paper ledger operations")
     p_led.add_argument("action", choices=["init", "mark", "show", "apply"])
     p_led.add_argument("--cash", type=float, default=100.0)
@@ -125,7 +136,7 @@ def main():
     args = parser.parse_args()
     cfg = load_config(args.config)
     {"ingest": cmd_ingest, "train": cmd_train, "backtest": cmd_backtest,
-     "signals": cmd_signals, "ledger": cmd_ledger}[args.command](args, cfg)
+     "signals": cmd_signals, "ledger": cmd_ledger, "torture": cmd_torture}[args.command](args, cfg)
 
 
 if __name__ == "__main__":

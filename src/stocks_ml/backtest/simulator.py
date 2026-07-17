@@ -19,11 +19,20 @@ class BacktestResult:
     n_fits: int
 
 
-def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None) -> BacktestResult:
+def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
+                 removal_haircuts: pd.DataFrame | None = None) -> BacktestResult:
     fcols = feature_cols(panel)
     open_w = prices.pivot(index="date", columns="ticker", values="open").sort_index().ffill()
     close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
     cal = close_w.index
+
+    # survivorship-torture hook: {ticker: (removal_date, haircut)}. None (the
+    # default) skips the block below entirely, leaving every run byte-identical
+    # to before this parameter existed.
+    removal_lookup = None
+    if removal_haircuts is not None:
+        removal_lookup = {row.ticker: (pd.Timestamp(row.date), float(row.haircut))
+                          for row in removal_haircuts.itertuples()}
 
     rdates = pd.DatetimeIndex(sorted(panel["date"].unique()))
     if start:
@@ -74,11 +83,26 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None) 
             break
         exec_day = cal[ei]
         opens = open_w.loc[exec_day]
+        tradable = {tk: w for tk, w in weights.items() if opens.get(tk, 0) > 0}
         port_val = cash + sum(s * opens.get(tk, 0.0) for tk, s in shares.items())
+
+        # survivorship-torture hook: a currently-held position that is being
+        # liquidated this rebalance (held but no longer re-targeted) and that
+        # matches a real index-removal event near this exec day takes an
+        # empirically measured proceeds haircut before sizing the new trade.
+        if removal_lookup is not None:
+            for tk, s in shares.items():
+                if tk in tradable:
+                    continue
+                event = removal_lookup.get(tk)
+                if event is None:
+                    continue
+                removal_date, haircut = event
+                if abs(exec_day - removal_date) <= pd.Timedelta(days=35):
+                    port_val -= s * opens.get(tk, 0.0) * haircut
 
         # first pass sizes the trade to estimate cost, then invest NET of cost so
         # cash can never go negative (no implicit leverage)
-        tradable = {tk: w for tk, w in weights.items() if opens.get(tk, 0) > 0}
         current_dollars = {tk: s * opens.get(tk, 0.0) for tk, s in shares.items()}
         est_traded = sum(abs(tradable.get(tk, 0.0) * port_val - current_dollars.get(tk, 0.0))
                          for tk in set(tradable) | set(current_dollars))
