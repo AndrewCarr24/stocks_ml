@@ -96,6 +96,14 @@ def test_weights_recorded(tiny_cfg):
     assert (res.weights["AAA"].dropna() == 1.0).all()
 
 
+def test_end_bound_limits_nav_marking(tiny_cfg):
+    panel, prices, rdates = _world()
+    end = rdates[len(rdates) // 2]
+    res = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg, end=end)
+    assert res.weights.index.max() <= end
+    assert res.nav.index.max() <= end
+
+
 class RecordingFirst(AlwaysFirst):
     def __init__(self):
         self.seen = []

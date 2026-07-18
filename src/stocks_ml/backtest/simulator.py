@@ -44,6 +44,7 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         rdates = rdates[rdates >= pd.Timestamp(start)]
     if end:
         rdates = rdates[rdates <= pd.Timestamp(end)]
+    tail = pd.Timestamp(end) if end else cal[-1]
 
     labeled = panel[panel["label"].notna()]
     model, last_fit, n_fits = None, None, 0
@@ -125,7 +126,7 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         # mark daily NAV from execution up to (and including) the NEXT rebalance
         # date, but never past it — the next signal's drawdown must not see the
         # day after its own decision point
-        span_end = rdates[i + 1] if i + 1 < len(rdates) else cal[-1]
+        span_end = rdates[i + 1] if i + 1 < len(rdates) else tail
         for day in cal[(cal >= exec_day) & (cal <= span_end)]:
             navs[day] = mark(day)
             hwm = max(hwm, navs[day])
