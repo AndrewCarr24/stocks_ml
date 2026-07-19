@@ -10,7 +10,9 @@ from sklearn.base import clone
 from stocks_ml.models.candidates import (
     TimeTailEarlyStopXGB, get_candidates, make_xgb_tuned,
 )
-from stocks_ml.models.tuning import SEARCH_SPACE, sample_configs, tune_xgb
+from stocks_ml.models.champion import _eligible
+from stocks_ml.models.cv import CandidateResult
+from stocks_ml.models.tuning import SEARCH_SPACE, sample_configs, select_best, tune_xgb
 
 
 def test_sample_configs_deterministic_under_seed():
@@ -106,6 +108,92 @@ def test_tune_xgb_respects_train_sample_rows_truncation(synthetic_store, tiny_cf
     truncated_min_date, n_rows = pd.Timestamp(m.group(1)), int(m.group(2))
     assert n_rows == 300
     assert truncated_min_date > full_min_date  # truncation must have dropped early rows
+
+
+def _row(name, mean_ic, fold_ics, is_production=False, n_test_weeks=10, params=None):
+    """Build a results-frame row the way tune_xgb does: eligibility computed via
+    champion.py's _eligible on the underlying CandidateResult, not re-derived here."""
+    eligible = _eligible(CandidateResult(name=name, mean_ic=mean_ic, fold_ics=fold_ics,
+                                         n_test_weeks=n_test_weeks))
+    return {"name": name, "params": params or {}, "mean_ic": mean_ic, "fold_ics": fold_ics,
+            "n_test_weeks": n_test_weeks, "is_production": is_production, "eligible": eligible}
+
+
+def test_select_best_skips_ineligible_top_mean_config():
+    # cfg0 has the higher mean IC but a NaN fold (degenerate predictor); cfg1 is
+    # lower-mean but clean across all folds — selection must prefer cfg1.
+    results = pd.DataFrame([
+        _row("cfg0", 0.05, [0.1, float("nan"), 0.02], is_production=True),
+        _row("cfg1", 0.03, [0.03, 0.03, 0.03]),
+    ])
+    best = select_best(results)
+    assert best["name"] == "cfg1"
+
+
+def test_select_best_returns_none_when_no_config_eligible():
+    results = pd.DataFrame([
+        _row("cfg0", 0.05, [0.1, float("nan"), 0.02]),
+        _row("cfg1", 0.04, [float("nan"), 0.02, 0.01]),
+    ])
+    assert select_best(results) is None
+
+
+def test_tune_xgb_selects_runner_up_when_top_mean_config_ineligible(
+        synthetic_store, tiny_cfg, tmp_path, monkeypatch):
+    """End-to-end reproduction of the real-run bug: cfg0 (production reference)
+    has the highest mean IC but a degenerate (NaN) fold from early stopping;
+    the tuner must exclude it exactly as champion.py's tournament would, and
+    select an eligible runner-up instead."""
+    from stocks_ml.features.panel import build_panel
+    import stocks_ml.models.tuning as tuning_mod
+
+    build_panel(synthetic_store, tiny_cfg)
+
+    def fake_evaluate(name, est, labeled, splits, fcols):
+        if name == "cfg0":
+            return CandidateResult(name=name, mean_ic=0.05,
+                                   fold_ics=[0.1, float("nan"), 0.02], n_test_weeks=20)
+        return CandidateResult(name=name, mean_ic=0.02, fold_ics=[0.02, 0.02, 0.02],
+                               n_test_weeks=30)
+
+    monkeypatch.setattr(tuning_mod, "evaluate_candidate", fake_evaluate)
+
+    out = tmp_path / "models"
+    ranked = tune_xgb(synthetic_store, tiny_cfg, n_samples=2, out_dir=out)
+
+    assert (out / "xgb_tuned.json").exists()
+    row0 = ranked[ranked["name"] == "cfg0"].iloc[0]
+    assert not row0["eligible"]
+
+    text = (out / "tuning.md").read_text()
+    cfg0_line = next(l for l in text.splitlines() if l.startswith("| cfg0"))
+    assert "(ineligible: degenerate fold)" in cfg0_line
+    assert "selected" not in cfg0_line
+    selected_lines = [l for l in text.splitlines() if "selected" in l]
+    assert len(selected_lines) == 1 and not selected_lines[0].startswith("| cfg0")
+
+
+def test_tune_xgb_writes_no_json_when_no_config_eligible(
+        synthetic_store, tiny_cfg, tmp_path, monkeypatch):
+    from stocks_ml.features.panel import build_panel
+    import stocks_ml.models.tuning as tuning_mod
+
+    build_panel(synthetic_store, tiny_cfg)
+
+    def fake_evaluate(name, est, labeled, splits, fcols):
+        return CandidateResult(name=name, mean_ic=0.01, fold_ics=[0.01, float("nan")],
+                               n_test_weeks=5)
+
+    monkeypatch.setattr(tuning_mod, "evaluate_candidate", fake_evaluate)
+
+    out = tmp_path / "models"
+    ranked = tune_xgb(synthetic_store, tiny_cfg, n_samples=2, out_dir=out)
+
+    assert not (out / "xgb_tuned.json").exists()
+    assert not ranked["eligible"].any()
+    text = (out / "tuning.md").read_text()
+    assert "no config was eligible" in text.lower()
+    assert "xgb_tuned.json" in text
 
 
 def test_get_candidates_without_tuned_json_has_four(tiny_cfg, tmp_path):

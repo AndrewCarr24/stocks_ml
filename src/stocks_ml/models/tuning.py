@@ -8,6 +8,7 @@ import pandas as pd
 
 from stocks_ml.features.panel import feature_cols
 from stocks_ml.models.candidates import TimeTailEarlyStopXGB, make_xgb
+from stocks_ml.models.champion import _eligible
 from stocks_ml.models.cv import evaluate_candidate, make_splits
 
 SEARCH_SPACE = {
@@ -53,6 +54,54 @@ def _full_params(hyperparams: dict) -> dict:
             "early_stopping_rounds": defaults.early_stopping_rounds}
 
 
+def select_best(results: pd.DataFrame):
+    """Best config by mean IC among ELIGIBLE (all-CV-folds-valid) rows — mirrors
+    champion.py's tournament eligibility gate (`_eligible`) so tuning never
+    selects a config the tournament's champion selection would then reject.
+    A config with any NaN fold IC (a degenerate/constant predictor in that
+    fold) silently drops those weeks from mean_ic, overstating its skill —
+    exactly the reasoning behind champion.py's `_eligible`.
+
+    Returns None if no config is eligible (results must have an "eligible"
+    column, e.g. computed via `_eligible` on each config's CandidateResult)."""
+    eligible = results[results["eligible"]]
+    if eligible.empty:
+        return None
+    return eligible.sort_values("mean_ic", ascending=False, na_position="last").iloc[0]
+
+
+def _build_tuning_report(ranked: pd.DataFrame, best, date_min, date_max, n_rows: int) -> str:
+    lines = ["# XGBoost hyperparameter tuning", "",
+             "Selection is by mean weekly rank IC on the pre-holdout purged walk-forward "
+             "CV folds (plain CV selection) — the untouched holdout is never used for "
+             "tuning and remains the honest test.",
+             "A config is only eligible for selection if every CV fold produced a "
+             "non-NaN IC (mirrors champion.py's tournament eligibility gate — a NaN "
+             "fold means degenerate/constant predictions in that fold, which would "
+             "otherwise silently drop those weeks and inflate mean_ic).", "",
+             f"Training window: {pd.Timestamp(date_min).date()} → {pd.Timestamp(date_max).date()} "
+             f"({n_rows} labeled rows).", ""]
+    if best is None:
+        lines += ["**No config was eligible (every sampled/production config had at least "
+                  "one degenerate CV fold) — xgb_tuned.json was NOT written.**", ""]
+    lines += ["| config | mean IC | fold ICs | test weeks | params |",
+             "|---|---|---|---|---|"]
+    for _, row in ranked.iterrows():
+        marker = ""
+        if row["is_production"]:
+            marker += " (production reference)"
+        if not row["eligible"]:
+            marker += " (ineligible: degenerate fold)"
+        if best is not None and row["name"] == best["name"]:
+            marker += " **← selected**"
+        folds = ", ".join(f"{ic:.4f}" for ic in row["fold_ics"])
+        mean_ic = row["mean_ic"]
+        mean_ic_s = f"{mean_ic:.4f}" if mean_ic == mean_ic else "nan"
+        lines.append(f"| {row['name']}{marker} | {mean_ic_s} | {folds} | "
+                     f"{row['n_test_weeks']} | {row['params']} |")
+    return "\n".join(lines)
+
+
 def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -88,34 +137,17 @@ def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
             "fold_ics": result.fold_ics,
             "n_test_weeks": result.n_test_weeks,
             "is_production": i == 0,
+            "eligible": _eligible(result),
         })
 
     results = pd.DataFrame(records)
     ranked = results.sort_values("mean_ic", ascending=False, na_position="last").reset_index(drop=True)
 
-    best = ranked.iloc[0]
-    (out / "xgb_tuned.json").write_text(json.dumps(_full_params(best["params"]), indent=2))
+    best = select_best(ranked)
+    if best is not None:
+        (out / "xgb_tuned.json").write_text(json.dumps(_full_params(best["params"]), indent=2))
 
-    date_min, date_max = labeled["date"].min(), labeled["date"].max()
-    lines = ["# XGBoost hyperparameter tuning", "",
-             "Selection is by mean weekly rank IC on the pre-holdout purged walk-forward "
-             "CV folds (plain CV selection) — the untouched holdout is never used for "
-             "tuning and remains the honest test.", "",
-             f"Training window: {date_min.date()} → {date_max.date()} "
-             f"({len(labeled)} labeled rows).", "",
-             "| config | mean IC | fold ICs | test weeks | params |",
-             "|---|---|---|---|---|"]
-    for _, row in ranked.iterrows():
-        marker = ""
-        if row["is_production"]:
-            marker += " (production reference)"
-        if row["name"] == best["name"]:
-            marker += " **← selected**"
-        folds = ", ".join(f"{ic:.4f}" for ic in row["fold_ics"])
-        mean_ic = row["mean_ic"]
-        mean_ic_s = f"{mean_ic:.4f}" if mean_ic == mean_ic else "nan"
-        lines.append(f"| {row['name']}{marker} | {mean_ic_s} | {folds} | "
-                     f"{row['n_test_weeks']} | {row['params']} |")
-    (out / "tuning.md").write_text("\n".join(lines))
+    report = _build_tuning_report(ranked, best, labeled["date"].min(), labeled["date"].max(), len(labeled))
+    (out / "tuning.md").write_text(report)
 
     return ranked

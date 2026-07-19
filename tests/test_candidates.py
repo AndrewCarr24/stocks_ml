@@ -34,8 +34,11 @@ def test_xgb_learns_signal_and_handles_nan():
     assert r > 0.8
 
 
-def test_candidates_registry_and_cloneability(tiny_cfg):
-    cands = get_candidates(tiny_cfg)
+def test_candidates_registry_and_cloneability(tiny_cfg, tmp_path):
+    # explicit empty models_dir: must not depend on whether the real repo's
+    # models/xgb_tuned.json happens to exist on disk (it does once `stocks-ml
+    # tune` has been run for real — see test_tuning.py for xgb_tuned coverage)
+    cands = get_candidates(tiny_cfg, models_dir=tmp_path / "models")
     assert set(cands) == {"zero", "momentum", "xgb", "automl"}
     assert set(BASELINE_NAMES) <= set(cands)
     for est in cands.values():
