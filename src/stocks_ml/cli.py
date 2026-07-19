@@ -48,11 +48,15 @@ def cmd_train(args, cfg):
     print("wrote models/champion.joblib, models/champion.json, models/selection.md")
 
 
-def cmd_tune(args, cfg):
-    from stocks_ml.models.tuning import tune_xgb
+_DEFAULT_SAMPLES = {"xgb": 40, "lgbm": 40, "catboost": 12, "enet": 12}
 
-    results = tune_xgb(_store(cfg), cfg, n_samples=args.samples)
-    print("wrote models/xgb_tuned.json and models/tuning.md")
+
+def cmd_tune(args, cfg):
+    from stocks_ml.models.tuning import tune_model
+
+    n = args.samples if args.samples is not None else _DEFAULT_SAMPLES[args.family]
+    results = tune_model(_store(cfg), cfg, family=args.family, n_samples=n)
+    print(f"wrote models/{args.family}_tuned.json and models/tuning_{args.family}.md")
     print(results.head(5)[["name", "mean_ic", "n_test_weeks"]].to_string(index=False))
 
 
@@ -132,8 +136,10 @@ def main():
     p_ingest = sub.add_parser("ingest", help="fetch data and build the panel")
     p_ingest.add_argument("--full", action="store_true")
     sub.add_parser("train", help="champion model selection")
-    p_tune = sub.add_parser("tune", help="XGBoost hyperparameter tuning via walk-forward CV")
-    p_tune.add_argument("--samples", type=int, default=40)
+    p_tune = sub.add_parser("tune", help="hyperparameter tuning via walk-forward CV")
+    p_tune.add_argument("--family", choices=["xgb", "lgbm", "catboost", "enet"], default="xgb")
+    p_tune.add_argument("--samples", type=int, default=None,
+                        help="configs to sample (default: per-family — xgb/lgbm 40, catboost/enet 12)")
     sub.add_parser("backtest", help="run all strategies and write the report")
     sub.add_parser("signals", help="generate this week's trade signals")
     sub.add_parser("torture", help="survivorship torture test: empirical removal haircuts "

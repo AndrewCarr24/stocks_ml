@@ -7,30 +7,81 @@ from pathlib import Path
 import pandas as pd
 
 from stocks_ml.features.panel import feature_cols
-from stocks_ml.models.candidates import TimeTailEarlyStopXGB, make_xgb
+from stocks_ml.models.candidates import (
+    ICElasticNet, TimeTailEarlyStopCatBoost, TimeTailEarlyStopLGBM,
+    TimeTailEarlyStopXGB, make_xgb,
+)
 from stocks_ml.models.champion import _eligible
 from stocks_ml.models.cv import evaluate_candidate, make_splits
 
-SEARCH_SPACE = {
-    "max_depth": [2, 3, 4, 5, 6],
-    "learning_rate": [0.01, 0.03, 0.05, 0.1],
-    "n_estimators": [1500],          # ceiling; early stopping picks the real count
-    "min_child_weight": [10, 30, 50, 100],
-    "reg_alpha": [0.0, 0.1, 1.0],
-    "reg_lambda": [1.0, 5.0, 20.0],
-    "subsample": [0.6, 0.8, 1.0],
-    "colsample_bytree": [0.3, 0.6, 0.8],
+# Per-family hyperparameter grids. n_estimators/iterations are ceilings — the
+# time-ordered early stopping in each wrapper picks the real count.
+SEARCH_SPACES = {
+    "xgb": {
+        "max_depth": [2, 3, 4, 5, 6],
+        "learning_rate": [0.01, 0.03, 0.05, 0.1],
+        "n_estimators": [1500],
+        "min_child_weight": [10, 30, 50, 100],
+        "reg_alpha": [0.0, 0.1, 1.0],
+        "reg_lambda": [1.0, 5.0, 20.0],
+        "subsample": [0.6, 0.8, 1.0],
+        "colsample_bytree": [0.3, 0.6, 0.8],
+    },
+    "lgbm": {
+        "num_leaves": [15, 31, 63, 127],
+        "learning_rate": [0.01, 0.03, 0.05, 0.1],
+        "n_estimators": [1500],
+        "min_child_samples": [20, 50, 100, 200],
+        "reg_alpha": [0.0, 0.1, 1.0],
+        "reg_lambda": [1.0, 5.0, 20.0],
+        "subsample": [0.6, 0.8, 1.0],
+        "subsample_freq": [1],           # required for subsample<1 to take effect
+        "colsample_bytree": [0.3, 0.6, 0.8],
+    },
+    "catboost": {
+        "depth": [4, 6, 8],
+        "learning_rate": [0.03, 0.1],
+        "l2_leaf_reg": [3.0, 10.0, 30.0],
+        "iterations": [1500],
+    },
+    "enet": {
+        "alpha": [1e-6, 1e-5, 1e-4, 1e-3],
+        "l1_ratio": [0.1, 0.5, 0.9],
+    },
 }
 
+# Back-compat: the pre-zoo module exposed a single XGBoost SEARCH_SPACE.
+SEARCH_SPACE = SEARCH_SPACES["xgb"]
 
-def sample_configs(n: int, seed: int = 0) -> list[dict]:
-    """n unique random hyperparameter combos from SEARCH_SPACE, deterministic under seed."""
-    keys = list(SEARCH_SPACE)
+# family -> (wrapper class, production-default hyperparams for config 0).
+_FAMILY_SPEC = {
+    "xgb": (TimeTailEarlyStopXGB, None),  # None -> derived from make_xgb() below
+    "lgbm": (TimeTailEarlyStopLGBM, {
+        "num_leaves": 31, "learning_rate": 0.05, "n_estimators": 1500,
+        "min_child_samples": 50, "reg_alpha": 0.0, "reg_lambda": 1.0,
+        "subsample": 0.8, "subsample_freq": 1, "colsample_bytree": 0.8}),
+    "catboost": (TimeTailEarlyStopCatBoost, {
+        "depth": 6, "learning_rate": 0.1, "l2_leaf_reg": 3.0, "iterations": 1500}),
+    "enet": (ICElasticNet, {"alpha": 1e-4, "l1_ratio": 0.5}),
+}
+
+_LEGACY_NAMES = {"xgb": ("xgb_tuned.json", "tuning.md")}
+
+
+def sample_configs(n: int, seed: int = 0, family: str = "xgb") -> list[dict]:
+    """n unique random hyperparameter combos from the family's space, deterministic
+    under seed. If the grid has fewer than n unique combinations, returns them all."""
+    space = SEARCH_SPACES[family]
+    keys = list(space)
+    max_combos = 1
+    for k in keys:
+        max_combos *= len(space[k])
+    n = min(n, max_combos)
     rng = random.Random(seed)
     seen: set[tuple] = set()
     configs: list[dict] = []
     while len(configs) < n:
-        combo = tuple(rng.choice(SEARCH_SPACE[k]) for k in keys)
+        combo = tuple(rng.choice(space[k]) for k in keys)
         if combo in seen:
             continue
         seen.add(combo)
@@ -38,20 +89,38 @@ def sample_configs(n: int, seed: int = 0) -> list[dict]:
     return configs
 
 
-def _production_params() -> dict:
-    """The hand-set config currently live in make_xgb() — the incumbent tuning must beat."""
-    live = make_xgb().get_params()
-    return {k: live[k] for k in SEARCH_SPACE}
+def _production_params(family: str = "xgb") -> dict:
+    """Config 0: the incumbent default the tuning search must beat. For xgb this is
+    the live make_xgb() config; for other families a sensible hand-set default."""
+    if family == "xgb":
+        live = make_xgb().get_params()
+        return {k: live[k] for k in SEARCH_SPACES["xgb"]}
+    return dict(_FAMILY_SPEC[family][1])
 
 
-def _full_params(hyperparams: dict) -> dict:
-    """The complete kwargs needed to reconstruct an equivalent TimeTailEarlyStopXGB,
-    including the wrapper-level defaults that sample_configs/_production_params don't
-    sample (eval_fraction, early_stopping_rounds)."""
-    defaults = TimeTailEarlyStopXGB()
-    return {**hyperparams, "n_jobs": -1, "random_state": 0,
-            "eval_fraction": defaults.eval_fraction,
-            "early_stopping_rounds": defaults.early_stopping_rounds}
+def _full_params(hyperparams: dict, family: str = "xgb") -> dict:
+    """Complete kwargs to reconstruct the tuned wrapper, adding the wrapper-level
+    defaults (eval_fraction, early_stopping_rounds, seeds) that the grid doesn't
+    sample. Family-specific: only tree families take n_jobs/random_state."""
+    if family == "enet":
+        return dict(hyperparams)  # no early stopping / seeds in its param set
+    defaults = _FAMILY_SPEC[family][0]()
+    common = {"eval_fraction": defaults.eval_fraction,
+              "early_stopping_rounds": defaults.early_stopping_rounds}
+    if family in ("xgb", "lgbm"):
+        return {**hyperparams, "n_jobs": -1, "random_state": 0, **common}
+    return {**hyperparams, "random_state": 0, **common}  # catboost
+
+
+def _make_estimator(family: str, params: dict):
+    """Construct a fresh tunable estimator for the family from sampled hyperparams,
+    adding the seed/jobs kwargs the grid doesn't carry (matching _full_params)."""
+    klass = _FAMILY_SPEC[family][0]
+    if family in ("xgb", "lgbm"):
+        return klass(**params, n_jobs=-1, random_state=0)
+    if family == "catboost":
+        return klass(**params, random_state=0)
+    return klass(**params)
 
 
 def select_best(results: pd.DataFrame):
@@ -70,8 +139,9 @@ def select_best(results: pd.DataFrame):
     return eligible.sort_values("mean_ic", ascending=False, na_position="last").iloc[0]
 
 
-def _build_tuning_report(ranked: pd.DataFrame, best, date_min, date_max, n_rows: int) -> str:
-    lines = ["# XGBoost hyperparameter tuning", "",
+def _build_tuning_report(ranked: pd.DataFrame, best, date_min, date_max, n_rows: int,
+                         family: str = "xgb") -> str:
+    lines = [f"# {family} hyperparameter tuning", "",
              "Selection is by mean weekly rank IC on the pre-holdout purged walk-forward "
              "CV folds (plain CV selection) — the untouched holdout is never used for "
              "tuning and remains the honest test.",
@@ -102,7 +172,15 @@ def _build_tuning_report(ranked: pd.DataFrame, best, date_min, date_max, n_rows:
     return "\n".join(lines)
 
 
-def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
+def tune_model(store, cfg, family: str = "xgb", n_samples: int = 40,
+               out_dir="models") -> pd.DataFrame:
+    """Tune one model family by mean rank IC over the tournament's CV folds.
+
+    Writes models/{family}_tuned.json (best eligible config) and
+    models/tuning_{family}.md. For xgb, also writes the legacy xgb_tuned.json /
+    tuning.md names so existing consumers keep working."""
+    if family not in _FAMILY_SPEC:
+        raise ValueError(f"unknown family {family!r}; valid: {sorted(_FAMILY_SPEC)}")
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     panel = store.read("panel")
@@ -114,9 +192,9 @@ def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
     if cfg.train_sample_rows:
         labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
     assert labeled["date"].is_monotonic_increasing, (
-        "panel rows must be date-ordered: TimeTailEarlyStopXGB's early-stop split "
-        "takes a positional tail as the validation set, so positional order must "
-        "equal chronological order — sort the panel by date if this fires"
+        "panel rows must be date-ordered: the wrappers' early-stop split takes a "
+        "positional tail as the validation set, so positional order must equal "
+        "chronological order — sort the panel by date if this fires"
     )
 
     dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
@@ -124,11 +202,11 @@ def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
     # to the tournament, so plain-CV tuning selection never leaks into the honest test.
     splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52)
 
-    hyperparams = [_production_params()] + sample_configs(n_samples)
+    hyperparams = [_production_params(family)] + sample_configs(n_samples, family=family)
     records = []
     for i, params in enumerate(hyperparams):
         name = f"cfg{i}"
-        est = TimeTailEarlyStopXGB(**params, n_jobs=-1, random_state=0)
+        est = _make_estimator(family, params)
         result = evaluate_candidate(name, est, labeled, splits, fcols)
         records.append({
             "name": name,
@@ -145,9 +223,20 @@ def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
 
     best = select_best(ranked)
     if best is not None:
-        (out / "xgb_tuned.json").write_text(json.dumps(_full_params(best["params"]), indent=2))
+        payload = json.dumps(_full_params(best["params"], family), indent=2)
+        (out / f"{family}_tuned.json").write_text(payload)
+        if family in _LEGACY_NAMES:
+            (out / _LEGACY_NAMES[family][0]).write_text(payload)
 
-    report = _build_tuning_report(ranked, best, labeled["date"].min(), labeled["date"].max(), len(labeled))
-    (out / "tuning.md").write_text(report)
+    report = _build_tuning_report(ranked, best, labeled["date"].min(),
+                                  labeled["date"].max(), len(labeled), family)
+    (out / f"tuning_{family}.md").write_text(report)
+    if family in _LEGACY_NAMES:
+        (out / _LEGACY_NAMES[family][1]).write_text(report)
 
     return ranked
+
+
+def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
+    """Back-compat shim: tune the xgb family (writes legacy artifact names too)."""
+    return tune_model(store, cfg, family="xgb", n_samples=n_samples, out_dir=out_dir)

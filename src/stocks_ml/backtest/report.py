@@ -11,12 +11,8 @@ import pandas as pd
 from stocks_ml.backtest.metrics import regime_flags, regime_summaries, summarize
 from stocks_ml.backtest.simulator import run_backtest
 from stocks_ml.backtest.strategies import make_strategies
+from stocks_ml.models.candidates import get_candidates
 from stocks_ml.models.champion import load_champion, holdout_start_date
-
-N_CANDIDATES = 5  # zero, momentum, xgb, automl, xgb_tuned — for deflated-Sharpe trial
-                  # count. The ~40 tuning configs are internal to xgb_tuned's
-                  # construction (selected via plain CV, not the holdout/backtest) and
-                  # are not separately counted here, same as any other in-candidate choice.
 
 
 def benchmark_navs(prices, fred, index: pd.DatetimeIndex) -> dict:
@@ -130,7 +126,12 @@ def run_all_backtests(store, cfg, models_dir="models", out_dir="reports") -> Pat
 
     dates = pd.DatetimeIndex(sorted(panel.date.unique()))
     hold_start = holdout_start_date(dates, cfg.holdout_years)
-    n_trials = len(strategies) * N_CANDIDATES
+    # Deflated-Sharpe trial count grows with the candidate zoo. The per-family
+    # tuning configs stay internal to each *_tuned candidate (selected via plain
+    # CV, never the holdout/backtest), so they are not counted here — same as any
+    # other in-candidate choice.
+    n_candidates = len(get_candidates(cfg, models_dir))
+    n_trials = len(strategies) * n_candidates
 
     fig, ax = plt.subplots(figsize=(10, 6))
     for name, r in results.items():

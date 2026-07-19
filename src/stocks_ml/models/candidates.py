@@ -5,7 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator, RegressorMixin
+from lightgbm import LGBMRegressor
+from sklearn.base import BaseEstimator, RegressorMixin, clone
 from xgboost import XGBRegressor
 
 
@@ -87,6 +88,141 @@ class TimeTailEarlyStopXGB(XGBRegressor):
         return self
 
 
+class TimeTailEarlyStopLGBM(LGBMRegressor):
+    """LGBMRegressor with early stopping on the LAST eval_fraction of rows (no shuffle).
+
+    Same time-ordered validation rationale as TimeTailEarlyStopXGB: a random split
+    would leak future rows into the stopping decision on temporal data. verbosity=-1
+    keeps LightGBM silent (the 0-warnings constraint)."""
+
+    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 20,
+                 verbosity: int = -1, **kwargs):
+        self.eval_fraction = eval_fraction
+        self.early_stopping_rounds = early_stopping_rounds
+        super().__init__(verbosity=verbosity, **kwargs)
+
+    def fit(self, X, y):
+        import lightgbm as lgb
+
+        n = len(X)
+        cut = max(1, int(n * (1 - self.eval_fraction)))
+        Xtr, Xva = X.iloc[:cut], X.iloc[cut:]
+        ytr, yva = y.iloc[:cut], y.iloc[cut:]
+        # lightgbm 4.4+ takes eval_X/eval_y single frames (eval_set is deprecated).
+        super().fit(Xtr, ytr, eval_X=Xva, eval_y=yva,
+                    callbacks=[lgb.early_stopping(self.early_stopping_rounds, verbose=False),
+                               lgb.log_evaluation(period=0)])
+        return self
+
+
+class TimeTailEarlyStopCatBoost(BaseEstimator, RegressorMixin):
+    """CatBoostRegressor with early stopping on the LAST eval_fraction of rows (no shuffle).
+
+    Composed (not subclassed) because CatBoost's sklearn surface does not clone
+    cleanly via inheritance. Same time-ordered validation rationale as the XGB/LGBM
+    wrappers. verbose=False + allow_writing_files=False keep it silent and side-effect
+    free (no catboost_info/ dir, satisfying the 0-warnings constraint)."""
+
+    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 20,
+                 depth: int = 6, learning_rate: float = 0.1, l2_leaf_reg: float = 3.0,
+                 iterations: int = 1500, random_state: int = 0):
+        self.eval_fraction = eval_fraction
+        self.early_stopping_rounds = early_stopping_rounds
+        self.depth = depth
+        self.learning_rate = learning_rate
+        self.l2_leaf_reg = l2_leaf_reg
+        self.iterations = iterations
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        from catboost import CatBoostRegressor
+
+        n = len(X)
+        cut = max(1, int(n * (1 - self.eval_fraction)))
+        self.model_ = CatBoostRegressor(
+            depth=self.depth, learning_rate=self.learning_rate,
+            l2_leaf_reg=self.l2_leaf_reg, iterations=self.iterations,
+            random_state=self.random_state, allow_writing_files=False, verbose=False,
+        )
+        self.model_.fit(X.iloc[:cut], y.iloc[:cut], eval_set=(X.iloc[cut:], y.iloc[cut:]),
+                        early_stopping_rounds=self.early_stopping_rounds, use_best_model=True)
+        return self
+
+    def predict(self, X):
+        return np.asarray(self.model_.predict(X))
+
+
+class ICElasticNet(BaseEstimator, RegressorMixin):
+    """NaN-safe ElasticNet: median-impute → standardize → ElasticNet.
+
+    The panel carries NaNs (sparse fundamentals/insider/short features); plain
+    ElasticNet raises on them, so imputation is mandatory. Selection is by rank IC
+    in our evaluate_candidate — never RMSE — so this cannot repeat automl_tool's
+    constant-predictor failure (a constant has zero IC and is gate-excluded)."""
+
+    def __init__(self, alpha: float = 1e-4, l1_ratio: float = 0.5,
+                 max_iter: int = 10000, tol: float = 1e-3):
+        self.alpha = alpha
+        self.l1_ratio = l1_ratio
+        self.max_iter = max_iter
+        # tol is intentionally loose: only the RANK of predictions matters
+        # downstream, so near-convergence is fully adequate and avoids
+        # ConvergenceWarnings on ill-conditioned columns.
+        self.tol = tol
+
+    def _build(self):
+        from sklearn.impute import SimpleImputer
+        from sklearn.linear_model import ElasticNet
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        # Two-stage impute: median for normal NaNs, then constant 0 for any column
+        # that is ENTIRELY NaN within a fold (e.g. short-interest features before
+        # 2018). keep_empty_features avoids SimpleImputer's drop-and-warn on all-NaN
+        # columns, keeping the feature matrix shape stable across folds.
+        return Pipeline([
+            ("impute", SimpleImputer(strategy="median", keep_empty_features=True)),
+            ("scale", StandardScaler()),
+            ("enet", ElasticNet(alpha=self.alpha, l1_ratio=self.l1_ratio,
+                                max_iter=self.max_iter, tol=self.tol, random_state=0)),
+        ])
+
+    def fit(self, X, y):
+        self.pipeline_ = self._build().fit(X, y)
+        return self
+
+    def predict(self, X):
+        return np.asarray(self.pipeline_.predict(X))
+
+
+class EnsembleCandidate(BaseEstimator, RegressorMixin):
+    """Averages z-scored predictions of its member estimators.
+
+    Each member's prediction vector is standardized (mean 0, unit std) within the
+    scored batch before averaging, so members with different output scales (a linear
+    model vs. a boosted tree) contribute equally to the rank the strategy consumes.
+    Only the rank of the averaged score matters downstream, so z-scoring is a pure
+    scale-alignment step. Members are cloned at fit so the ensemble is reusable."""
+
+    def __init__(self, estimators: list | None = None):
+        self.estimators = estimators
+
+    def fit(self, X, y):
+        self.fitted_ = [clone(e).fit(X, y) for e in (self.estimators or [])]
+        return self
+
+    @staticmethod
+    def _z(v: np.ndarray) -> np.ndarray:
+        v = np.asarray(v, dtype=float)
+        sd = v.std()
+        return (v - v.mean()) / sd if sd > 0 else v - v.mean()
+
+    def predict(self, X):
+        if not self.fitted_:
+            return np.zeros(len(X))
+        return np.mean([self._z(e.predict(X)) for e in self.fitted_], axis=0)
+
+
 def make_xgb_tuned(models_dir="models"):
     """TimeTailEarlyStopXGB from models/xgb_tuned.json; None if the file doesn't exist."""
     path = Path(models_dir) / "xgb_tuned.json"
@@ -95,13 +231,39 @@ def make_xgb_tuned(models_dir="models"):
     return TimeTailEarlyStopXGB(**json.loads(path.read_text()))
 
 
+# family name -> (params-file stem, wrapper class) for the tunable zoo members.
+_TUNED_FAMILIES = {
+    "xgb": ("xgb_tuned", TimeTailEarlyStopXGB),
+    "lgbm": ("lgbm_tuned", TimeTailEarlyStopLGBM),
+    "catboost": ("catboost_tuned", TimeTailEarlyStopCatBoost),
+    "enet": ("enet_tuned", ICElasticNet),
+}
+
+
+def make_tuned(family: str, models_dir="models"):
+    """Reconstruct a tuned candidate for `family` from its params file; None if absent."""
+    stem, klass = _TUNED_FAMILIES[family]
+    path = Path(models_dir) / f"{stem}.json"
+    if not path.exists():
+        return None
+    return klass(**json.loads(path.read_text()))
+
+
 BASELINE_NAMES = ("zero", "momentum")
 
 
 def get_candidates(cfg, models_dir="models") -> dict:
     candidates = {"zero": ZeroForecast(), "momentum": MomentumRank(),
                   "xgb": make_xgb(), "automl": AutoMLRegressor()}
-    tuned = make_xgb_tuned(models_dir)
-    if tuned is not None:
-        candidates["xgb_tuned"] = tuned
+    tuned = {}
+    for family in _TUNED_FAMILIES:
+        est = make_tuned(family, models_dir)
+        if est is not None:
+            tuned[f"{family}_tuned"] = est
+    candidates.update(tuned)
+    # Ensemble of every tuned member present — only meaningful with 2+ members.
+    if len(tuned) >= 2:
+        candidates["ensemble"] = EnsembleCandidate(
+            estimators=[make_tuned(f, models_dir) for f in _TUNED_FAMILIES
+                        if f"{f}_tuned" in tuned])
     return candidates
