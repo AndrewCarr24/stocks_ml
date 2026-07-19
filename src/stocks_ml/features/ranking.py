@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-RANK_EXEMPT_PREFIXES = ("f_mkt_", "f_macro_", "f_month", "f_woq", "f_sec_")
+RANK_EXEMPT_PREFIXES = ("f_mkt_", "f_macro_", "f_month", "f_woq", "f_sec_", "f_evt_")
 
 
 def rank_normalize(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:

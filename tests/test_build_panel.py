@@ -35,6 +35,26 @@ def test_build_panel_shape_and_membership(synthetic_store, tiny_cfg):
     assert synthetic_store.exists("panel")
 
 
+def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):
+    panel = build_panel(synthetic_store, tiny_cfg)
+    fcols = feature_cols(panel)
+    expected_new = {"f_evt_filed_5d", "f_days_since_filing", "f_pead",
+                    "f_overnight_4w", "f_intraday_4w", "f_beta_60d", "f_idio_vol_60d",
+                    "f_mom_4w_sect", "f_mom_12w_sect", "f_mkt_dispersion"}
+    assert expected_new <= set(fcols)
+
+    # binary filing flag is rank-exempt: never rank-mangled, only {0.0, 1.0}
+    assert "f_evt_" in RANK_EXEMPT_PREFIXES
+    vals = set(panel["f_evt_filed_5d"].dropna().unique().tolist())
+    assert vals <= {0.0, 1.0}
+
+    # sector-relative momentum is rank-normalized like other stock features
+    sect = panel["f_mom_4w_sect"].dropna()
+    assert sect.min() > -1.0001 and sect.max() <= 1.0001
+    sect12 = panel["f_mom_12w_sect"].dropna()
+    assert sect12.min() > -1.0001 and sect12.max() <= 1.0001
+
+
 def test_build_panel_drops_corrupt_tickers(synthetic_store, tiny_cfg):
     import numpy as np
     prices = synthetic_store.read("prices")

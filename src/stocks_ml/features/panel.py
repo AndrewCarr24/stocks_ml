@@ -30,6 +30,7 @@ def _wide(prices: pd.DataFrame, field: str) -> pd.DataFrame:
 
 def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
     close, volume = _wide(prices, "close"), _wide(prices, "volume")
+    open_ = _wide(prices, "open")
     ret = close.pct_change()
     weeks = {"1w": 5, "4w": 20, "12w": 60, "26w": 130, "52w": 252}
 
@@ -46,6 +47,31 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
     out["f_lo_52w"] = close / close.rolling(252).min() - 1
     out["aux_vol"] = out["f_vol_12w"]
 
+    # Overnight (close_{d-1} -> open_d) vs intraday (open_d -> close_d) split,
+    # compounded over the trailing 20 trading days ending at t. Built as
+    # cumulative-product "index" series (closed-form, no rolling().apply): the
+    # single leading NaN (no close_{d-1} on day 0) is filled to 1x so it cancels
+    # exactly out of every ratio, matching close.pct_change(20)'s NaN-until-warmup
+    # behavior for windows that don't yet have 20 trading days of history.
+    overnight = open_ / close.shift(1) - 1
+    intraday = close / open_ - 1
+    on_cum = (1 + overnight.fillna(0)).cumprod()
+    ia_cum = (1 + intraday.fillna(0)).cumprod()
+    out["f_overnight_4w"] = on_cum / on_cum.shift(20) - 1
+    out["f_intraday_4w"] = ia_cum / ia_cum.shift(20) - 1
+
+    # Beta / idiosyncratic vol vs SPY over a trailing 60-trading-day window.
+    # Closed-form rolling cov/var (no python loops); SPY absent -> NaN throughout.
+    mkt_ret = ret["SPY"] if "SPY" in ret.columns else pd.Series(np.nan, index=ret.index)
+    cov = ret.rolling(60).cov(mkt_ret)
+    var_m = mkt_ret.rolling(60).var()
+    var_i = ret.rolling(60).var()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        beta = cov.div(var_m, axis=0)
+    idio_var = var_i.sub(beta.pow(2).multiply(var_m, axis=0)).clip(lower=0)
+    out["f_beta_60d"] = beta
+    out["f_idio_vol_60d"] = np.sqrt(idio_var) * ANNUALIZER
+
     frames = []
     for col, wide_df in out.items():
         sub = wide_df.reindex(dates).stack(future_stack=True).rename(col)
@@ -59,10 +85,14 @@ def market_macro_features(prices: pd.DataFrame, fred_lagged: pd.DataFrame,
                           dates: pd.DatetimeIndex) -> pd.DataFrame:
     spy = _wide(prices[prices.ticker == "SPY"], "close")["SPY"]
     ret = spy.pct_change()
+    # Cross-sectional dispersion: std across tickers of the 5-trading-day
+    # return ending at t (close_{t-5} -> close_t). Backward-looking only.
+    dispersion = _wide(prices, "close").pct_change(5).std(axis=1, ddof=1)
     mkt = pd.DataFrame({
         "f_mkt_mom_4w": spy.pct_change(20),
         "f_mkt_mom_26w": spy.pct_change(130),
         "f_mkt_vol_4w": ret.rolling(20).std() * ANNUALIZER,
+        "f_mkt_dispersion": dispersion,
     }).reindex(dates)
 
     macro = fred_lagged.reindex(dates.union(fred_lagged.index)).ffill().reindex(dates)
@@ -70,6 +100,21 @@ def market_macro_features(prices: pd.DataFrame, fred_lagged: pd.DataFrame,
     macro.columns = [f"f_macro_{c}" for c in macro.columns]
     chg.columns = [f"{c}_chg" for c in macro.columns]
     return pd.concat([mkt, macro, chg], axis=1).rename_axis("date").reset_index()
+
+
+def sector_relative_momentum(panel: pd.DataFrame) -> pd.DataFrame:
+    """Raw f_mom_4w/f_mom_12w minus their same-date same-sector median.
+
+    Must run BEFORE rank normalization (operates on raw momentum values).
+    Requires 'date', 'sector', 'f_mom_4w', 'f_mom_12w' columns. Rows with an
+    unknown ('sector' is NaN) sector get NaN (groupby drops NaN keys, so their
+    transformed result is NaN).
+    """
+    out = pd.DataFrame(index=panel.index)
+    for name in ("f_mom_4w", "f_mom_12w"):
+        med = panel.groupby(["date", "sector"])[name].transform("median")
+        out[f"{name}_sect"] = panel[name] - med
+    return out
 
 
 def calendar_features(dates: pd.DatetimeIndex) -> pd.DataFrame:
@@ -104,6 +149,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.fred import load_fred_lagged
     from stocks_ml.data.membership import members_asof
     from stocks_ml.data.prices import drop_corrupt_series
+    from stocks_ml.features.events import filing_features
     from stocks_ml.features.fundamentals import fundamental_features
     from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
 
@@ -136,6 +182,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     close_df.columns = ["date", "ticker", "close"]
     panel = panel.merge(close_df, on=["date", "ticker"], how="left")
     panel = fundamental_features(edgar, panel)
+    panel = panel.merge(filing_features(edgar, prices, dates), on=["date", "ticker"], how="left")
 
     panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
     panel = panel.merge(calendar_features(dates), on="date", how="left")
@@ -144,6 +191,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
 
     sector = membership.dropna(subset=["sector"]).drop_duplicates("ticker")
     panel["sector"] = panel["ticker"].map(dict(zip(sector["ticker"], sector["sector"])))
+    panel = pd.concat([panel, sector_relative_momentum(panel)], axis=1)
     dummies = pd.get_dummies(panel["sector"], prefix="f_sec", prefix_sep="_", dtype=float)
     dummies.columns = [c.lower().replace(" ", "_") for c in dummies.columns]
     panel = pd.concat([panel.drop(columns=["sector", "close"]), dummies], axis=1)
