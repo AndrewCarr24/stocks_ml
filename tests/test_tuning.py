@@ -1,4 +1,6 @@
+import dataclasses
 import json
+import re
 import warnings
 
 import numpy as np
@@ -81,6 +83,29 @@ def test_tune_xgb_writes_artifacts(synthetic_store, tiny_cfg, tmp_path):
 
     text = (out / "tuning.md").read_text()
     assert "production reference" in text.lower()
+
+
+def test_tune_xgb_respects_train_sample_rows_truncation(synthetic_store, tiny_cfg, tmp_path):
+    """run_training truncates via labeled.sort_values("date").tail(train_sample_rows)
+    before building dates/splits (champion.py); tune_xgb must mirror this exactly or
+    it would select hyperparameters on a different data window than the tournament
+    scores candidates on whenever the (currently-dormant) knob is set."""
+    from stocks_ml.features.panel import build_panel
+
+    build_panel(synthetic_store, tiny_cfg)
+    panel = synthetic_store.read("panel")
+    full_min_date = panel[panel["label"].notna()]["date"].min()
+
+    small_cfg = dataclasses.replace(tiny_cfg, train_sample_rows=300)  # ~half of 630 labeled rows
+    out = tmp_path / "models"
+    tune_xgb(synthetic_store, small_cfg, n_samples=2, out_dir=out)
+
+    text = (out / "tuning.md").read_text()
+    m = re.search(r"Training window: (\S+) \S+ \S+ \((\d+) labeled rows\)", text)
+    assert m is not None, "tuning.md must report the training window it actually evaluated"
+    truncated_min_date, n_rows = pd.Timestamp(m.group(1)), int(m.group(2))
+    assert n_rows == 300
+    assert truncated_min_date > full_min_date  # truncation must have dropped early rows
 
 
 def test_get_candidates_without_tuned_json_has_four(tiny_cfg, tmp_path):

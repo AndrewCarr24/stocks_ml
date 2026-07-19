@@ -59,6 +59,11 @@ def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
     panel = store.read("panel")
     fcols = feature_cols(panel)
     labeled = panel[panel["label"].notna()]
+    # Mirrors run_training's truncation (champion.py) exactly — must stay in sync.
+    # Without this, tuning would select hyperparameters on a different data window
+    # than the tournament scores candidates on whenever train_sample_rows is set.
+    if cfg.train_sample_rows:
+        labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
     assert labeled["date"].is_monotonic_increasing, (
         "panel rows must be date-ordered: TimeTailEarlyStopXGB's early-stop split "
         "takes a positional tail as the validation set, so positional order must "
@@ -91,10 +96,13 @@ def tune_xgb(store, cfg, n_samples: int = 40, out_dir="models") -> pd.DataFrame:
     best = ranked.iloc[0]
     (out / "xgb_tuned.json").write_text(json.dumps(_full_params(best["params"]), indent=2))
 
+    date_min, date_max = labeled["date"].min(), labeled["date"].max()
     lines = ["# XGBoost hyperparameter tuning", "",
              "Selection is by mean weekly rank IC on the pre-holdout purged walk-forward "
              "CV folds (plain CV selection) — the untouched holdout is never used for "
              "tuning and remains the honest test.", "",
+             f"Training window: {date_min.date()} → {date_max.date()} "
+             f"({len(labeled)} labeled rows).", "",
              "| config | mean IC | fold ICs | test weeks | params |",
              "|---|---|---|---|---|"]
     for _, row in ranked.iterrows():
