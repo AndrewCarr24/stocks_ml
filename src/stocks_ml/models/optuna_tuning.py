@@ -81,6 +81,9 @@ def holdout_ic(store, cfg, estimator, fcols=None) -> float:
     rows, predicts the holdout weeks. nan if there is no holdout (holdout_years==0).
 
     This tail is touched ONLY here, never during Optuna's search."""
+    # Deliberately re-derives `labeled` rather than reusing prepare_tuning_data's:
+    # the holdout fit trains on the FULL pre-holdout set, not just the CV-fold rows.
+    # Do not "DRY" this into the CV-fold frame — that would narrow the training set.
     panel = store.read("panel")
     fcols = fcols or feature_cols(panel)
     labeled = panel[panel["label"].notna()]
