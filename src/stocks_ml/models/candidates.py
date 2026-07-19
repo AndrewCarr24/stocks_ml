@@ -108,7 +108,8 @@ class TimeTailEarlyStopLGBM(LGBMRegressor):
         cut = max(1, int(n * (1 - self.eval_fraction)))
         Xtr, Xva = X.iloc[:cut], X.iloc[cut:]
         ytr, yva = y.iloc[:cut], y.iloc[cut:]
-        # lightgbm 4.4+ takes eval_X/eval_y single frames (eval_set is deprecated).
+        # lightgbm 4.4+ accepts eval_X/eval_y single frames (the modern form of
+        # the older eval_set list-of-tuples API).
         super().fit(Xtr, ytr, eval_X=Xva, eval_y=yva,
                     callbacks=[lgb.early_stopping(self.early_stopping_rounds, verbose=False),
                                lgb.log_evaluation(period=0)])
