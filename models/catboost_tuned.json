@@ -1,0 +1,9 @@
+{
+  "depth": 8,
+  "learning_rate": 0.1,
+  "l2_leaf_reg": 10.0,
+  "iterations": 1500,
+  "random_state": 0,
+  "eval_fraction": 0.1,
+  "early_stopping_rounds": 20
+}
