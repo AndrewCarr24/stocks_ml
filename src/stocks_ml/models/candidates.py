@@ -242,12 +242,18 @@ _TUNED_FAMILIES = {
 
 
 def make_tuned(family: str, models_dir="models"):
-    """Reconstruct a tuned candidate for `family` from its params file; None if absent."""
+    """Reconstruct a tuned candidate for `family` from its params file; None if absent.
+
+    Prefers {family}_optuna.json (the holdout-judged Optuna refinement) over
+    {family}_tuned.json (random search) when both exist — Optuna only writes its
+    file when it beats the random-search config on the untouched holdout, so its
+    presence means it is the honestly-better artifact."""
     stem, klass = _TUNED_FAMILIES[family]
-    path = Path(models_dir) / f"{stem}.json"
-    if not path.exists():
-        return None
-    return klass(**json.loads(path.read_text()))
+    d = Path(models_dir)
+    for candidate_path in (d / f"{family}_optuna.json", d / f"{stem}.json"):
+        if candidate_path.exists():
+            return klass(**json.loads(candidate_path.read_text()))
+    return None
 
 
 BASELINE_NAMES = ("zero", "momentum")

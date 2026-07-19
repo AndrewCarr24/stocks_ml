@@ -123,6 +123,28 @@ def _make_estimator(family: str, params: dict):
     return klass(**params)
 
 
+def prepare_tuning_data(store, cfg):
+    """The leakage-critical setup shared by random-search and Optuna tuning:
+    the labeled frame (with the train_sample_rows truncation mirror + date-order
+    assertion) and the CV splits (holdout-excluded, identical to run_training).
+    Returns (labeled, fcols, splits)."""
+    panel = store.read("panel")
+    fcols = feature_cols(panel)
+    labeled = panel[panel["label"].notna()]
+    # Mirrors run_training's truncation (champion.py) exactly — must stay in sync.
+    if cfg.train_sample_rows:
+        labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
+    assert labeled["date"].is_monotonic_increasing, (
+        "panel rows must be date-ordered: the wrappers' early-stop split takes a "
+        "positional tail as the validation set, so positional order must equal "
+        "chronological order — sort the panel by date if this fires"
+    )
+    dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
+    # SAME split construction as run_training — holdout stays untouched.
+    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52)
+    return labeled, fcols, splits
+
+
 def select_best(results: pd.DataFrame):
     """Best config by mean IC among ELIGIBLE (all-CV-folds-valid) rows — mirrors
     champion.py's tournament eligibility gate (`_eligible`) so tuning never
@@ -183,24 +205,7 @@ def tune_model(store, cfg, family: str = "xgb", n_samples: int = 40,
         raise ValueError(f"unknown family {family!r}; valid: {sorted(_FAMILY_SPEC)}")
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    panel = store.read("panel")
-    fcols = feature_cols(panel)
-    labeled = panel[panel["label"].notna()]
-    # Mirrors run_training's truncation (champion.py) exactly — must stay in sync.
-    # Without this, tuning would select hyperparameters on a different data window
-    # than the tournament scores candidates on whenever train_sample_rows is set.
-    if cfg.train_sample_rows:
-        labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
-    assert labeled["date"].is_monotonic_increasing, (
-        "panel rows must be date-ordered: the wrappers' early-stop split takes a "
-        "positional tail as the validation set, so positional order must equal "
-        "chronological order — sort the panel by date if this fires"
-    )
-
-    dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
-    # SAME split construction as run_training — holdout stays untouched, identical
-    # to the tournament, so plain-CV tuning selection never leaks into the honest test.
-    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52)
+    labeled, fcols, splits = prepare_tuning_data(store, cfg)
 
     hyperparams = [_production_params(family)] + sample_configs(n_samples, family=family)
     records = []

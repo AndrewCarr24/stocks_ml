@@ -49,9 +49,22 @@ def cmd_train(args, cfg):
 
 
 _DEFAULT_SAMPLES = {"xgb": 40, "lgbm": 40, "catboost": 12, "enet": 12}
+_DEFAULT_TRIALS = {"xgb": 100, "lgbm": 100, "catboost": 60, "enet": 40}
 
 
 def cmd_tune(args, cfg):
+    if args.optuna:
+        from stocks_ml.models.optuna_tuning import tune_optuna
+
+        n = args.trials if args.trials is not None else _DEFAULT_TRIALS[args.family]
+        result = tune_optuna(_store(cfg), cfg, family=args.family, n_trials=n)
+        print(f"wrote models/optuna_{args.family}.md"
+              + (f" and models/{args.family}_optuna.json" if result["adopted"] else ""))
+        print(f"best CV IC {result['best_cv_ic']:.4f} | "
+              f"candidate holdout IC {result['candidate_holdout_ic']:.4f} | "
+              f"incumbent holdout IC {result['incumbent_holdout_ic']:.4f} | "
+              f"{'ADOPTED' if result['adopted'] else 'rejected'}")
+        return
     from stocks_ml.models.tuning import tune_model
 
     n = args.samples if args.samples is not None else _DEFAULT_SAMPLES[args.family]
@@ -139,7 +152,12 @@ def main():
     p_tune = sub.add_parser("tune", help="hyperparameter tuning via walk-forward CV")
     p_tune.add_argument("--family", choices=["xgb", "lgbm", "catboost", "enet"], default="xgb")
     p_tune.add_argument("--samples", type=int, default=None,
-                        help="configs to sample (default: per-family — xgb/lgbm 40, catboost/enet 12)")
+                        help="random-search configs (default: per-family — xgb/lgbm 40, catboost/enet 12)")
+    p_tune.add_argument("--optuna", action="store_true",
+                        help="use Optuna TPE search, adopting the winner only if it beats "
+                             "the random-search config on the untouched holdout")
+    p_tune.add_argument("--trials", type=int, default=None,
+                        help="Optuna trials (default: per-family — xgb/lgbm 100, catboost 60, enet 40)")
     sub.add_parser("backtest", help="run all strategies and write the report")
     sub.add_parser("signals", help="generate this week's trade signals")
     sub.add_parser("torture", help="survivorship torture test: empirical removal haircuts "
