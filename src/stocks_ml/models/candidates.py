@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
@@ -58,9 +61,47 @@ def make_xgb() -> XGBRegressor:
     )
 
 
+class TimeTailEarlyStopXGB(XGBRegressor):
+    """XGBRegressor with early stopping on the LAST eval_fraction of rows (no shuffle).
+
+    Panel rows are date-major sorted, so the positional tail is the most recent
+    data — a time-ordered validation split (never random: random splits leak
+    future rows into the stopping decision on temporal data)."""
+
+    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 20, **kwargs):
+        self.eval_fraction = eval_fraction
+        super().__init__(early_stopping_rounds=early_stopping_rounds, **kwargs)
+
+    def _wrapper_params(self) -> set:
+        # eval_fraction is wrapper-only bookkeeping, not a native XGBoost booster
+        # parameter — without this override it gets forwarded to the C++ learner
+        # and triggers a "Parameters: { eval_fraction } are not used" warning.
+        return super()._wrapper_params() | {"eval_fraction"}
+
+    def fit(self, X, y):
+        n = len(X)
+        cut = max(1, int(n * (1 - self.eval_fraction)))
+        Xtr, Xva = X.iloc[:cut], X.iloc[cut:]
+        ytr, yva = y.iloc[:cut], y.iloc[cut:]
+        super().fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
+        return self
+
+
+def make_xgb_tuned(models_dir="models"):
+    """TimeTailEarlyStopXGB from models/xgb_tuned.json; None if the file doesn't exist."""
+    path = Path(models_dir) / "xgb_tuned.json"
+    if not path.exists():
+        return None
+    return TimeTailEarlyStopXGB(**json.loads(path.read_text()))
+
+
 BASELINE_NAMES = ("zero", "momentum")
 
 
-def get_candidates(cfg) -> dict:
-    return {"zero": ZeroForecast(), "momentum": MomentumRank(),
-            "xgb": make_xgb(), "automl": AutoMLRegressor()}
+def get_candidates(cfg, models_dir="models") -> dict:
+    candidates = {"zero": ZeroForecast(), "momentum": MomentumRank(),
+                  "xgb": make_xgb(), "automl": AutoMLRegressor()}
+    tuned = make_xgb_tuned(models_dir)
+    if tuned is not None:
+        candidates["xgb_tuned"] = tuned
+    return candidates

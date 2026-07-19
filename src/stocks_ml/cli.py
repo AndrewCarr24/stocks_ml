@@ -44,6 +44,14 @@ def cmd_train(args, cfg):
     print("wrote models/champion.joblib, models/champion.json, models/selection.md")
 
 
+def cmd_tune(args, cfg):
+    from stocks_ml.models.tuning import tune_xgb
+
+    results = tune_xgb(_store(cfg), cfg, n_samples=args.samples)
+    print("wrote models/xgb_tuned.json and models/tuning.md")
+    print(results.head(5)[["name", "mean_ic", "n_test_weeks"]].to_string(index=False))
+
+
 def cmd_backtest(args, cfg):
     from stocks_ml.backtest.report import run_all_backtests
 
@@ -114,12 +122,14 @@ def cmd_ledger(args, cfg):
 def main():
     parser = argparse.ArgumentParser(
         prog="stocks-ml",
-        description="ML stock forecasting: ingest | train | backtest | signals | ledger | torture")
+        description="ML stock forecasting: ingest | train | tune | backtest | signals | ledger | torture")
     parser.add_argument("--config", default="config/config.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
     p_ingest = sub.add_parser("ingest", help="fetch data and build the panel")
     p_ingest.add_argument("--full", action="store_true")
     sub.add_parser("train", help="champion model selection")
+    p_tune = sub.add_parser("tune", help="XGBoost hyperparameter tuning via walk-forward CV")
+    p_tune.add_argument("--samples", type=int, default=40)
     sub.add_parser("backtest", help="run all strategies and write the report")
     sub.add_parser("signals", help="generate this week's trade signals")
     sub.add_parser("torture", help="survivorship torture test: empirical removal haircuts "
@@ -135,7 +145,7 @@ def main():
 
     args = parser.parse_args()
     cfg = load_config(args.config)
-    {"ingest": cmd_ingest, "train": cmd_train, "backtest": cmd_backtest,
+    {"ingest": cmd_ingest, "train": cmd_train, "tune": cmd_tune, "backtest": cmd_backtest,
      "signals": cmd_signals, "ledger": cmd_ledger, "torture": cmd_torture}[args.command](args, cfg)
 
 

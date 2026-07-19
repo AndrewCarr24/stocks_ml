@@ -13,7 +13,10 @@ from stocks_ml.backtest.simulator import run_backtest
 from stocks_ml.backtest.strategies import make_strategies
 from stocks_ml.models.champion import load_champion, holdout_start_date
 
-N_CANDIDATES = 4  # zero, momentum, xgb, automl — for deflated-Sharpe trial count
+N_CANDIDATES = 5  # zero, momentum, xgb, automl, xgb_tuned — for deflated-Sharpe trial
+                  # count. The ~40 tuning configs are internal to xgb_tuned's
+                  # construction (selected via plain CV, not the holdout/backtest) and
+                  # are not separately counted here, same as any other in-candidate choice.
 
 
 def benchmark_navs(prices, fred, index: pd.DatetimeIndex) -> dict:
