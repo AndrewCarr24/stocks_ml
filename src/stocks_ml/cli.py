@@ -18,8 +18,10 @@ def _store(cfg) -> DataStore:
 def cmd_ingest(args, cfg):
     from stocks_ml.data.edgar import ingest_edgar
     from stocks_ml.data.fred import ingest_fred
+    from stocks_ml.data.insiders import ingest_form4
     from stocks_ml.data.membership import ingest_membership, members_asof
     from stocks_ml.data.prices import all_tickers_ever, ingest_prices
+    from stocks_ml.data.shortint import ingest_shortint
     from stocks_ml.features.panel import build_panel
 
     if args.full:
@@ -33,6 +35,8 @@ def cmd_ingest(args, cfg):
     print(f"fred: {ingest_fred(store, cfg.fred_series, cfg.user_agent)}")
     current = members_asof(mem, pd.Timestamp.today())
     print(f"edgar: {ingest_edgar(store, current, cfg.edgar_concepts, cfg.user_agent)}")
+    print(f"form4: {ingest_form4(store, cfg.user_agent)}")
+    print(f"shortint: {ingest_shortint(store, cfg.user_agent)}")
     panel = build_panel(store, cfg)
     print(f"panel: {len(panel)} rows, {panel.date.min().date()} → {panel.date.max().date()}")
 

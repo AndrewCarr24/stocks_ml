@@ -62,6 +62,37 @@ def make_edgar():
     return df
 
 
+def make_form4():
+    # Dated well after test_no_lookahead.py's CUTOFF (2022-06-30, with price
+    # history in this fixture ending 2022-10-05) so the no-lookahead suite's
+    # before-cutoff equality checks see the same all-zero "no activity"
+    # defaults from both the real and future-corrupted stores (that helper
+    # doesn't forward form4/shortint, so pre-cutoff parity depends on no real
+    # transaction being visible that early -- see task-24-report.md).
+    rows = [
+        ("AAA", "2022-08-05", "2022-08-03", "P", 1000.0, 25000.0),
+        ("AAA", "2022-08-19", "2022-08-17", "P", 500.0, 13000.0),
+        ("BBB", "2022-09-02", "2022-08-30", "S", 2000.0, 60000.0),
+    ]
+    df = pd.DataFrame(rows, columns=["ticker", "filed", "trans_date", "code", "shares", "value"])
+    df["filed"] = pd.to_datetime(df["filed"])
+    df["trans_date"] = pd.to_datetime(df["trans_date"])
+    return df
+
+
+def make_shortint():
+    # publication_date also kept after CUTOFF for the same reason as above.
+    rows = [
+        ("AAA", "2022-08-01", "2022-08-15", 500_000.0),
+        ("BBB", "2022-08-17", "2022-08-31", 300_000.0),
+    ]
+    df = pd.DataFrame(rows, columns=["ticker", "settlement_date", "publication_date",
+                                     "short_interest"])
+    df["settlement_date"] = pd.to_datetime(df["settlement_date"])
+    df["publication_date"] = pd.to_datetime(df["publication_date"])
+    return df
+
+
 @pytest.fixture
 def synthetic_store(tmp_path):
     store = DataStore(tmp_path / "data")
@@ -69,6 +100,8 @@ def synthetic_store(tmp_path):
     store.write("membership", make_membership())
     store.write("fred", make_fred())
     store.write("edgar", make_edgar())
+    store.write("form4", make_form4())
+    store.write("shortint", make_shortint())
     return store
 
 

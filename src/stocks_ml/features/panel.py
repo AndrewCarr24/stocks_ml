@@ -151,6 +151,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.prices import drop_corrupt_series
     from stocks_ml.features.events import filing_features
     from stocks_ml.features.fundamentals import fundamental_features
+    from stocks_ml.features.insiders import insider_features, shares_outstanding_asof, short_features
     from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
 
     prices = store.read("prices")
@@ -159,6 +160,11 @@ def build_panel(store, cfg) -> pd.DataFrame:
         store.set_manifest("corrupt_tickers", corrupt)
     membership = store.read("membership")
     edgar = store.read("edgar")
+    form4 = (store.read("form4") if store.exists("form4") else
+            pd.DataFrame(columns=["ticker", "filed", "trans_date", "code", "shares", "value"]))
+    shortint = (store.read("shortint") if store.exists("shortint") else
+               pd.DataFrame(columns=["ticker", "settlement_date", "publication_date",
+                                     "short_interest"]))
     fred_lagged = load_fred_lagged(store, cfg.fred_series)
 
     cal = trading_calendar(prices)
@@ -183,6 +189,15 @@ def build_panel(store, cfg) -> pd.DataFrame:
     panel = panel.merge(close_df, on=["date", "ticker"], how="left")
     panel = fundamental_features(edgar, panel)
     panel = panel.merge(filing_features(edgar, prices, dates), on=["date", "ticker"], how="left")
+
+    # dollar volume / raw volume on the FULL daily calendar (prices.index), not
+    # reindexed to `dates`: insider_features needs the full trading calendar
+    # (via this wide frame's index) to size its trading-day event window.
+    volume_wide = _wide(prices, "volume")
+    dollar_wide = (_wide(prices, "close") * volume_wide).rolling(20).mean()
+    panel = panel.merge(insider_features(form4, dates, dollar_wide), on=["date", "ticker"], how="left")
+    shares_out = shares_outstanding_asof(edgar, panel)
+    panel = panel.merge(short_features(shortint, shares_out, volume_wide), on=["date", "ticker"], how="left")
 
     panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
     panel = panel.merge(calendar_features(dates), on="date", how="left")
