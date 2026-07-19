@@ -2,10 +2,10 @@
 
 | candidate | mean rank IC | fold ICs | test weeks |
 |---|---|---|---|
-| automl | 0.0258 | nan, nan, nan, 0.0258, nan | 122 |
-| xgb_tuned **← champion** | 0.0237 | 0.0185, 0.0026, 0.0180, 0.0496, 0.0296 | 611 |
-| xgb | 0.0135 | 0.0109, -0.0061, 0.0243, 0.0327, 0.0060 | 611 |
-| momentum | 0.0017 | 0.0090, 0.0044, 0.0017, -0.0088, 0.0021 | 611 |
+| automl | 0.0261 | nan, nan, nan, 0.0261, nan | 122 |
+| xgb_tuned **← champion** | 0.0232 | 0.0199, 0.0058, 0.0093, 0.0428, 0.0384 | 611 |
+| xgb | 0.0127 | 0.0125, -0.0070, 0.0098, 0.0392, 0.0090 | 611 |
+| momentum | 0.0015 | 0.0098, 0.0068, -0.0035, -0.0051, -0.0009 | 611 |
 | zero | nan | nan, nan, nan, nan, nan | 0 |
 
 Baselines: zero, momentum. A champion must beat every baseline or selection falls back to momentum.
