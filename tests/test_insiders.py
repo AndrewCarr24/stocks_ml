@@ -205,6 +205,31 @@ def test_windowed_asof_sum_respects_a_non_default_grid_index():
     assert out.loc[9] == 0.0
 
 
+def test_insider_features_survives_unsorted_multi_ticker_input():
+    """Regression companion to the short_features fix: real form4 data also
+    arrives as many unsorted tickers. Use tickers whose filed dates run
+    OPPOSITE their alphabetical order and shuffle the row order, matching
+    real ingestion -- insider_features already sorts by the "on" key alone
+    at each merge_asof site, so this should already pass; pinned here so a
+    future regression in that convention is caught immediately.
+    """
+    tickers = ["ZZZ", "YYY", "XXX", "AAA", "BBB", "CCC"]
+    dv = _dollar_volume(tickers=tickers, periods=260)
+    cal = dv.index
+    t_eval = cal[220]
+
+    rows = []
+    for i, tkr in enumerate(tickers):
+        F = cal[200 - i * 30]  # later alphabetical ticker -> EARLIER filed date
+        rows.append((tkr, F, F, "P", 100.0, 1000.0 + i))
+        rows.append((tkr, F - pd.Timedelta(days=10), F - pd.Timedelta(days=10), "S", 50.0, 500.0))
+    form4 = _form4_rows(rows).sample(frac=1, random_state=0).reset_index(drop=True)
+
+    feats = insider_features(form4, pd.DatetimeIndex([t_eval]), dv)
+    assert len(feats) == len(tickers)
+    assert feats["f_insider_net_13w"].notna().all()
+
+
 def test_insider_features_empty_form4_matches_no_activity_defaults():
     dv = _dollar_volume()
     t = pd.Timestamp("2023-06-01")

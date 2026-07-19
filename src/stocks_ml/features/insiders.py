@@ -139,7 +139,14 @@ def short_features(shortint: pd.DataFrame, shares_outstanding: pd.DataFrame,
 
     si = shortint.copy()
     si["publication_date"] = pd.to_datetime(si["publication_date"])
-    si = si.sort_values(["ticker", "publication_date"])[
+    # merge_asof requires the right frame globally sorted by the "on" key
+    # (publication_date) -- NOT by ["ticker", "publication_date"], which is
+    # only sorted within each ticker group and can easily be non-monotonic
+    # overall once tickers interleave (real FINRA data: ~3.8M unsorted rows
+    # spanning thousands of tickers). Matches the convention already used at
+    # every other merge_asof site in this module and in fundamentals.py /
+    # events.py (sort by the "on" key alone; `by=` handles grouping).
+    si = si.sort_values("publication_date")[
         ["ticker", "publication_date", "short_interest"]]
 
     left = out.reset_index().sort_values("date")

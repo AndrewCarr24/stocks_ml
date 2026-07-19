@@ -157,6 +157,33 @@ def test_short_features_latest_publication_used():
     assert np.isclose(row["f_short_ratio"], 0.4)
 
 
+def test_short_features_survives_unsorted_multi_ticker_input():
+    """Regression: real FINRA data arrives as ~3.8M unsorted rows spanning many
+    tickers. A frame sorted by ["ticker", "publication_date"] (compound) is
+    NOT globally sorted by "publication_date" whenever ticker-alphabetical
+    order disagrees with date order -- merge_asof requires the latter. Build
+    tickers whose dates run in the OPPOSITE order from their alphabetical
+    order (so a naive compound sort reliably produces a non-monotonic
+    "on" column) and shuffle the row order too, matching real ingestion.
+    """
+    tickers = ["ZZZ", "YYY", "XXX", "AAA", "BBB", "CCC"]
+    dates = pd.bdate_range("2022-01-03", periods=260)
+    t_eval = dates[220]
+
+    shares_out = _shares_outstanding([(t_eval, tkr, 1_000_000.0) for tkr in tickers])
+    volume = _volume(tickers=tickers, start="2022-01-03", periods=260, value=200_000.0)
+
+    si_rows = []
+    for i, tkr in enumerate(tickers):
+        pub = dates[200 - i * 30]  # later alphabetical ticker -> EARLIER publication date
+        si_rows.append((tkr, pub - pd.Timedelta(days=20), pub, 300_000.0 + i))
+    shortint = _shortint_rows(si_rows).sample(frac=1, random_state=0).reset_index(drop=True)
+
+    feats = short_features(shortint, shares_out, volume)
+    assert feats["f_short_ratio"].notna().all()
+    assert feats["f_short_dtc"].notna().all()
+
+
 def test_short_features_empty_shortint_is_nan():
     t = pd.Timestamp("2023-06-01")
     shares_out = _shares_outstanding([(t, "AAA", 1_000_000.0)])
