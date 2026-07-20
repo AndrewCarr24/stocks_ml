@@ -23,10 +23,20 @@ class CandidateResult:
 
 
 def make_splits(dates: pd.DatetimeIndex, n_folds: int, purge_days: int,
-                holdout_weeks: int) -> list[Split]:
+                holdout_weeks: int, eval_start: pd.Timestamp | None = None) -> list[Split]:
+    """Purged walk-forward splits. Test blocks cover the usable dates after a 40%
+    minimum-train warmup and before the holdout tail.
+
+    `eval_start` additionally restricts TEST blocks to `date >= eval_start` — used
+    to keep every scored fold inside the window where all features are available
+    (EDGAR fundamentals/filing data begin ~2010). Training windows are unaffected:
+    each fold's `train_end = test_start - purge_days` still reaches back over all
+    earlier history, so models may still learn from pre-eval_start price data."""
     usable = dates[: len(dates) - holdout_weeks] if holdout_weeks else dates
     min_train = int(len(usable) * 0.4)
     test_dates = usable[min_train:]
+    if eval_start is not None:
+        test_dates = test_dates[test_dates >= pd.Timestamp(eval_start)]
     blocks = np.array_split(np.arange(len(test_dates)), n_folds)
     splits = []
     for block in blocks:

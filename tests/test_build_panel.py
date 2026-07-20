@@ -55,28 +55,27 @@ def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):
     assert sect12.min() > -1.0001 and sect12.max() <= 1.0001
 
 
-def test_build_panel_insider_and_short_features_present_and_exercised(synthetic_store, tiny_cfg):
+def test_build_panel_insider_features_present_short_dropped(synthetic_store, tiny_cfg):
     panel = build_panel(synthetic_store, tiny_cfg)
     fcols = feature_cols(panel)
-    expected_new = {"f_insider_net_13w", "f_insider_buyers_13w", "f_evt_insider_buy_2w",
-                    "f_short_ratio", "f_short_dtc"}
-    assert expected_new <= set(fcols)
+    # insider features (span 2005, uniform availability) are KEPT and exercised
+    assert {"f_insider_net_13w", "f_insider_buyers_13w", "f_evt_insider_buy_2w"} <= set(fcols)
+    # short-interest features are DROPPED: they only exist from 2018, which made
+    # pre-2018 CV folds partially degenerate and broke apples-to-apples comparison.
+    assert not any(c.startswith("f_short") for c in fcols)
 
     # rank-exempt evt flag stays a clean {0.0, 1.0} indicator
     vals = set(panel["f_evt_insider_buy_2w"].dropna().unique().tolist())
     assert vals <= {0.0, 1.0}
 
-    # conftest's synthetic form4/shortint fixtures (dated 2022-08/09, after
-    # tiny_cfg.backtest_start) must actually be exercised end-to-end: some row
-    # shows a non-default, non-NaN value for each new feature.
+    # conftest's synthetic form4 fixture (dated 2022-08/09, after
+    # tiny_cfg.backtest_start) must actually be exercised end-to-end.
     assert (panel["f_insider_net_13w"] != 0.0).any()
     assert (panel["f_insider_buyers_13w"] != 0.0).any()
     assert (panel["f_evt_insider_buy_2w"] == 1.0).any()
-    assert panel["f_short_ratio"].notna().any()
-    assert panel["f_short_dtc"].notna().any()
 
-    # ranked (non-evt) insider/short features are bounded like other ranked features
-    for c in ("f_insider_net_13w", "f_insider_buyers_13w", "f_short_ratio", "f_short_dtc"):
+    # ranked (non-evt) insider features are bounded like other ranked features
+    for c in ("f_insider_net_13w", "f_insider_buyers_13w"):
         sub = panel[c].dropna()
         assert sub.min() > -1.0001 and sub.max() <= 1.0001
 
@@ -93,8 +92,7 @@ def test_build_panel_missing_form4_and_shortint_datasets_is_harmless(synthetic_s
     assert panel["f_insider_net_13w"].nunique() == 1
     assert panel["f_insider_buyers_13w"].nunique() == 1
     assert (panel["f_evt_insider_buy_2w"] == 0.0).all()  # rank-exempt: stays literal 0.0
-    assert panel["f_short_ratio"].isna().all()
-    assert panel["f_short_dtc"].isna().all()
+    assert not any(c.startswith("f_short") for c in feature_cols(panel))
 
 
 def test_build_panel_drops_corrupt_tickers(synthetic_store, tiny_cfg):

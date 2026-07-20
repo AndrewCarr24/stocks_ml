@@ -141,7 +141,7 @@ def prepare_tuning_data(store, cfg):
     )
     dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
     # SAME split construction as run_training — holdout stays untouched.
-    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52)
+    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52, cfg.eval_start)
     return labeled, fcols, splits
 
 

@@ -38,6 +38,17 @@ def test_make_splits_no_overlap_and_purge():
     assert splits[-1].test_end <= dates[-11]       # holdout untouched
 
 
+def test_make_splits_eval_start_restricts_test_but_not_train():
+    dates = pd.DatetimeIndex(pd.date_range("2020-01-03", periods=200, freq="W-FRI"))
+    cut = pd.Timestamp("2023-01-01")
+    splits = make_splits(dates, n_folds=4, purge_days=10, holdout_weeks=10,
+                         eval_start=cut)
+    # every scored (test) window starts at/after eval_start ...
+    assert all(s.test_start >= cut for s in splits)
+    # ... but training may still reach back before it (train_end < eval_start is fine)
+    assert splits[0].train_end < cut
+
+
 def test_weekly_rank_ic_perfect_and_random():
     df = _panel()
     df["pred"] = df["label"]

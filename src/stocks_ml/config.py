@@ -16,6 +16,7 @@ class Config:
     rebalance_weekday: int
     retrain_weeks: int
     backtest_start: pd.Timestamp
+    eval_start: pd.Timestamp
     holdout_years: int
     n_cv_folds: int
     train_sample_rows: int | None
@@ -43,6 +44,7 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         rebalance_weekday=int(raw["rebalance_weekday"]),
         retrain_weeks=int(raw["retrain_weeks"]),
         backtest_start=pd.Timestamp(raw["backtest_start"]),
+        eval_start=pd.Timestamp(raw.get("eval_start", raw["backtest_start"])),
         holdout_years=int(raw["holdout_years"]),
         n_cv_folds=int(raw["n_cv_folds"]),
         train_sample_rows=raw.get("train_sample_rows"),

@@ -5,6 +5,8 @@ purge_days: 10             # calendar-day gap between train data and prediction 
 rebalance_weekday: 4       # 0=Mon ... 4=Fri; rebalance = last trading day <= each Friday
 retrain_weeks: 4
 backtest_start: "2005-01-03"
+eval_start: "2010-01-01"   # CV/holdout TEST folds start here (EDGAR fundamentals+filing
+                           # data begin ~2010); models still TRAIN on pre-2010 price history
 holdout_years: 2           # most recent years excluded from champion selection folds
 n_cv_folds: 5
 train_sample_rows: null    # optional cap on training rows (most recent kept); null = all

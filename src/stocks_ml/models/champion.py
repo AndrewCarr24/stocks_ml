@@ -72,7 +72,7 @@ def run_training(store, cfg, candidates: dict | None = None, out_dir="models") -
         labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
 
     dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
-    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52)
+    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52, cfg.eval_start)
 
     candidates = candidates or get_candidates(cfg)
     results = {name: evaluate_candidate(name, est, labeled, splits, fcols)
