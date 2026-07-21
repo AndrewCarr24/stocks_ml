@@ -1,5 +1,5 @@
 {
-  "name": "enet_tuned",
+  "name": "xgb_tuned",
   "selected_at": "2026-07-20",
-  "mean_ic": 0.018582871478388576
+  "mean_ic": 0.02406910624667905
 }
