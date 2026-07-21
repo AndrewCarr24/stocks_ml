@@ -151,7 +151,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.prices import drop_corrupt_series
     from stocks_ml.features.events import filing_features
     from stocks_ml.features.fundamentals import fundamental_features
-    from stocks_ml.features.insiders import insider_features
+    from stocks_ml.features.insiders import insider_features, shares_outstanding_asof, short_features
     from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
 
     prices = store.read("prices")
@@ -162,6 +162,9 @@ def build_panel(store, cfg) -> pd.DataFrame:
     edgar = store.read("edgar")
     form4 = (store.read("form4") if store.exists("form4") else
             pd.DataFrame(columns=["ticker", "filed", "trans_date", "code", "shares", "value"]))
+    shortint = (store.read("shortint") if store.exists("shortint") else
+               pd.DataFrame(columns=["ticker", "settlement_date", "publication_date",
+                                     "short_interest"]))
     fred_lagged = load_fred_lagged(store, cfg.fred_series)
 
     cal = trading_calendar(prices)
@@ -193,12 +196,12 @@ def build_panel(store, cfg) -> pd.DataFrame:
     volume_wide = _wide(prices, "volume")
     dollar_wide = (_wide(prices, "close") * volume_wide).rolling(20).mean()
     panel = panel.merge(insider_features(form4, dates, dollar_wide), on=["date", "ticker"], how="left")
-    # Short-interest features are intentionally NOT merged: they only exist from
-    # 2018 (FINRA history), which made pre-2018 CV folds partially degenerate and
-    # broke apples-to-apples model comparison (a config could win by having its
-    # sparse-data folds silently waived). shortint still ingests and
-    # insiders.short_features / shares_outstanding_asof remain for possible future
-    # 2018+-window work; they are simply not wired into the panel.
+    # Short-interest features (FINRA data begins 2017-12) are included: the A/B test
+    # showed a consistent ~+0.002 IC contribution. Their pre-2018 all-NaN region made
+    # the 2012-15 CV fold prone to degenerate fits, so that fold is excluded from
+    # evaluation via cfg.eval_start (2015-03) — see config.yaml.
+    shares_out = shares_outstanding_asof(edgar, panel)
+    panel = panel.merge(short_features(shortint, shares_out, volume_wide), on=["date", "ticker"], how="left")
 
     panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
     panel = panel.merge(calendar_features(dates), on="date", how="left")
