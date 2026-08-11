@@ -1,49 +1,67 @@
 # Backtest report
 
-Champion model: **xgb_tuned** · strategies × candidates tried: **27** (used to deflate Sharpe)
+Champion model: **xgb_tuned** · strategies × candidates tried: **45** (used to deflate Sharpe)
 
 ## Headline ($100 invested at start)
 
 | strategy | $100 → | CAGR | Sharpe | Deflated Sharpe | Sortino | max DD | worst week | underwater (d) | costs $ | fits |
 |---|---|---|---|---|---|---|---|---|---|---|
-| equal_topk | $1,142 | 12.1% | 0.52 | 0.65 | 0.85 | 71.7% | -30.8% | 1232 | 241.15 | 275 |
-| vol_scaled | $114 | 0.6% | 0.13 | 0.08 | 0.19 | 25.7% | -5.8% | 6942 | 9.91 | 275 |
-| kelly | $506 | 7.9% | 0.54 | 0.68 | 0.85 | 50.0% | -18.8% | 1472 | 35.06 | 275 |
-| spy_hold | $935 | 11.1% | 0.65 | – | 1.01 | 55.2% | -19.8% | 1773 | – | – |
-| cash | $144 | 1.7% | 14.57 | – | 28,174.40 | 0.0% | -0.0% | 16 | – | – |
+| equal_topk | $3,558 | 18.3% | 0.66 | 0.78 | 1.04 | 76.2% | -30.6% | 1361 | 326.90 | 275 |
+| vol_scaled | $178 | 2.7% | 0.39 | 0.33 | 0.56 | 25.8% | -8.6% | 5559 | 14.36 | 275 |
+| kelly | $554 | 8.4% | 0.53 | 0.58 | 0.82 | 48.8% | -21.1% | 1123 | 36.05 | 275 |
+| kelly_spy | $1,274 | 12.7% | 0.71 | 0.84 | 1.10 | 48.8% | -21.1% | 1123 | 63.00 | 275 |
+| topk_spy | $6,779 | 21.9% | 0.74 | 0.87 | 1.17 | 76.2% | -30.6% | 1037 | 502.40 | 275 |
+| spy_hold | $930 | 11.1% | 0.65 | – | 1.01 | 55.2% | -19.8% | 1773 | – | – |
+| cash | $144 | 1.7% | 14.57 | – | 28,157.27 | 0.0% | -0.0% | 16 | – | – |
 
 ## Regime-sliced performance (ann. Sharpe / hit rate)
 
 | strategy | bull | bear | high_vol | low_vol |
 |---|---|---|---|---|
-| equal_topk | 1.07 / 47.8% | -0.34 / 45.4% | -0.24 / 44.2% | 1.92 / 49.9% |
-| vol_scaled | 0.69 / 7.9% | -1.29 / 13.4% | -0.84 / 6.6% | 0.92 / 11.1% |
-| kelly | 1.44 / 48.6% | -0.69 / 46.2% | -0.51 / 44.4% | 2.98 / 51.1% |
-| spy_hold | 1.84 / 57.1% | -0.94 / 47.6% | -0.69 / 48.6% | 3.86 / 60.5% |
-| cash | 14.39 / 100.0% | 16.14 / 98.3% | 12.76 / 99.3% | 16.37 / 99.9% |
+| equal_topk | 1.50 / 46.3% | -0.45 / 47.1% | -0.18 / 43.8% | 2.34 / 48.7% |
+| vol_scaled | 1.16 / 15.2% | -1.29 / 23.4% | -0.61 / 20.0% | 1.66 / 14.4% |
+| kelly | 1.57 / 46.9% | -0.58 / 47.9% | -0.33 / 43.8% | 2.85 / 49.8% |
+| kelly_spy | 1.84 / 56.6% | -0.69 / 48.6% | -0.41 / 49.5% | 3.51 / 59.4% |
+| topk_spy | 1.68 / 56.4% | -0.55 / 48.0% | -0.24 / 49.8% | 2.68 / 58.7% |
+| spy_hold | 1.84 / 57.1% | -0.94 / 47.6% | -0.68 / 48.6% | 3.85 / 60.5% |
+| cash | 14.38 / 100.0% | 16.14 / 98.3% | 12.74 / 99.3% | 16.37 / 99.9% |
 
 ## Stress windows (total return)
 
-| window | equal_topk | vol_scaled | kelly | spy_hold | cash |
-|---|---|---|---|---|---|
-| GFC | -49.7% | -9.9% | -32.4% | -36.6% | 0.2% |
-| Q4 2018 | -21.3% | 0.0% | -9.6% | -13.8% | 0.6% |
-| COVID crash | 0.0% | 0.0% | 0.0% | -17.0% | 0.1% |
-| 2022 bear | -0.9% | 0.0% | -6.4% | -18.6% | 2.0% |
+| window | equal_topk | vol_scaled | kelly | kelly_spy | topk_spy | spy_hold | cash |
+|---|---|---|---|---|---|---|---|
+| GFC | -53.2% | -10.3% | -34.0% | -34.0% | -53.2% | -36.6% | 0.2% |
+| Q4 2018 | -5.5% | 0.0% | -3.9% | -12.8% | -12.5% | -13.8% | 0.6% |
+| COVID crash | 6.0% | 0.0% | 1.1% | -17.3% | -13.3% | -17.0% | 0.1% |
+| 2022 bear | -36.3% | 0.0% | -10.3% | -10.3% | -36.3% | -18.6% | 2.0% |
 
 ## Holdout period (≥ 2024-07-19, never used for model selection)
 
 | strategy | window return |
 |---|---|
-| equal_topk | -5.8% |
+| equal_topk | 92.7% |
 | vol_scaled | 0.0% |
-| kelly | 14.3% |
-| spy_hold | 39.4% |
-| cash | 8.3% |
+| kelly | 18.5% |
+| kelly_spy | 22.3% |
+| topk_spy | 87.0% |
+| spy_hold | 38.6% |
+| cash | 8.2% |
+
+## Recent five years ($100 at 2021-07-17; overlaps model-selection window — see holdout for the clean test)
+
+| strategy | $100 → | CAGR | Sharpe | max DD |
+|---|---|---|---|---|
+| equal_topk | $221 | 17.2% | 0.64 | 45.7% |
+| vol_scaled | $100 | 0.0% | – | 0.0% |
+| kelly | $130 | 5.4% | 0.46 | 20.3% |
+| kelly_spy | $176 | 12.0% | 0.84 | 20.3% |
+| topk_spy | $280 | 22.9% | 0.77 | 45.7% |
+| spy_hold | $187 | 13.4% | 0.82 | 24.5% |
+| cash | $119 | 3.6% | 33.40 | 0.0% |
 
 ## Honesty notes
 
-- Sharpe deflation assumes 27 strategy/model trials.
+- Sharpe deflation assumes 45 strategy/model trials.
 - Regime flags (SPY 200d SMA, VIX median) use full-sample statistics; they are reporting lenses, not tradable signals.
 - Fundamentals are sparse before ~2009 (EDGAR XBRL phase-in).
 - Delisted tickers missing from the free price source are absent from the panel; residual survivorship bias is reported in the ingestion manifest.
