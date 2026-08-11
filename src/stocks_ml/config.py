@@ -19,6 +19,7 @@ class Config:
     eval_start: pd.Timestamp
     holdout_years: int
     n_cv_folds: int
+    cv_train_years: int
     train_sample_rows: int | None
     top_k: int
     vol_target: float
@@ -47,6 +48,7 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         eval_start=pd.Timestamp(raw.get("eval_start", raw["backtest_start"])),
         holdout_years=int(raw["holdout_years"]),
         n_cv_folds=int(raw["n_cv_folds"]),
+        cv_train_years=int(raw.get("cv_train_years", 2)),
         train_sample_rows=raw.get("train_sample_rows"),
         top_k=int(raw["top_k"]),
         vol_target=float(raw["vol_target"]),

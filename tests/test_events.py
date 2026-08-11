@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from stocks_ml.features.events import filing_features
+from stocks_ml.features.events import filing_features, sec8k_features
 from stocks_ml.features.panel import trading_calendar
 
 
@@ -106,3 +106,61 @@ def test_most_recent_filing_selected_and_dates_deduped():
     row = feats[feats.date == t].iloc[0]
     assert row["f_days_since_filing"] == 5
     assert row["f_evt_filed_5d"] == 1.0
+
+
+def _sec8k(rows):
+    return pd.DataFrame(rows, columns=[
+        "ticker", "accession", "accepted", "filed", "items",
+        "primary_document", "is_amendment",
+    ])
+
+
+def test_8k_earnings_feature_starts_day_after_sec_acceptance():
+    filing = _sec8k([(
+        "AAA", "a", "2024-01-05T13:00:00Z", "2024-01-05", "2.02,9.01",
+        "earnings.htm", False,
+    )])
+    dates = pd.DatetimeIndex(["2024-01-05", "2024-01-06", "2024-01-12", "2024-01-13"])
+    out = sec8k_features(filing, ["AAA"], dates).set_index("date")
+    assert out.loc[pd.Timestamp("2024-01-05"), "f_evt_earnings_8k_7d"] == 0.0
+    assert out.loc[pd.Timestamp("2024-01-06"), "f_evt_earnings_8k_7d"] == 1.0
+    assert out.loc[pd.Timestamp("2024-01-12"), "f_evt_earnings_8k_7d"] == 1.0
+    assert out.loc[pd.Timestamp("2024-01-13"), "f_evt_earnings_8k_7d"] == 0.0
+
+
+def test_8k_amendment_is_not_a_new_earnings_event():
+    filings = _sec8k([
+        ("AAA", "a", "2024-01-01T13:00:00Z", "2024-01-01", "2.02",
+         "original.htm", False),
+        ("AAA", "b", "2024-02-01T13:00:00Z", "2024-02-01", "2.02",
+         "amendment.htm", True),
+    ])
+    out = sec8k_features(filings, ["AAA"], pd.DatetimeIndex(["2024-02-02"]))
+    assert out.iloc[0]["f_evt_8k_7d"] == 1.0
+    assert out.iloc[0]["f_evt_earnings_8k_7d"] == 0.0
+
+
+def test_future_8k_record_cannot_change_past_features():
+    old = _sec8k([(
+        "AAA", "a", "2024-01-01T13:00:00Z", "2024-01-01", "2.02",
+        "old.htm", False,
+    )])
+    future = _sec8k([(
+        "AAA", "b", "2025-01-01T13:00:00Z", "2025-01-01", "2.02",
+        "future.htm", False,
+    )])
+    dates = pd.DatetimeIndex(["2024-01-05", "2024-06-07"])
+    before = sec8k_features(old, ["AAA"], dates)
+    after = sec8k_features(pd.concat([old, future]), ["AAA"], dates)
+    pd.testing.assert_frame_equal(before, after)
+
+
+def test_8k_unmapped_ticker_is_neutral_not_dropped():
+    filing = _sec8k([(
+        "AAA", "a", "2024-01-01T13:00:00Z", "2024-01-01", "8.01",
+        "old.htm", False,
+    )])
+    out = sec8k_features(filing, ["AAA", "MISSING"],
+                         pd.DatetimeIndex(["2024-06-07"])).set_index("ticker")
+    assert out.loc["MISSING", "f_evt_8k_7d"] == 0.0
+    assert out.loc["MISSING", "f_evt_earnings_8k_7d"] == 0.0

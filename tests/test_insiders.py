@@ -141,7 +141,7 @@ def _form4_rows(rows):
     return df
 
 
-def test_insider_features_pit_filed_equal_t_counts_filed_after_t_does_not():
+def test_insider_features_date_only_filing_is_available_next_day():
     dv = _dollar_volume()
     t = pd.Timestamp("2023-06-01")
     form4 = _form4_rows([
@@ -150,7 +150,11 @@ def test_insider_features_pit_filed_equal_t_counts_filed_after_t_does_not():
     ])
     feats = insider_features(form4, pd.DatetimeIndex([t]), dv)
     row = feats[(feats.date == t) & (feats.ticker == "AAA")].iloc[0]
-    assert np.isclose(row["f_insider_net_13w"], 1000.0 / dv.loc[t, "AAA"])
+    assert row["f_insider_net_13w"] == 0.0
+    next_day = t + pd.Timedelta(days=1)
+    visible = insider_features(form4, pd.DatetimeIndex([next_day]), dv)
+    visible_row = visible[(visible.date == next_day) & (visible.ticker == "AAA")].iloc[0]
+    assert np.isclose(visible_row["f_insider_net_13w"], 1000.0 / dv.loc[next_day, "AAA"])
 
 
 def test_insider_net_13w_hand_built_buys_and_sells():
@@ -186,7 +190,7 @@ def test_evt_insider_buy_2w_on_at_10_trading_days_off_at_11():
     cal = dv.index
     F = cal[50]
     form4 = _form4_rows([("AAA", F, F, "P", 100.0, 1000.0)])
-    t_on, t_off = cal[60], cal[61]  # F + 10 and F + 11 trading days
+    t_on, t_off = cal[61], cal[62]  # conservative next-day availability shifts the window
     feats = insider_features(form4, pd.DatetimeIndex([t_on, t_off]), dv)
     row_on = feats[(feats.date == t_on) & (feats.ticker == "AAA")].iloc[0]
     row_off = feats[(feats.date == t_off) & (feats.ticker == "AAA")].iloc[0]

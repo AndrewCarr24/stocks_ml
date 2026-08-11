@@ -61,6 +61,20 @@ def test_asset_growth_from_consecutive_annuals():
     assert np.isclose(out.iloc[0]["f_asset_growth"], 1000.0 / 800.0 - 1.0)
 
 
+def test_asset_growth_waits_until_both_periods_are_filed():
+    edgar = _edgar()
+    prior = (edgar["concept"].eq("assets") & edgar["end"].eq(pd.Timestamp("2021-12-31")))
+    edgar.loc[prior, "filed"] = pd.Timestamp("2023-04-01")
+    assert np.isnan(fundamental_features(edgar, _base("2023-03-01")).iloc[0]["f_asset_growth"])
+    assert np.isclose(fundamental_features(edgar, _base("2023-04-03")).iloc[0]["f_asset_growth"],
+                      1000.0 / 800.0 - 1.0)
+
+
+def test_date_only_filing_is_not_visible_at_same_day_close():
+    assert fundamental_features(_edgar(), _base("2023-02-15")).iloc[0][
+        ["f_earnings_yield", "f_roe"]].isna().all()
+
+
 def test_missing_ticker_yields_nans():
     base = pd.DataFrame({"date": [pd.Timestamp("2023-03-01")], "ticker": ["ZZZ"], "close": [5.0]})
     out = fundamental_features(_edgar(), base)

@@ -4,7 +4,7 @@ import pandas as pd
 from stocks_ml.backtest.simulator import run_backtest
 from stocks_ml.backtest.strategies import EqualWeightTopK
 from stocks_ml.data.store import DataStore
-from stocks_ml.features.panel import build_panel, feature_cols
+from stocks_ml.features.panel import all_feature_cols, build_panel
 from stocks_ml.models.candidates import MomentumRank
 
 CUTOFF = pd.Timestamp("2022-06-30")
@@ -26,7 +26,9 @@ def _corrupt_store(store, tmp_path, factor=3.0):
 def test_features_before_cutoff_unaffected_by_future(synthetic_store, tiny_cfg, tmp_path):
     panel_a = build_panel(synthetic_store, tiny_cfg)
     panel_b = build_panel(_corrupt_store(synthetic_store, tmp_path), tiny_cfg)
-    fcols = feature_cols(panel_a)
+    # Include research-only columns: rejection from the production model matrix
+    # must not exempt a generated feature from the no-lookahead contract.
+    fcols = all_feature_cols(panel_a)
     a = panel_a[panel_a.date <= CUTOFF].set_index(["date", "ticker"])[fcols].sort_index()
     b = panel_b[panel_b.date <= CUTOFF].set_index(["date", "ticker"])[fcols].sort_index()
     pd.testing.assert_frame_equal(a, b, check_exact=False, rtol=1e-10)

@@ -9,6 +9,7 @@ eval_start: "2015-03-01"   # CV TEST folds start here (drops the 2012-15 fold wh
                            # feature data caused degenerate fits); training still uses 2005+
 holdout_years: 2           # most recent years excluded from champion selection folds
 n_cv_folds: 4
+cv_train_years: 2           # fixed trailing calendar years used to fit each CV fold
 train_sample_rows: null    # optional cap on training rows (most recent kept); null = all
 top_k: 8
 vol_target: 0.15           # annualized portfolio vol cap (VolScaledTopK)
@@ -26,7 +27,9 @@ fred_series:               # series_id: publication lag in calendar days
   DTB3: 1
   ICSA: 5
   CPIAUCSL: 14
-  FEDFUNDS: 1
+  # Monthly average dated at the first of the observation month. A one-day lag
+  # leaked the rest of that month; 35 days makes it available only next month.
+  FEDFUNDS: 35
   UNRATE: 7
   UMCSENT: 14
   DTWEXBGS: 3

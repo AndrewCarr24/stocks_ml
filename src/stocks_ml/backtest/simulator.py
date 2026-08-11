@@ -7,8 +7,10 @@ from sklearn.base import clone
 
 from stocks_ml.backtest.strategies import RiskState
 from stocks_ml.features.panel import feature_cols
+from stocks_ml.models.candidates import dated_features
 
 MIN_TRAIN_ROWS = 50  # low floor: one real week has ~500 rows; small value keeps synthetic tests tradeable
+MIN_TRAIN_WEEKS = 12  # enough complete dates for a purged time-tail stopping split
 
 
 @dataclass
@@ -59,11 +61,13 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
     for i, t in enumerate(rdates):
         need_fit = model is None or (t - last_fit).days >= cfg.retrain_weeks * 7
         if need_fit:
-            train = labeled[labeled["date"] <= t - pd.Timedelta(days=cfg.purge_days)]
+            train_end = t - pd.Timedelta(days=cfg.purge_days)
+            train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
+            train = labeled[labeled["date"].between(train_start, train_end)]
             if cfg.train_sample_rows:
                 train = train.sort_values("date").tail(cfg.train_sample_rows)
-            if len(train) >= MIN_TRAIN_ROWS:
-                model = clone(estimator).fit(train[fcols], train["label"])
+            if len(train) >= MIN_TRAIN_ROWS and train["date"].nunique() >= MIN_TRAIN_WEEKS:
+                model = clone(estimator).fit(dated_features(train, fcols), train["label"])
                 last_fit, n_fits = t, n_fits + 1
         if model is None:
             continue
@@ -91,6 +95,11 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         opens = open_w.loc[exec_day]
         tradable = {tk: w for tk, w in weights.items() if opens.get(tk, 0) > 0}
         port_val = cash + sum(s * opens.get(tk, 0.0) for tk, s in shares.items())
+        # Preserve the actual initial capital observation. Without this point,
+        # metrics rebase the first post-trade mark to $100 and erase the first
+        # transaction cost and first execution-day return.
+        if not navs:
+            navs[t] = port_val
 
         # survivorship-torture hook: a currently-held position that is being
         # liquidated this rebalance (held but no longer re-targeted) and that

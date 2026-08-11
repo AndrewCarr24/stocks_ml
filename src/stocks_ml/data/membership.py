@@ -25,8 +25,11 @@ def build_membership(current: pd.DataFrame, changes: pd.DataFrame, floor_date: p
     """
     tickers = current["ticker"].map(normalize_symbol)
     sectors = dict(zip(tickers, current["sector"]))
+    added_dates = (dict(zip(tickers, pd.to_datetime(current["date_added"], errors="coerce")))
+                   if "date_added" in current else {})
     open_stints: dict[str, dict] = {
-        t: {"ticker": t, "start_date": pd.NaT, "end_date": pd.NaT} for t in tickers
+        t: {"ticker": t, "start_date": added_dates.get(t, pd.NaT), "end_date": pd.NaT}
+        for t in tickers
     }
     done: list[dict] = []
 
@@ -37,7 +40,8 @@ def build_membership(current: pd.DataFrame, changes: pd.DataFrame, floor_date: p
                 added = normalize_symbol(row["added"])
                 if added in open_stints:
                     stint = open_stints.pop(added)
-                    stint["start_date"] = date
+                    if pd.isna(stint["start_date"]):
+                        stint["start_date"] = date
                     done.append(stint)
         for _, row in group.iterrows():
             if pd.notna(row["removed"]):
@@ -46,7 +50,8 @@ def build_membership(current: pd.DataFrame, changes: pd.DataFrame, floor_date: p
                 open_stints[removed] = {"ticker": removed, "start_date": pd.NaT, "end_date": date}
 
     for stint in open_stints.values():
-        stint["start_date"] = floor_date
+        if pd.isna(stint["start_date"]):
+            stint["start_date"] = floor_date
         done.append(stint)
 
     mem = pd.DataFrame(done)
@@ -64,9 +69,14 @@ def members_asof(membership: pd.DataFrame, date) -> list[str]:
 
 
 def _clean_wiki_tables(current_raw: pd.DataFrame, changes_raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    current_cols = {str(c).lower(): c for c in current_raw.columns}
+    added_key = next((original for lowered, original in current_cols.items()
+                      if "date" in lowered and "added" in lowered), None)
     current = pd.DataFrame({
         "ticker": current_raw["Symbol"].map(normalize_symbol),
         "sector": current_raw["GICS Sector"].astype(str),
+        "date_added": (pd.to_datetime(current_raw[added_key], errors="coerce")
+                       if added_key is not None else pd.NaT),
     })
     cols = changes_raw.columns
     if isinstance(cols, pd.MultiIndex):

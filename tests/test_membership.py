@@ -30,6 +30,15 @@ def test_added_member_gets_start_date():
     assert mem[mem.ticker == "BBB"].iloc[0].start_date == pd.Timestamp("2015-06-01")
 
 
+def test_current_table_date_added_is_authoritative_for_active_stint():
+    current = pd.DataFrame({"ticker": ["AAA", "NEW"], "sector": ["Tech", "Energy"],
+                            "date_added": ["1957-03-04", "2019-06-07"]})
+    changes = _changes([("2019-06-11", "NEW", "OLD")])
+    mem = build_membership(current, changes, FLOOR)
+    assert mem[(mem.ticker == "AAA") & mem.end_date.isna()].iloc[0].start_date == pd.Timestamp("1957-03-04")
+    assert mem[(mem.ticker == "NEW") & mem.end_date.isna()].iloc[0].start_date == pd.Timestamp("2019-06-07")
+
+
 def test_removed_member_gets_closed_stint():
     current = pd.DataFrame({"ticker": ["AAA"], "sector": ["Tech"]})
     changes = _changes([("2018-03-05", "AAA", "OLD")])
@@ -69,7 +78,8 @@ def test_same_date_add_and_remove_in_separate_rows_is_order_independent():
 def test_clean_wiki_tables_real_structure():
     from stocks_ml.data.membership import _clean_wiki_tables
 
-    current_raw = pd.DataFrame({"Symbol": ["AAPL", "BRK.B"], "GICS Sector": ["Tech", "Financials"]})
+    current_raw = pd.DataFrame({"Symbol": ["AAPL", "BRK.B"], "GICS Sector": ["Tech", "Financials"],
+                                "Date added": ["1982-11-30", "2010-02-16"]})
     cols = pd.MultiIndex.from_tuples([
         ("Effective Date", "Effective Date"), ("Added", "Ticker"), ("Added", "Security"),
         ("Removed", "Ticker"), ("Removed", "Security"), ("Reason", "Reason"),
@@ -78,6 +88,7 @@ def test_clean_wiki_tables_real_structure():
         [["June 30, 2025", "NEWCO", "New Co", "OLDCO", "Old Co", "Index change"]], columns=cols)
     current, changes = _clean_wiki_tables(current_raw, changes_raw)
     assert list(current.ticker) == ["AAPL", "BRK-B"]
+    assert list(current.date_added) == [pd.Timestamp("1982-11-30"), pd.Timestamp("2010-02-16")]
     assert changes.iloc[0]["added"] == "NEWCO"
     assert changes.iloc[0]["removed"] == "OLDCO"
     assert changes.iloc[0]["date"] == pd.Timestamp("2025-06-30")

@@ -7,6 +7,7 @@ from stocks_ml.backtest.strategies import RiskState, make_strategies
 from stocks_ml.features.panel import feature_cols
 from stocks_ml.live.ledger import latest_closes
 from stocks_ml.models.champion import load_champion
+from stocks_ml.models.candidates import dated_features
 
 
 def replay_guard_state(nav_history, dd_derisk: float, dd_full: float) -> bool:
@@ -29,9 +30,12 @@ def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list
     champ_name, estimator = load_champion(models_dir)
 
     labeled = panel[panel["label"].notna()]
-    model = clone(estimator).fit(labeled[fcols], labeled["label"])
-
     latest = panel["date"].max()
+    train_end = latest - pd.Timedelta(days=cfg.purge_days)
+    train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
+    labeled = labeled[labeled["date"].between(train_start, train_end)]
+    model = clone(estimator).fit(dated_features(labeled, fcols), labeled["label"])
+
     rows = panel[panel["date"] == latest]
     preds = pd.Series(model.predict(rows[fcols]), index=rows["ticker"].values)
     vols = pd.Series(rows["aux_vol"].values, index=rows["ticker"].values)

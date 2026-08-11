@@ -21,6 +21,7 @@ def cmd_ingest(args, cfg):
     from stocks_ml.data.insiders import ingest_form4
     from stocks_ml.data.membership import ingest_membership, members_asof
     from stocks_ml.data.prices import all_tickers_ever, ingest_prices
+    from stocks_ml.data.sec8k import ingest_sec8k
     from stocks_ml.data.shortint import ingest_shortint
     from stocks_ml.features.panel import build_panel
 
@@ -35,6 +36,8 @@ def cmd_ingest(args, cfg):
     print(f"fred: {ingest_fred(store, cfg.fred_series, cfg.user_agent)}")
     current = members_asof(mem, pd.Timestamp.today())
     print(f"edgar: {ingest_edgar(store, current, cfg.edgar_concepts, cfg.user_agent)}")
+    sec_tickers = [ticker for ticker in all_tickers_ever(mem) if ticker != "SPY"]
+    print(f"sec8k: {ingest_sec8k(store, sec_tickers, cfg.user_agent)}")
     print(f"form4: {ingest_form4(store, cfg.user_agent)}")
     print(f"shortint: {ingest_shortint(store, cfg.user_agent)}")
     panel = build_panel(store, cfg)
@@ -58,12 +61,11 @@ def cmd_tune(args, cfg):
 
         n = args.trials if args.trials is not None else _DEFAULT_TRIALS[args.family]
         result = tune_optuna(_store(cfg), cfg, family=args.family, n_trials=n)
-        print(f"wrote models/optuna_{args.family}.md"
-              + (f" and models/{args.family}_optuna.json" if result["adopted"] else ""))
-        print(f"best CV IC {result['best_cv_ic']:.4f} | "
-              f"candidate holdout IC {result['candidate_holdout_ic']:.4f} | "
-              f"incumbent holdout IC {result['incumbent_holdout_ic']:.4f} | "
-              f"{'ADOPTED' if result['adopted'] else 'rejected'}")
+        status = "SELECTED" if result["selected"] else "no eligible trial"
+        artifact = (f" and models/{args.family}_optuna.json"
+                if result["selected"] else "")
+        print(f"wrote models/optuna_{args.family}.md{artifact}; "
+            f"best CV IC {result['best_cv_ic']:.4f} | {status}")
         return
     from stocks_ml.models.tuning import tune_model
 
@@ -129,7 +131,7 @@ def cmd_ledger(args, cfg):
             print(f"already applied {tpath.name}; skipping (use --force to re-apply)")
             return
         trades = [(t, float(d), float(p)) for t, d, p in json.loads(tpath.read_text())]
-        ledger.apply_trades(trades, date.today())
+        ledger.apply_trades(trades, date.today(), cost_bps=cfg.cost_bps if cfg else 0.0)
         ledger.applied_files.append(tpath.name)
         ledger.save(path)
         print(f"applied {len(trades)} trades from {tpath}")
@@ -154,8 +156,7 @@ def main():
     p_tune.add_argument("--samples", type=int, default=None,
                         help="random-search configs (default: per-family — xgb/lgbm 40, catboost/enet 12)")
     p_tune.add_argument("--optuna", action="store_true",
-                        help="use Optuna TPE search, adopting the winner only if it beats "
-                             "the random-search config on the untouched holdout")
+                        help="use Optuna TPE search selected only on pre-holdout CV")
     p_tune.add_argument("--trials", type=int, default=None,
                         help="Optuna trials (default: per-family — xgb/lgbm 100, catboost 60, enet 40)")
     sub.add_parser("backtest", help="run all strategies and write the report")

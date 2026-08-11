@@ -107,6 +107,9 @@ def _full_params(hyperparams: dict, family: str = "xgb") -> dict:
     defaults = _FAMILY_SPEC[family][0]()
     common = {"eval_fraction": defaults.eval_fraction,
               "early_stopping_rounds": defaults.early_stopping_rounds}
+    if family == "xgb":
+        common["early_stop_purge_days"] = defaults.early_stop_purge_days
+        common["early_stop_metric"] = defaults.early_stop_metric
     if family in ("xgb", "lgbm"):
         return {**hyperparams, "n_jobs": -1, "random_state": 0, **common}
     return {**hyperparams, "random_state": 0, **common}  # catboost
@@ -131,6 +134,11 @@ def prepare_tuning_data(store, cfg):
     panel = store.read("panel")
     fcols = feature_cols(panel)
     labeled = panel[panel["label"].notna()]
+    from stocks_ml.models.champion import holdout_start_date
+    all_dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    holdout_start = holdout_start_date(all_dates, cfg.holdout_years)
+    if holdout_start is not None and "label_end_date" in labeled:
+        labeled = labeled[labeled["label_end_date"] < holdout_start]
     # Mirrors run_training's truncation (champion.py) exactly — must stay in sync.
     if cfg.train_sample_rows:
         labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
@@ -140,17 +148,19 @@ def prepare_tuning_data(store, cfg):
         "chronological order — sort the panel by date if this fires"
     )
     dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
-    # SAME split construction as run_training — holdout stays untouched.
-    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52, cfg.eval_start)
+    # SAME calendar-year holdout construction as run_training.
+    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days,
+                         0, cfg.eval_start, cfg.cv_train_years,
+                         holdout_start=holdout_start)
     return labeled, fcols, splits
 
 
 def select_best(results: pd.DataFrame):
-    """Best config by mean IC among ELIGIBLE (all-CV-folds-valid) rows — mirrors
+    """Best config by mean IC among full-calendar eligible rows — mirrors
     champion.py's tournament eligibility gate (`_eligible`) so tuning never
     selects a config the tournament's champion selection would then reject.
-    A config with any NaN fold IC (a degenerate/constant predictor in that
-    fold) silently drops those weeks from mean_ic, overstating its skill —
+    A config with any missing or invalid weekly IC silently drops those weeks
+    from mean_ic, overstating its skill —
     exactly the reasoning behind champion.py's `_eligible`.
 
     Returns None if no config is eligible (results must have an "eligible"
@@ -167,10 +177,9 @@ def _build_tuning_report(ranked: pd.DataFrame, best, date_min, date_max, n_rows:
              "Selection is by mean weekly rank IC on the pre-holdout purged walk-forward "
              "CV folds (plain CV selection) — the untouched holdout is never used for "
              "tuning and remains the honest test.",
-             "A config is only eligible for selection if every CV fold produced a "
-             "non-NaN IC (mirrors champion.py's tournament eligibility gate — a NaN "
-             "fold means degenerate/constant predictions in that fold, which would "
-             "otherwise silently drop those weeks and inflate mean_ic).", "",
+             "A config is only eligible if every expected CV week produced a rankable "
+             "IC (mirrors champion.py's tournament gate; missing, non-finite, or "
+             "constant weeks may not silently disappear from mean_ic).", "",
              f"Training window: {pd.Timestamp(date_min).date()} → {pd.Timestamp(date_max).date()} "
              f"({n_rows} labeled rows).", ""]
     if best is None:
@@ -183,14 +192,15 @@ def _build_tuning_report(ranked: pd.DataFrame, best, date_min, date_max, n_rows:
         if row["is_production"]:
             marker += " (production reference)"
         if not row["eligible"]:
-            marker += " (ineligible: degenerate fold)"
+            marker += " (ineligible: incomplete coverage)"
         if best is not None and row["name"] == best["name"]:
             marker += " **← selected**"
         folds = ", ".join(f"{ic:.4f}" for ic in row["fold_ics"])
         mean_ic = row["mean_ic"]
         mean_ic_s = f"{mean_ic:.4f}" if mean_ic == mean_ic else "nan"
         lines.append(f"| {row['name']}{marker} | {mean_ic_s} | {folds} | "
-                     f"{row['n_test_weeks']} | {row['params']} |")
+                 f"{row['n_test_weeks']}/{row['expected_test_weeks']} | "
+                 f"{row['params']} |")
     return "\n".join(lines)
 
 
@@ -219,6 +229,7 @@ def tune_model(store, cfg, family: str = "xgb", n_samples: int = 40,
             "mean_ic": result.mean_ic,
             "fold_ics": result.fold_ics,
             "n_test_weeks": result.n_test_weeks,
+            "expected_test_weeks": result.expected_test_weeks,
             "is_production": i == 0,
             "eligible": _eligible(result),
         })
@@ -232,6 +243,11 @@ def tune_model(store, cfg, family: str = "xgb", n_samples: int = 40,
         (out / f"{family}_tuned.json").write_text(payload)
         if family in _LEGACY_NAMES:
             (out / _LEGACY_NAMES[family][0]).write_text(payload)
+    else:
+        # A failed run must not leave an older recipe looking current.
+        (out / f"{family}_tuned.json").unlink(missing_ok=True)
+        if family in _LEGACY_NAMES:
+            (out / _LEGACY_NAMES[family][0]).unlink(missing_ok=True)
 
     report = _build_tuning_report(ranked, best, labeled["date"].min(),
                                   labeled["date"].max(), len(labeled), family)

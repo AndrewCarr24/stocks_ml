@@ -31,11 +31,11 @@ def filing_features(edgar: pd.DataFrame, prices: pd.DataFrame,
         merged["F"] = pd.NaT
     else:
         filed = filed.copy()
-        filed["filed"] = pd.to_datetime(filed["filed"])
-        filed = (filed.drop_duplicates().sort_values("filed")
-                      .rename(columns={"filed": "F"}))
+        filed["F"] = pd.to_datetime(filed["filed"]).dt.normalize()
+        filed["available"] = filed["F"] + pd.Timedelta(days=1)
+        filed = filed[["ticker", "F", "available"]].drop_duplicates().sort_values("available")
         merged = pd.merge_asof(grid.sort_values("date"), filed,
-                               left_on="date", right_on="F", by="ticker",
+                       left_on="date", right_on="available", by="ticker",
                                direction="backward")
     merged = merged.sort_values(["date", "ticker"]).reset_index(drop=True)
 
@@ -70,4 +70,62 @@ def filing_features(edgar: pd.DataFrame, prices: pd.DataFrame,
     out["f_evt_filed_5d"] = f_evt_filed_5d
     out["f_days_since_filing"] = f_days_since_filing
     out["f_pead"] = f_pead
+    return out
+
+
+def sec8k_features(sec8k: pd.DataFrame, tickers: list[str],
+                   dates: pd.DatetimeIndex) -> pd.DataFrame:
+    """Point-in-time 8-K and earnings-announcement recency features.
+
+    Item 2.02 identifies results-of-operations announcements. To avoid timezone
+    ambiguity and after-close leakage, every filing becomes usable on the calendar
+    day *after* its SEC acceptance timestamp. Amendments are not treated as new
+    earnings announcements. Economic event dates are deliberately unused.
+    """
+    grid = pd.MultiIndex.from_product(
+        [dates, sorted(tickers)], names=["date", "ticker"]
+    ).to_frame(index=False)
+    if sec8k.empty:
+        out = grid.copy()
+        out["f_evt_8k_7d"] = 0.0
+        out["f_evt_earnings_8k_7d"] = 0.0
+        out["f_days_since_earnings_8k"] = np.nan
+        return out
+
+    filings = sec8k.copy()
+    accepted = pd.to_datetime(filings["accepted"], utc=True, errors="coerce")
+    filed = pd.to_datetime(filings["filed"], errors="coerce")
+    # Filing date is a conservative fallback when old SEC fragments omit the
+    # acceptance timestamp; in either case availability starts the next day.
+    accepted_date = accepted.dt.tz_convert(None).dt.normalize()
+    filings["available"] = accepted_date.fillna(filed.dt.normalize()) + pd.Timedelta(days=1)
+    filings["is_earnings"] = (
+        filings["items"].fillna("").str.contains(r"(?:^|,\s*)2\.02(?:,|$)", regex=True)
+        & ~filings["is_amendment"].fillna(False)
+    )
+    filings = filings.dropna(subset=["available"])
+
+    def _last_event(mask: pd.Series, name: str) -> pd.DataFrame:
+        events = (filings.loc[mask, ["ticker", "available"]]
+                         .drop_duplicates()
+                         .sort_values("available")
+                         .rename(columns={"available": name}))
+        if events.empty:
+            merged = grid.copy()
+            merged[name] = pd.NaT
+            return merged
+        return pd.merge_asof(grid.sort_values("date"), events,
+                             left_on="date", right_on=name, by="ticker",
+                             direction="backward").sort_values(["date", "ticker"])
+
+    any_8k = _last_event(pd.Series(True, index=filings.index), "last_8k")
+    earnings = _last_event(filings["is_earnings"], "last_earnings_8k")
+    out = grid.sort_values(["date", "ticker"]).reset_index(drop=True)
+    last_8k = any_8k["last_8k"].reset_index(drop=True)
+    last_earnings = earnings["last_earnings_8k"].reset_index(drop=True)
+    days_8k = (out["date"] - last_8k).dt.days
+    days_earnings = (out["date"] - last_earnings).dt.days
+    out["f_evt_8k_7d"] = days_8k.between(0, 6).astype(float)
+    out["f_evt_earnings_8k_7d"] = days_earnings.between(0, 6).astype(float)
+    out["f_days_since_earnings_8k"] = days_earnings.clip(upper=126).astype(float)
     return out

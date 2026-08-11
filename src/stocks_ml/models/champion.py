@@ -10,38 +10,55 @@ import pandas as pd
 from sklearn.base import clone
 
 from stocks_ml.features.panel import feature_cols
-from stocks_ml.models.candidates import BASELINE_NAMES, AutoMLRegressor, get_candidates
+from stocks_ml.models.candidates import (
+    BASELINE_NAMES, AutoMLRegressor, dated_features, get_candidates,
+)
 from stocks_ml.models.cv import CandidateResult, evaluate_candidate, make_splits
 
 
 def _eligible(r: CandidateResult) -> bool:
-    """Eligible contenders produced rankable (non-NaN IC) predictions in EVERY fold.
+    """Eligible contenders cover every expected fold and test week.
 
-    A NaN fold IC means degenerate (e.g. constant) predictions in that fold; such
-    folds are silently absent from mean_ic, so the mean overstates skill.
+    Missing or constant weeks must make a candidate ineligible rather than
+    silently disappearing from mean IC.
     """
-    return bool(r.fold_ics) and all(ic == ic for ic in r.fold_ics)
+    return (np.isfinite(r.mean_ic)
+            and r.expected_folds > 0
+            and len(r.fold_ics) == r.expected_folds
+            and all(np.isfinite(ic) for ic in r.fold_ics)
+            and r.expected_test_weeks > 0
+            and r.n_test_weeks == r.expected_test_weeks)
 
 
 def select_champion(results: dict[str, CandidateResult], baselines=BASELINE_NAMES) -> str:
     def _ic(r):
         return r.mean_ic if r.mean_ic == r.mean_ic else 0.0  # NaN -> no skill -> 0.0
 
-    baseline_best = max((_ic(results[b]) for b in baselines if b in results), default=0.0)
+    eligible_baselines = {b: results[b] for b in baselines
+                          if b in results and _eligible(results[b])}
+    baseline_best = max((_ic(r) for r in eligible_baselines.values()), default=0.0)
     contenders = {n: r for n, r in results.items()
                   if n not in baselines and _eligible(r)}
     if contenders:
         best = max(contenders.values(), key=lambda r: r.mean_ic if r.mean_ic == r.mean_ic else float("-inf"))
         if best.mean_ic == best.mean_ic and best.mean_ic > baseline_best:
             return best.name
-    return "momentum"
+    if "momentum" in eligible_baselines:
+        return "momentum"
+    if eligible_baselines:
+        return max(eligible_baselines.values(), key=_ic).name
+    raise ValueError("no eligible baseline is available for champion fallback")
 
 
 def holdout_start_date(dates, holdout_years: int):
-    h = holdout_years * 52
-    if h <= 0 or h >= len(dates):
+    dates = pd.DatetimeIndex(dates).sort_values()
+    if holdout_years <= 0 or dates.empty:
         return None
-    return dates[len(dates) - h]
+    cutoff = dates.max() - pd.DateOffset(years=holdout_years)
+    candidates = dates[dates >= cutoff]
+    if candidates.empty or len(candidates) == len(dates):
+        return None
+    return candidates[0]
 
 
 def extract_recipe(name: str, fitted_estimator):
@@ -58,8 +75,10 @@ def _predicts_variation(fitted, panel, fcols) -> bool:
     latest = panel[panel["date"] == panel["date"].max()]
     if len(latest) < 3:
         return True
-    preds = fitted.predict(latest[fcols])
-    return len(np.unique(np.round(preds, 12))) > 1
+    preds = np.asarray(fitted.predict(latest[fcols]), dtype=float)
+    return (len(preds) == len(latest)
+            and np.isfinite(preds).all()
+            and len(np.unique(np.round(preds, 12))) > 1)
 
 
 def run_training(store, cfg, candidates: dict | None = None, out_dir="models") -> dict:
@@ -68,28 +87,40 @@ def run_training(store, cfg, candidates: dict | None = None, out_dir="models") -
     panel = store.read("panel")
     fcols = feature_cols(panel)
     labeled = panel[panel["label"].notna()]
+
+    all_dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    holdout_start = holdout_start_date(all_dates, cfg.holdout_years)
+    if holdout_start is not None and "label_end_date" in labeled:
+        labeled = labeled[labeled["label_end_date"] < holdout_start]
     if cfg.train_sample_rows:
         labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
-
     dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
-    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days, cfg.holdout_years * 52, cfg.eval_start)
+    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days,
+                         0, cfg.eval_start, cfg.cv_train_years,
+                         holdout_start=holdout_start)
 
     candidates = candidates or get_candidates(cfg)
     results = {name: evaluate_candidate(name, est, labeled, splits, fcols)
                for name, est in candidates.items()}
 
-    holdout_start = holdout_start_date(dates, cfg.holdout_years)
     fit_df = labeled if holdout_start is None else labeled[labeled["date"] < holdout_start]
+    fit_end = fit_df["date"].max()
+    fit_df = fit_df[fit_df["date"] >= fit_end - pd.DateOffset(years=cfg.cv_train_years)]
 
-    degenerate_folds = {n: sum(1 for ic in r.fold_ics if ic != ic)
-                        for n, r in results.items()
-                        if n not in BASELINE_NAMES and not _eligible(r)}
+    ineligible_coverage = {
+        n: (sum(1 for ic in r.fold_ics if not np.isfinite(ic)),
+            r.n_test_weeks, r.expected_test_weeks)
+        for n, r in results.items()
+        if n not in BASELINE_NAMES and not _eligible(r)
+    }
     pool = dict(results)
     final_fit_excluded = []
     while True:
         champ = select_champion(pool)
-        fitted = clone(candidates[champ]).fit(fit_df[fcols], fit_df["label"])
-        if _predicts_variation(fitted, panel, fcols) or champ == "momentum":
+        fitted = clone(candidates[champ]).fit(dated_features(fit_df, fcols), fit_df["label"])
+        # Never let holdout covariates influence selection. Rankability is
+        # checked on the latest pre-holdout fit week only.
+        if _predicts_variation(fitted, fit_df, fcols) or champ == "momentum":
             break
         final_fit_excluded.append(champ)
         pool.pop(champ, None)
@@ -105,12 +136,14 @@ def run_training(store, cfg, candidates: dict | None = None, out_dir="models") -
     for name, r in sorted(results.items(), key=lambda kv: -(kv[1].mean_ic if kv[1].mean_ic == kv[1].mean_ic else -9e9)):
         marker = " **← champion**" if name == champ else ""
         folds = ", ".join(f"{ic:.4f}" for ic in r.fold_ics)
-        lines.append(f"| {name}{marker} | {r.mean_ic:.4f} | {folds} | {r.n_test_weeks} |")
+        lines.append(f"| {name}{marker} | {r.mean_ic:.4f} | {folds} | "
+                 f"{r.n_test_weeks}/{r.expected_test_weeks} |")
     lines.append("")
     lines.append(f"Baselines: {', '.join(BASELINE_NAMES)}. "
                  "A champion must beat every baseline or selection falls back to momentum.")
-    for name, n_bad in degenerate_folds.items():
-        lines.append(f"excluded (degenerate predictions in {n_bad} folds): {name}")
+    for name, (n_bad, valid_weeks, expected_weeks) in ineligible_coverage.items():
+        lines.append(f"excluded (invalid predictions in {n_bad} folds; coverage "
+                     f"{valid_weeks}/{expected_weeks} weeks): {name}")
     for name in final_fit_excluded:
         lines.append(f"{name} excluded: final fit predicts a constant")
     (out / "selection.md").write_text("\n".join(lines))

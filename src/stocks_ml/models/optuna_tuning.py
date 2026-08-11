@@ -1,24 +1,18 @@
-"""Optuna TPE hyperparameter tuning with holdout-judged adoption.
+"""Optuna TPE hyperparameter tuning on purged walk-forward CV only.
 
-Optuna optimizes each family's hyperparameters on the CV folds (the same purged
-walk-forward folds the tournament uses), but a candidate is ADOPTED only if it
-also improves on the untouched holdout tail — the weeks make_splits excludes from
-every fold. This keeps Optuna's harder, adaptive search from winning purely by
-overfitting the tuning folds (a worse winner's curse than random search).
+The rolling holdout is never read here. Hyperparameters are selected solely by
+mean weekly rank IC across the same complete CV calendar used by the tournament.
 """
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
-import numpy as np
 import optuna
-import pandas as pd
-from sklearn.base import clone
 
-from stocks_ml.features.panel import feature_cols
-from stocks_ml.models.champion import holdout_start_date
-from stocks_ml.models.cv import evaluate_candidate, weekly_rank_ic
+from stocks_ml.models.champion import _eligible
+from stocks_ml.models.cv import evaluate_candidate
 from stocks_ml.models.tuning import (
     _FAMILY_SPEC, _full_params, _make_estimator, prepare_tuning_data,
 )
@@ -41,7 +35,9 @@ def suggest_params(trial, family: str) -> dict:
         return {
             "max_depth": trial.suggest_int("max_depth", 2, 8),
             "learning_rate": trial.suggest_float("learning_rate", 5e-3, 3e-1, log=True),
-            "n_estimators": 2000,
+            # Safety ceiling only: the time-ordered training tail chooses the
+            # effective tree count through early stopping.
+            "n_estimators": 5000,
             "min_child_weight": trial.suggest_int("min_child_weight", 5, 200),
             "reg_alpha": _suggest_zeroable(trial, "reg_alpha", 1e-4, 10.0),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-2, 50.0, log=True),
@@ -75,49 +71,9 @@ def suggest_params(trial, family: str) -> dict:
     raise ValueError(f"unknown family {family!r}")
 
 
-def holdout_ic(store, cfg, estimator, fcols=None) -> float:
-    """Mean weekly rank IC of `estimator` on the holdout tail — the weeks
-    make_splits excludes from every CV fold. Trains on all pre-holdout labeled
-    rows, predicts the holdout weeks. nan if there is no holdout (holdout_years==0).
-
-    This tail is touched ONLY here, never during Optuna's search."""
-    # Deliberately re-derives `labeled` rather than reusing prepare_tuning_data's:
-    # the holdout fit trains on the FULL pre-holdout set, not just the CV-fold rows.
-    # Do not "DRY" this into the CV-fold frame — that would narrow the training set.
-    panel = store.read("panel")
-    fcols = fcols or feature_cols(panel)
-    labeled = panel[panel["label"].notna()]
-    if cfg.train_sample_rows:
-        labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
-    dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
-    hstart = holdout_start_date(dates, cfg.holdout_years)
-    if hstart is None:
-        return float("nan")
-    # Same boundary as champion.py's final fit: train strictly before the holdout.
-    train = labeled[labeled["date"] < hstart]
-    test = labeled[labeled["date"] >= hstart]
-    if train.empty or test.empty:
-        return float("nan")
-    model = clone(estimator).fit(train[fcols], train["label"])
-    scored = test[["date", "label"]].copy()
-    scored["pred"] = model.predict(test[fcols])
-    return float(weekly_rank_ic(scored).mean())
-
-
-def _incumbent_holdout_ic(store, cfg, family, out, fcols) -> float:
-    """Holdout IC of the current random-search config, if one exists, else nan."""
-    path = out / f"{family}_tuned.json"
-    if not path.exists():
-        return float("nan")
-    est = _FAMILY_SPEC[family][0](**json.loads(path.read_text()))
-    return holdout_ic(store, cfg, est, fcols)
-
-
 def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
                 seed: int = 0) -> dict:
-    """TPE search on the CV folds, adopting the winner only if it also beats the
-    random-search incumbent on the untouched holdout. Writes {family}_optuna.json
-    (only on adoption) and optuna_{family}.md (always). Returns a summary dict."""
+    """Select and persist the best full-calendar-eligible TPE trial by CV IC."""
     if family not in _FAMILY_SPEC:
         raise ValueError(f"unknown family {family!r}; valid: {sorted(_FAMILY_SPEC)}")
     out = Path(out_dir)
@@ -128,9 +84,16 @@ def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
         params = suggest_params(trial, family)
         est = _make_estimator(family, params)
         result = evaluate_candidate("optuna", est, labeled, splits, fcols)
+        trial.set_user_attr("mean_ic", result.mean_ic if math.isfinite(result.mean_ic) else None)
+        trial.set_user_attr("fold_ics", [x if math.isfinite(x) else None
+                           for x in result.fold_ics])
+        trial.set_user_attr("n_test_weeks", result.n_test_weeks)
+        trial.set_user_attr("expected_test_weeks", result.expected_test_weeks)
+        trial.set_user_attr("fold_diagnostics", result.fold_diagnostics or [])
+        trial.set_user_attr("eligible", _eligible(result))
         # Mirror the tournament's all-folds-valid gate: steer Optuna away from
         # degenerate regions (a NaN fold would otherwise inflate mean_ic).
-        if not result.fold_ics or any(ic != ic for ic in result.fold_ics):
+        if not _eligible(result):
             return DEGENERATE_SENTINEL
         return result.mean_ic
 
@@ -138,36 +101,80 @@ def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
                                 sampler=optuna.samplers.TPESampler(seed=seed))
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
 
+    trials = []
+    best_so_far = float("-inf")
+    for t in study.trials:
+        value = float(t.value) if t.value is not None else None
+        if value is not None:
+            best_so_far = max(best_so_far, value)
+        trials.append({
+            "number": t.number,
+            "state": t.state.name,
+            "value": value,
+            "eligible": bool(t.user_attrs.get("eligible", False)),
+            "mean_ic": t.user_attrs.get("mean_ic"),
+            "fold_ics": t.user_attrs.get("fold_ics", []),
+            "n_test_weeks": t.user_attrs.get("n_test_weeks"),
+            "expected_test_weeks": t.user_attrs.get("expected_test_weeks"),
+            "fold_diagnostics": t.user_attrs.get("fold_diagnostics", []),
+            "params": t.params,
+            "best_so_far": (best_so_far if math.isfinite(best_so_far) else None),
+        })
+    audit = {
+        "family": family,
+        "seed": seed,
+        "n_trials_requested": n_trials,
+        "n_trials_recorded": len(trials),
+        "n_eligible": sum(t["eligible"] for t in trials),
+        "n_ineligible": sum(not t["eligible"] for t in trials),
+        "n_complete": sum(t["state"] == "COMPLETE" for t in trials),
+        "n_failed": sum(t["state"] == "FAIL" for t in trials),
+        "n_pruned": sum(t["state"] == "PRUNED" for t in trials),
+        "trials": trials,
+    }
+    (out / f"optuna_{family}_trials.json").write_text(json.dumps(audit, indent=2))
+
     best_cv = study.best_value
     best_params = suggest_params(optuna.trial.FixedTrial(study.best_params), family)
     full = _full_params(best_params, family)
-    cand_holdout = holdout_ic(store, cfg, _FAMILY_SPEC[family][0](**full), fcols)
-    incumbent_holdout = _incumbent_holdout_ic(store, cfg, family, out, fcols)
-
-    # Adopt only when the honest test agrees (or there is no incumbent to beat).
-    adopt = (cand_holdout == cand_holdout) and (
-        incumbent_holdout != incumbent_holdout or cand_holdout >= incumbent_holdout)
-    if adopt:
+    eligible = best_cv > DEGENERATE_SENTINEL
+    if eligible:
         (out / f"{family}_optuna.json").write_text(json.dumps(full, indent=2))
+    else:
+        (out / f"{family}_optuna.json").unlink(missing_ok=True)
 
-    verdict = ("adopted: holdout improved" if adopt
-               else "rejected: holdout did not improve — random-search config retained")
+    verdict = ("selected by CV" if eligible
+               else "no eligible trial — no Optuna config written")
+    top = sorted((t for t in trials if t["eligible"]),
+                 key=lambda t: t["value"], reverse=True)[:10]
+    top_lines = ["| trial | mean IC | fold ICs | coverage | best iterations |",
+                 "|---:|---:|---|---:|---|"]
+    for t in top:
+        folds = ", ".join(f"{x:.4f}" for x in t["fold_ics"])
+        iterations = ", ".join(str(d["best_iteration"])
+                               for d in t["fold_diagnostics"]
+                               if "best_iteration" in d)
+        top_lines.append(f"| {t['number']} | {t['value']:.4f} | {folds} | "
+                         f"{t['n_test_weeks']}/{t['expected_test_weeks']} | "
+                         f"{iterations or 'n/a'} |")
     (out / f"optuna_{family}.md").write_text(
         f"# {family} Optuna tuning\n\n"
-        f"TPE search, {n_trials} trials, seed {seed}. Optimized on CV folds; the "
-        f"winner is adopted only if it also beats the random-search config on the "
-        f"untouched holdout.\n\n"
+        f"TPE search, {n_trials} trials, seed {seed}. Selection uses only mean "
+        f"weekly rank IC on the pre-holdout purged walk-forward CV folds. The "
+        f"holdout is never read by tuning.\n\n"
         f"| metric | value |\n|---|---|\n"
         f"| best CV mean IC | {best_cv:.4f} |\n"
-        f"| best config holdout IC | {_fmt(cand_holdout)} |\n"
-        f"| incumbent (random-search) holdout IC | {_fmt(incumbent_holdout)} |\n"
-        f"| trials | {n_trials} |\n\n"
+        f"| trials | {n_trials} |\n"
+        f"| eligible | {audit['n_eligible']} |\n"
+        f"| ineligible | {audit['n_ineligible']} |\n"
+        f"| failed | {audit['n_failed']} |\n"
+        f"| pruned | {audit['n_pruned']} |\n\n"
         f"**Verdict: {verdict}.**\n\n"
-        f"Best config: `{full}`\n")
+        f"Best config: `{full}`\n\n"
+        f"## Top eligible trials\n\n" + "\n".join(top_lines) + "\n\n"
+        f"Complete trial details and the best-so-far curve are in "
+        f"`optuna_{family}_trials.json`.\n")
 
-    return {"family": family, "best_cv_ic": best_cv, "candidate_holdout_ic": cand_holdout,
-            "incumbent_holdout_ic": incumbent_holdout, "adopted": adopt, "n_trials": n_trials}
-
-
-def _fmt(x: float) -> str:
-    return f"{x:.4f}" if x == x else "nan"
+    return {"family": family, "best_cv_ic": best_cv, "selected": eligible,
+            "n_trials": n_trials, "n_eligible": audit["n_eligible"],
+            "n_ineligible": audit["n_ineligible"]}

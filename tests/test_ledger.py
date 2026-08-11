@@ -59,6 +59,19 @@ def test_apply_trades_sells_fund_buys_and_overdraft_raises(tmp_path):
         led.apply_trades([("CCC", 5.0, 10.0)], "2026-07-08")      # $50 buy with $0 cash
 
 
+def test_apply_trades_deducts_one_way_costs(tmp_path):
+    led = Ledger(cash=100.0)
+    led.apply_trades([("AAA", 9.9, 10.0)], "2026-07-06", cost_bps=10.0)
+    assert led.cash == pytest.approx(100.0 - 99.0 - 0.099)
+    assert led.trades[-1][-1] == pytest.approx(0.099)
+
+
+def test_ledger_rejects_nonfinite_trade(tmp_path):
+    led = Ledger(cash=100.0)
+    with pytest.raises(ValueError, match="finite"):
+        led.apply_trades([("AAA", float("nan"), 10.0)], "2026-07-06")
+
+
 def test_latest_closes_uses_last_available_price():
     prices = pd.DataFrame({
         "date": pd.to_datetime(["2026-07-01", "2026-07-02", "2026-07-01"]),

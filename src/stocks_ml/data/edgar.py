@@ -77,7 +77,9 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
         if fetch_facts_fn is None:
             time.sleep(0.12)  # SEC rate limit: 10 req/s
 
-    new = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=EDGAR_COLS)
+    nonempty = [frame for frame in frames if not frame.empty]
+    new = (pd.concat(nonempty, ignore_index=True) if nonempty
+           else pd.DataFrame(columns=EDGAR_COLS))
     parts = [f for f in (existing, new) if f is not None and not f.empty]
     df = pd.concat(parts, ignore_index=True) if parts else new
     if not df.empty:

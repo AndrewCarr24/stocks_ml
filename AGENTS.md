@@ -4,27 +4,28 @@ ML system that forecasts S&P 500 stock returns weekly, backtests investment
 strategies, and runs a live paper-trading account. Built entirely on free data.
 The owner's goal: turn $100 into more, without ever blowing up the account.
 
-## Current state (2026-07-20)
+## Current state (2026-07-21)
 
-- **Champion model:** tuned XGBoost (`models/champion.json`, mean weekly rank
-  IC 0.0241 across 4 CV folds, all positive, full 488-week coverage).
+- **Champion model:** Optuna-tuned XGBoost (`models/champion.json`, mean weekly
+  rank IC 0.0198 across 4 CV folds, all positive, full 488-week coverage).
+  Optuna-tuned ElasticNet is second at 0.0190, also positive in all folds.
 - **Evaluation design (owner-specified, do not change casually):** 4 walk-forward
   CV folds testing 2015-03 → 2024-07 (`eval_start: 2015-03-01`, `n_cv_folds: 4`
-  in config). Training always reaches back to 2005. The last 2 years
+  in config). Each fold fits one frozen model on the immediately preceding
+  2-calendar-year window (`cv_train_years: 2`) with a 10-day purge; exact dates
+  are in `reports/rolling_cv.md`. The last 2 years
   (2024-07 → now) are a **holdout** never used for tuning or selection.
 - **Live:** GitHub Actions runs the weekly cycle every Saturday 13:00 UTC
   (signals + paper ledger, committed back to the repo) and a monthly retrain on
-  the 1st. Live strategy is `vol_scaled` (config `live_strategy`); there is an
-  open, evidence-backed recommendation to switch to `kelly` — see
-  `reports/backtest.md` (kelly: $100→$1,216 since 2005, best deflated Sharpe).
-- Latest backtest: equal_topk ≈ market with 76% max drawdown; kelly beats
-  market modestly with half that pain; vol_scaled barely earns but rarely loses.
+  the 1st. Live strategy is `vol_scaled` (config `live_strategy`).
+- Latest corrected backtest: equal_topk $100→$1,142 with 72% max drawdown;
+  kelly $100→$506; market $100→$935; vol_scaled $100→$114 with 26% max drawdown.
 
 ## Commands
 
 ```bash
 uv sync                      # install (Python 3.12; automl_tool needs <3.13)
-uv run pytest                # 201 tests; MUST stay green with 0 warnings
+uv run pytest                # 231 tests; MUST stay green with 0 warnings
 uv run stocks-ml ingest      # fetch all data + rebuild panel (idempotent)
 uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
 uv run stocks-ml train       # champion tournament -> models/selection.md
@@ -34,8 +35,11 @@ uv run stocks-ml ledger init|apply|mark|show
 uv run stocks-ml torture     # survivorship stress test
 ```
 
-Always `git pull` before local work — CI commits artifacts (signals/, ledger.json,
-models/, reports/) on its own schedule.
+CI commits artifacts (signals/, ledger.json, models/, reports/) on its own
+schedule, so the repository may need to be synchronized before local work.
+However, do not run `git` commands unless the owner explicitly requests them;
+when synchronization cannot be confirmed, work from the current checkout and
+state that limitation in the final summary.
 
 ## Architecture
 
@@ -43,13 +47,13 @@ models/, reports/) on its own schedule.
 src/stocks_ml/
   data/       store.py (parquet DataStore + manifest), prices.py (yfinance,
               corrupt-series filter), membership.py (point-in-time S&P 500 from
-              Wikipedia), fred.py (macro, publication-lagged), edgar.py
+              Wikipedia), fred.py (macro; only audited T10Y2Y/FEDFUNDS admitted), edgar.py
               (fundamentals, filing-dated), insiders.py (Form 4), shortint.py (FINRA)
   features/   panel.py (build_panel = the one place features/labels are made),
               fundamentals.py, events.py, insiders.py, ranking.py
   models/     cv.py (purged walk-forward CV, weekly rank IC), candidates.py
               (model zoo + wrappers), tuning.py (random search),
-              optuna_tuning.py (TPE, holdout-judged), champion.py (tournament)
+              optuna_tuning.py (TPE, CV-selected), champion.py (tournament)
   backtest/   simulator.py (no-lookahead walk-forward), strategies.py
               (equal_topk / vol_scaled / kelly), metrics.py, report.py,
               survivorship.py
@@ -61,28 +65,69 @@ Label: forward 5-trading-day return, open-to-open, minus the cross-sectional
 median that week (so the task is *ranking* stocks, not predicting the market).
 Features are rank-normalized to (-1,1] per week; prefixes: `f_` = model feature,
 `aux_` = raw helper (never ranked), `f_evt_`/`f_mkt_`/`f_macro_`/`f_sec_` =
-rank-exempt (time-only or binary). Metric everywhere: mean weekly Spearman rank
+rank-exempt (time-only or binary). Only ALFRED-audited `T10Y2Y` and `FEDFUNDS`
+macro features are admitted; revision-prone macro series and all sector-derived
+features are excluded because Wikipedia sectors are not effective-dated. See
+`reports/source_point_in_time_audit.md`. Metric: mean weekly Spearman rank
 IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
 
 ## Iron rules (breaking these silently corrupts everything)
 
 1. **No lookahead.** Every feature at week t uses only data knowable at t's
-   close: EDGAR facts join on *filing* date, FRED series are publication-lagged,
+  close: date-only EDGAR/Form 4 records become available the next calendar day;
+  revision-prone FRED and non-effective-dated sector features are model-excluded;
    labels start the next trading day, CV has a 10-day purge gap, early stopping
    uses a time-ordered tail (never a random split). `tests/test_no_lookahead.py`
    proves this by corrupting future data and asserting past outputs unchanged —
    if it fails, fix the code, NEVER the test.
 2. **The holdout (last 2 years) is untouchable.** No tuning or selection may see
-   it. Optuna adoption is judged on it (`optuna_tuning.py`) — that is its only use.
+  it. Optuna and random search select exclusively on the pre-holdout purged CV
+  folds. Holdout results may be reported only after all choices are frozen.
 3. **Champion eligibility:** a candidate needs a valid (non-NaN) IC in *every*
-   fold, and the tournament falls back to the momentum baseline if no ML model
-   beats the baselines. Watch the "test weeks" column in `models/selection.md`:
-   healthy = 488. Less means the model produced constant (unrankable)
-   predictions in some weeks — a degeneracy, not a virtue (see history #4).
+  folds, and the tournament falls back to the momentum baseline if no ML model
+  beats the baselines. Watch the "test weeks" column in `models/selection.md`:
+  healthy means every week in the dynamically derived evaluation calendar
+  (488 in the current artifact). Less means the model produced constant
+  (unrankable) predictions in some weeks — a degeneracy, not a virtue (see
+  history #4).
 4. **Tests green, zero warnings**, no network in tests (fetchers are injectable;
    fixtures only). Silence third-party noise via their own APIs, not warning filters.
 5. Money math in the simulator is guarded: weights ≥ 0, sum ≤ 1, cost-netted
    buys, no leverage. `run_backtest` raises if a strategy violates this.
+
+## Missing-data and feature-admission policy
+
+The current 4-fold, 2015-03+ evaluation design is fixed. New features must fit
+the benchmark; a feature's late start or sparse history is not a reason to move
+fold boundaries or shorten the primary evaluation window.
+
+1. Every candidate must produce rankable predictions for every week in the same
+  evaluation calendar. The count is derived from the current panel, fixed
+  `eval_start`, and rolling holdout rather than hard-coded, so it grows as new
+  data arrives (the current artifact has 488 weeks). Never drop rows or weeks
+  because an optional feature or prediction is missing or constant; incomplete
+  coverage makes a candidate ineligible.
+2. Distinguish structural pre-source absence, cross-sectional gaps, incidental
+  retrieval failures, and economically meaningful absence. Track and report
+  weekly and cross-sectional coverage by feature family.
+3. Optional ranked features are neutral-filled after ranking (`0` in rank
+  space) rather than causing observations to be dropped. Add point-in-time
+  missingness indicators only where absence may carry information. Any fitted
+  imputation parameters must use training data only.
+4. Keep a stable, full-history core feature set. Evaluate additions by ablation
+  on identical folds, weeks, and eligible stocks, with and without missingness
+  indicators where appropriate.
+5. Late-starting features must be tested both in the official full benchmark
+  (neutral before availability) and, when useful, in a separately labeled,
+  predeclared common-window ablation. The secondary window never replaces or
+  mixes with the primary leaderboard.
+6. Prefer improvements that are stable across folds, not gains concentrated in
+  one period. Before production adoption, stress-test realistic random gaps
+  and complete outages of the feature family.
+
+Model-native missing-value support does not override this policy: it may handle
+scattered company-level gaps, but it cannot justify missing weeks, unequal
+scoring calendars, or all-missing folds.
 
 ## Hard-won history (why things are the way they are)
 

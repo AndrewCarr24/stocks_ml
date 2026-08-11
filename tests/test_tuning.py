@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.base import clone
 
 from stocks_ml.models.candidates import (
-    TimeTailEarlyStopXGB, get_candidates, make_xgb_tuned,
+    TimeTailEarlyStopXGB, dated_features, get_candidates, make_xgb_tuned,
 )
 from stocks_ml.models.champion import _eligible
 from stocks_ml.models.cv import CandidateResult
@@ -65,6 +65,25 @@ def test_time_tail_early_stop_xgb_fits_and_predicts_finite_values():
     assert model.best_iteration is not None  # early stopping used the eval_set
 
 
+def test_time_tail_xgb_uses_complete_dates_and_inner_purge():
+    dates = pd.date_range("2022-01-07", periods=20, freq="W-FRI")
+    frame = pd.DataFrame({
+        "date": np.repeat(dates, 4),
+        "f_x": np.tile(np.arange(4, dtype=float), len(dates)),
+    })
+    y = pd.Series(np.random.default_rng(1).normal(size=len(frame)), index=frame.index)
+    model = TimeTailEarlyStopXGB(
+        n_estimators=10, max_depth=2, eval_fraction=0.2,
+        early_stopping_rounds=3, early_stop_purge_days=10, random_state=0,
+    )
+    model.fit(dated_features(frame, ["f_x"]), y)
+    train_dates = pd.DatetimeIndex(model.early_stop_train_dates_)
+    validation_dates = pd.DatetimeIndex(model.early_stop_validation_dates_)
+    assert validation_dates.nunique() == 4
+    assert all((validation_dates == d).sum() == 4 for d in validation_dates.unique())
+    assert validation_dates.min() - train_dates.max() >= pd.Timedelta(days=10)
+
+
 def test_tune_xgb_writes_artifacts(synthetic_store, tiny_cfg, tmp_path):
     from stocks_ml.features.panel import build_panel
 
@@ -114,9 +133,12 @@ def _row(name, mean_ic, fold_ics, is_production=False, n_test_weeks=10, params=N
     """Build a results-frame row the way tune_xgb does: eligibility computed via
     champion.py's _eligible on the underlying CandidateResult, not re-derived here."""
     eligible = _eligible(CandidateResult(name=name, mean_ic=mean_ic, fold_ics=fold_ics,
-                                         n_test_weeks=n_test_weeks))
+                         n_test_weeks=n_test_weeks,
+                         expected_test_weeks=n_test_weeks,
+                         expected_folds=len(fold_ics)))
     return {"name": name, "params": params or {}, "mean_ic": mean_ic, "fold_ics": fold_ics,
-            "n_test_weeks": n_test_weeks, "is_production": is_production, "eligible": eligible}
+            "n_test_weeks": n_test_weeks, "expected_test_weeks": n_test_weeks,
+            "is_production": is_production, "eligible": eligible}
 
 
 def test_select_best_skips_ineligible_top_mean_config():
@@ -152,9 +174,10 @@ def test_tune_xgb_selects_runner_up_when_top_mean_config_ineligible(
     def fake_evaluate(name, est, labeled, splits, fcols):
         if name == "cfg0":
             return CandidateResult(name=name, mean_ic=0.05,
-                                   fold_ics=[0.1, float("nan"), 0.02], n_test_weeks=20)
+                                   fold_ics=[0.1, float("nan"), 0.02], n_test_weeks=20,
+                                   expected_test_weeks=30, expected_folds=3)
         return CandidateResult(name=name, mean_ic=0.02, fold_ics=[0.02, 0.02, 0.02],
-                               n_test_weeks=30)
+                               n_test_weeks=30, expected_test_weeks=30, expected_folds=3)
 
     monkeypatch.setattr(tuning_mod, "evaluate_candidate", fake_evaluate)
 
@@ -167,7 +190,7 @@ def test_tune_xgb_selects_runner_up_when_top_mean_config_ineligible(
 
     text = (out / "tuning.md").read_text()
     cfg0_line = next(l for l in text.splitlines() if l.startswith("| cfg0"))
-    assert "(ineligible: degenerate fold)" in cfg0_line
+    assert "(ineligible: incomplete coverage)" in cfg0_line
     assert "selected" not in cfg0_line
     selected_lines = [l for l in text.splitlines() if "selected" in l]
     assert len(selected_lines) == 1 and not selected_lines[0].startswith("| cfg0")
@@ -182,7 +205,7 @@ def test_tune_xgb_writes_no_json_when_no_config_eligible(
 
     def fake_evaluate(name, est, labeled, splits, fcols):
         return CandidateResult(name=name, mean_ic=0.01, fold_ics=[0.01, float("nan")],
-                               n_test_weeks=5)
+                               n_test_weeks=5, expected_test_weeks=10, expected_folds=2)
 
     monkeypatch.setattr(tuning_mod, "evaluate_candidate", fake_evaluate)
 

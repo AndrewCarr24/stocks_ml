@@ -69,23 +69,98 @@ class TimeTailEarlyStopXGB(XGBRegressor):
     data — a time-ordered validation split (never random: random splits leak
     future rows into the stopping decision on temporal data)."""
 
-    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 20, **kwargs):
+    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 75,
+                 early_stop_purge_days: int = 10,
+                 early_stop_metric: str = "weekly_spearman", **kwargs):
         self.eval_fraction = eval_fraction
+        self.early_stop_purge_days = early_stop_purge_days
+        self.early_stop_metric = early_stop_metric
         super().__init__(early_stopping_rounds=early_stopping_rounds, **kwargs)
 
     def _wrapper_params(self) -> set:
         # eval_fraction is wrapper-only bookkeeping, not a native XGBoost booster
         # parameter — without this override it gets forwarded to the C++ learner
         # and triggers a "Parameters: { eval_fraction } are not used" warning.
-        return super()._wrapper_params() | {"eval_fraction"}
+        return super()._wrapper_params() | {
+            "eval_fraction", "early_stop_purge_days", "early_stop_metric",
+        }
 
     def fit(self, X, y):
-        n = len(X)
-        cut = max(1, int(n * (1 - self.eval_fraction)))
-        Xtr, Xva = X.iloc[:cut], X.iloc[cut:]
-        ytr, yva = y.iloc[:cut], y.iloc[cut:]
-        super().fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
+        dates = X.attrs.get("dates") if hasattr(X, "attrs") else None
+        if dates is not None:
+            dates = pd.DatetimeIndex(dates)
+            unique = dates.unique().sort_values()
+            n_eval = max(1, int(np.ceil(len(unique) * self.eval_fraction)))
+            val_start = unique[-n_eval]
+            train_end = val_start - pd.Timedelta(days=self.early_stop_purge_days)
+            tr_mask = dates <= train_end
+            va_mask = dates >= val_start
+            if not tr_mask.any() or not va_mask.any():
+                raise ValueError("time-tail early-stop split has an empty train or validation block")
+            Xtr, Xva = X.loc[tr_mask], X.loc[va_mask]
+            ytr, yva = y.loc[tr_mask], y.loc[va_mask]
+            self.early_stop_train_dates_ = dates[tr_mask]
+            self.early_stop_validation_dates_ = dates[va_mask]
+        else:
+            # Generic sklearn callers may not supply temporal metadata. Keep a
+            # deterministic ordered fallback; production paths attach dates.
+            n = len(X)
+            cut = max(1, int(n * (1 - self.eval_fraction)))
+            Xtr, Xva = X.iloc[:cut], X.iloc[cut:]
+            ytr, yva = y.iloc[:cut], y.iloc[cut:]
+        if self.early_stop_metric == "weekly_spearman" and dates is not None:
+            from scipy.stats import rankdata
+
+            validation_dates = pd.DatetimeIndex(self.early_stop_validation_dates_)
+            groups = [np.flatnonzero(validation_dates == d)
+                      for d in validation_dates.unique()]
+
+            def negative_weekly_spearman(y_true, y_pred):
+                ics = []
+                for idx in groups:
+                    true, pred = np.asarray(y_true)[idx], np.asarray(y_pred)[idx]
+                    if len(idx) < 3 or np.unique(true).size < 2 or np.unique(pred).size < 2:
+                        ics.append(0.0)
+                        continue
+                    ics.append(float(np.corrcoef(rankdata(true), rankdata(pred))[0, 1]))
+                return -float(np.mean(ics))
+
+            # XGBoost minimizes custom sklearn metrics, hence negative IC.
+            self.set_params(eval_metric=negative_weekly_spearman)
+        elif dates is not None and self.early_stop_metric != "rmse":
+            raise ValueError("early_stop_metric must be 'weekly_spearman' or 'rmse'")
+        try:
+            super().fit(Xtr, ytr, eval_set=[(Xva, yva)], verbose=False)
+        finally:
+            # Keep the estimator cloneable/serializable; the fitted Booster has
+            # already retained its stopping history and selected tree limit.
+            self.set_params(eval_metric=None)
         return self
+
+
+def dated_features(frame: pd.DataFrame, fcols: list[str]) -> pd.DataFrame:
+    """Feature matrix carrying dates for time-ordered estimator internals."""
+    X = frame[fcols].copy()
+    X.attrs["dates"] = frame["date"].to_numpy()
+    return X
+
+
+def _time_tail_masks(X, eval_fraction: float, purge_days: int):
+    """Return complete-date train/validation masks when date metadata exists."""
+    dates = X.attrs.get("dates") if hasattr(X, "attrs") else None
+    if dates is None:
+        n = len(X)
+        cut = max(1, int(n * (1 - eval_fraction)))
+        return np.arange(n) < cut, np.arange(n) >= cut, None
+    dates = pd.DatetimeIndex(dates)
+    unique = dates.unique().sort_values()
+    n_eval = max(1, int(np.ceil(len(unique) * eval_fraction)))
+    val_start = unique[-n_eval]
+    train_end = val_start - pd.Timedelta(days=purge_days)
+    tr_mask, va_mask = dates <= train_end, dates >= val_start
+    if not tr_mask.any() or not va_mask.any():
+        raise ValueError("time-tail early-stop split has an empty train or validation block")
+    return tr_mask, va_mask, dates
 
 
 class TimeTailEarlyStopLGBM(LGBMRegressor):
@@ -96,18 +171,22 @@ class TimeTailEarlyStopLGBM(LGBMRegressor):
     keeps LightGBM silent (the 0-warnings constraint)."""
 
     def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 20,
-                 verbosity: int = -1, **kwargs):
+                 early_stop_purge_days: int = 10, verbosity: int = -1, **kwargs):
         self.eval_fraction = eval_fraction
         self.early_stopping_rounds = early_stopping_rounds
+        self.early_stop_purge_days = early_stop_purge_days
         super().__init__(verbosity=verbosity, **kwargs)
 
     def fit(self, X, y):
         import lightgbm as lgb
 
-        n = len(X)
-        cut = max(1, int(n * (1 - self.eval_fraction)))
-        Xtr, Xva = X.iloc[:cut], X.iloc[cut:]
-        ytr, yva = y.iloc[:cut], y.iloc[cut:]
+        tr_mask, va_mask, dates = _time_tail_masks(
+            X, self.eval_fraction, self.early_stop_purge_days)
+        Xtr, Xva = X.loc[tr_mask], X.loc[va_mask]
+        ytr, yva = y.loc[tr_mask], y.loc[va_mask]
+        if dates is not None:
+            self.early_stop_train_dates_ = dates[tr_mask]
+            self.early_stop_validation_dates_ = dates[va_mask]
         # lightgbm 4.4+ accepts eval_X/eval_y single frames (the modern form of
         # the older eval_set list-of-tuples API).
         super().fit(Xtr, ytr, eval_X=Xva, eval_y=yva,
@@ -125,10 +204,12 @@ class TimeTailEarlyStopCatBoost(BaseEstimator, RegressorMixin):
     free (no catboost_info/ dir, satisfying the 0-warnings constraint)."""
 
     def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 20,
+                 early_stop_purge_days: int = 10,
                  depth: int = 6, learning_rate: float = 0.1, l2_leaf_reg: float = 3.0,
                  iterations: int = 1500, random_state: int = 0):
         self.eval_fraction = eval_fraction
         self.early_stopping_rounds = early_stopping_rounds
+        self.early_stop_purge_days = early_stop_purge_days
         self.depth = depth
         self.learning_rate = learning_rate
         self.l2_leaf_reg = l2_leaf_reg
@@ -138,14 +219,18 @@ class TimeTailEarlyStopCatBoost(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
         from catboost import CatBoostRegressor
 
-        n = len(X)
-        cut = max(1, int(n * (1 - self.eval_fraction)))
+        tr_mask, va_mask, dates = _time_tail_masks(
+            X, self.eval_fraction, self.early_stop_purge_days)
+        if dates is not None:
+            self.early_stop_train_dates_ = dates[tr_mask]
+            self.early_stop_validation_dates_ = dates[va_mask]
         self.model_ = CatBoostRegressor(
             depth=self.depth, learning_rate=self.learning_rate,
             l2_leaf_reg=self.l2_leaf_reg, iterations=self.iterations,
             random_state=self.random_state, allow_writing_files=False, verbose=False,
         )
-        self.model_.fit(X.iloc[:cut], y.iloc[:cut], eval_set=(X.iloc[cut:], y.iloc[cut:]),
+        self.model_.fit(X.loc[tr_mask], y.loc[tr_mask],
+                eval_set=(X.loc[va_mask], y.loc[va_mask]),
                         early_stopping_rounds=self.early_stopping_rounds, use_best_model=True)
         return self
 
@@ -162,7 +247,7 @@ class ICElasticNet(BaseEstimator, RegressorMixin):
     constant-predictor failure (a constant has zero IC and is gate-excluded)."""
 
     def __init__(self, alpha: float = 1e-4, l1_ratio: float = 0.5,
-                 max_iter: int = 10000, tol: float = 1e-3):
+                 max_iter: int = 10000, tol: float = 1e-2):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.max_iter = max_iter
@@ -244,10 +329,9 @@ _TUNED_FAMILIES = {
 def make_tuned(family: str, models_dir="models"):
     """Reconstruct a tuned candidate for `family` from its params file; None if absent.
 
-    Prefers {family}_optuna.json (the holdout-judged Optuna refinement) over
-    {family}_tuned.json (random search) when both exist — Optuna only writes its
-    file when it beats the random-search config on the untouched holdout, so its
-    presence means it is the honestly-better artifact."""
+    Prefers {family}_optuna.json (the CV-selected Optuna refinement) over
+    {family}_tuned.json (random search) when both exist. Both searches select by
+    the same pre-holdout purged walk-forward CV metric; the holdout is untouched."""
     stem, klass = _TUNED_FAMILIES[family]
     d = Path(models_dir)
     for candidate_path in (d / f"{family}_optuna.json", d / f"{stem}.json"):

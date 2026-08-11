@@ -80,6 +80,8 @@ def test_costs_reduce_nav_and_cash_never_negative(tiny_cfg):
     # one initial 100% buy at 100bps -> ~1% drag, no further trades (weights constant)
     assert res100.nav.iloc[-1] / nav0.iloc[-1] == pytest.approx(0.99, rel=0.005)
     assert res100.total_costs == pytest.approx(1.0, rel=0.05)   # ~$1 on $100
+    assert res100.nav.iloc[0] == pytest.approx(100.0)
+    assert res100.nav.iloc[1] < nav0.iloc[1]
 
 
 def test_retrain_cadence(tiny_cfg):

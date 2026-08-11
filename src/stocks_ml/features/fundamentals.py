@@ -16,9 +16,13 @@ def _annual_rows(edgar: pd.DataFrame, concept: str) -> pd.DataFrame:
 
 
 def _asof_join(base: pd.DataFrame, facts: pd.DataFrame, colname: str) -> pd.Series:
-    """Latest fact filed on or before each base date, per ticker."""
+    """Latest fact safely available before each base date, per ticker."""
     if facts.empty:
         return pd.Series(np.nan, index=base.index)
+    facts = facts.copy()
+    # Company Facts exposes a date but no acceptance time. Delay date-only
+    # filings by one day so after-close submissions cannot enter same-close signals.
+    facts["filed"] = pd.to_datetime(facts["filed"]).dt.normalize() + pd.Timedelta(days=1)
     facts = (facts.sort_values(["filed", "end"])
                   .drop_duplicates(subset=["ticker", "filed"], keep="last"))
     left = base[["date", "ticker"]].reset_index().sort_values("date")
@@ -41,10 +45,13 @@ def fundamental_features(edgar: pd.DataFrame, base: pd.DataFrame) -> pd.DataFram
     # asset growth: consecutive annual (10-K) assets, 200-550 days apart by period end
     annual_assets = _annual_rows(edgar, "assets").sort_values(["ticker", "end"]).copy()
     annual_assets["prev_val"] = annual_assets.groupby("ticker")["val"].shift(1)
+    annual_assets["prev_filed"] = annual_assets.groupby("ticker")["filed"].shift(1)
     gap = annual_assets.groupby("ticker")["end"].diff().dt.days
     annual_assets["growth"] = np.where((gap > 200) & (gap < 550),
                                        annual_assets["val"] / annual_assets["prev_val"] - 1.0,
                                        np.nan)
+    # Growth is not knowable until both period values have been filed.
+    annual_assets["filed"] = annual_assets[["filed", "prev_filed"]].max(axis=1)
     growth_facts = annual_assets.rename(columns={"growth": "gval"})[
         ["ticker", "filed", "end", "gval"]].rename(columns={"gval": "val"}).dropna(subset=["val"])
     vals["asset_growth"] = _asof_join(out, growth_facts, "asset_growth")

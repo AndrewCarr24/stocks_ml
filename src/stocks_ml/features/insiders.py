@@ -59,7 +59,10 @@ def insider_features(form4: pd.DataFrame, dates: pd.DatetimeIndex,
     grid = pd.MultiIndex.from_product([dates, tickers], names=["date", "ticker"]).to_frame(index=False)
 
     f4 = form4.copy()
-    f4["filed"] = pd.to_datetime(f4["filed"])
+    # Bulk Form 4 data carries a filing date without a reliable acceptance
+    # time. Availability begins the following calendar day.
+    f4["filed"] = (pd.to_datetime(f4["filed"]).dt.normalize()
+                   + pd.Timedelta(days=1))
     f4["signed_value"] = np.where(f4["code"] == "P", f4["value"], -f4["value"])
 
     daily_value = f4.groupby(["ticker", "filed"], as_index=False)["signed_value"].sum()
@@ -114,6 +117,9 @@ def shares_outstanding_asof(edgar: pd.DataFrame, base: pd.DataFrame) -> pd.DataF
     if facts.empty:
         out["shares"] = np.nan
         return out
+    facts = facts.copy()
+    facts["filed"] = (pd.to_datetime(facts["filed"]).dt.normalize()
+                      + pd.Timedelta(days=1))
     facts = facts.sort_values("filed")
     left = out.reset_index().sort_values("date")
     merged = pd.merge_asof(left, facts, left_on="date", right_on="filed", by="ticker",

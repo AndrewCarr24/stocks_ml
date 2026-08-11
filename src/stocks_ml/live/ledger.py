@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import math
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,10 +33,17 @@ class Ledger:
                    applied_files=raw.get("applied_files", []))
 
     def save(self, path: str | Path) -> None:
-        Path(path).write_text(json.dumps(
+        path = Path(path)
+        payload = json.dumps(
             {"cash": self.cash, "positions": self.positions,
              "nav_history": self.nav_history, "trades": self.trades,
-             "applied_files": self.applied_files}, indent=2))
+             "applied_files": self.applied_files}, indent=2, allow_nan=False)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with tmp.open("w") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp.replace(path)
 
     def nav(self, closes: pd.Series) -> float:
         return self.cash + sum(s * float(closes.get(t, 0.0))
@@ -45,7 +54,12 @@ class Ledger:
         self.nav_history.append([str(pd.Timestamp(date).date()), nav])
         return nav
 
-    def apply_trades(self, trades: list, date) -> None:
+    def apply_trades(self, trades: list, date, cost_bps: float = 0.0) -> None:
+        if cost_bps < 0:
+            raise ValueError("cost_bps must be nonnegative")
+        for _, delta, price in trades:
+            if not (math.isfinite(delta) and math.isfinite(price) and price > 0):
+                raise ValueError("trade delta and price must be finite, with price > 0")
         # Process sells before buys so sale proceeds can fund purchases.
         ordered = ([t for t in trades if t[1] < 0] +
                    [t for t in trades if t[1] >= 0])
@@ -54,15 +68,17 @@ class Ledger:
             delta = max(delta, -held)  # cannot sell more than held
             if delta == 0:
                 continue
-            cost = delta * price
-            if delta > 0 and self.cash - cost < -1e-9:
+            notional = delta * price
+            fee = abs(notional) * cost_bps / 1e4
+            cash_change = notional + fee
+            if delta > 0 and self.cash - cash_change < -1e-9:
                 raise ValueError(
                     f"trade would overdraw cash: buy {delta:.4f} {ticker} @ "
-                    f"${price:,.2f} costs ${cost:,.2f}, cash ${self.cash:,.2f}")
-            self.cash -= cost
+                    f"${price:,.2f} costs ${cash_change:,.2f}, cash ${self.cash:,.2f}")
+            self.cash -= cash_change
             new = held + delta
             if abs(new) < 1e-9:
                 self.positions.pop(ticker, None)
             else:
                 self.positions[ticker] = new
-            self.trades.append([str(pd.Timestamp(date).date()), ticker, delta, price])
+            self.trades.append([str(pd.Timestamp(date).date()), ticker, delta, price, fee])
