@@ -6,7 +6,8 @@ rebalance_weekday: 4       # 0=Mon ... 4=Fri; rebalance = last trading day <= ea
 retrain_weeks: 4
 backtest_start: "2005-01-03"
 eval_start: "2015-03-01"   # CV TEST folds start here (drops the 2012-15 fold where sparse
-                           # feature data caused degenerate fits); training still uses 2005+
+                           # feature data caused degenerate fits); each fold TRAINS on the
+                           # trailing cv_train_years window, not expanding-from-2005
 holdout_years: 2           # most recent years excluded from champion selection folds
 n_cv_folds: 4
 cv_train_years: 2           # fixed trailing calendar years used to fit each CV fold

@@ -39,9 +39,10 @@ def make_splits(dates: pd.DatetimeIndex, n_folds: int, purge_days: int,
 
     `eval_start` additionally restricts TEST blocks to `date >= eval_start`. It is
     part of the fixed evaluation design and must not be moved to accommodate a
-    newly added feature. Training windows are unaffected:
-    each fold's `train_end = test_start - purge_days` still reaches back over all
-    earlier history, so models may still learn from pre-eval_start price data."""
+    newly added feature. Each fold's training window is the trailing
+    `train_years` calendar years ending at `test_start - purge_days` (rolling,
+    NOT expanding-from-2005 — that older design was replaced 2026-07-21; see
+    reports/rolling_cv.md)."""
     if n_folds < 1:
         raise ValueError("n_folds must be at least 1")
     if train_years < 1:
