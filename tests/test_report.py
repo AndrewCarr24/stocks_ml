@@ -44,4 +44,6 @@ def test_run_all_backtests_writes_report(synthetic_store, tiny_cfg, tmp_path):
     assert "spy_hold" in text
     assert "Deflated Sharpe" in text or "deflated_sharpe" in text
     assert "bull" in text
+    assert "Recent five years" in text
+    assert "kelly_spy" in text and "topk_spy" in text
     assert (tmp_path / "reports" / "equity.png").exists()
