@@ -35,17 +35,19 @@ Champion model: **xgb_tuned** · strategies × candidates tried: **45** (used to
 | COVID crash | 6.0% | 0.0% | 1.1% | -17.3% | -13.3% | -17.0% | 0.1% |
 | 2022 bear | -36.3% | 0.0% | -10.3% | -10.3% | -36.3% | -18.6% | 2.0% |
 
-## Holdout period (≥ 2024-07-19, never used for model selection)
+## Holdout period (≥ 2024-07-19, never used for model selection — the primary strategy comparison)
 
-| strategy | window return |
-|---|---|
-| equal_topk | 92.7% |
-| vol_scaled | 0.0% |
-| kelly | 18.5% |
-| kelly_spy | 22.3% |
-| topk_spy | 87.0% |
-| spy_hold | 38.6% |
-| cash | 8.2% |
+| strategy | $100 → | total return | ann. Sharpe | max DD | worst week |
+|---|---|---|---|---|---|
+| equal_topk | $193 | 92.7% | 1.01 | 32.3% | -15.8% |
+| vol_scaled | $100 | 0.0% | – | 0.0% | 0.0% |
+| kelly | $119 | 18.5% | 0.73 | 15.7% | -7.5% |
+| kelly_spy | $122 | 22.3% | 0.80 | 15.7% | -7.5% |
+| topk_spy | $187 | 87.0% | 0.98 | 32.3% | -15.8% |
+| spy_hold | $139 | 38.6% | 1.05 | 18.8% | -9.1% |
+| cash | $108 | 8.2% | 157.31 | 0.0% | 0.1% |
+
+![holdout equity curves](equity_holdout.png)
 
 ## Recent five years ($100 at 2021-07-17; overlaps model-selection window — see holdout for the clean test)
 
