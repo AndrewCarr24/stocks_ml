@@ -16,7 +16,7 @@ def test_load_config_defaults():
     assert cfg.eval_start == pd.Timestamp("2015-03-01")
     assert cfg.n_cv_folds == 4
     assert cfg.cv_train_years == 2
-    assert cfg.live_strategy == "vol_scaled"
+    assert cfg.live_strategy == "topk_spy"
 
 
 def test_config_is_frozen():
