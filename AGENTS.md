@@ -17,9 +17,16 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   (2024-07 → now) are a **holdout** never used for tuning or selection.
 - **Live:** GitHub Actions runs the weekly cycle every Saturday 13:00 UTC
   (signals + paper ledger, committed back to the repo) and a monthly retrain on
-  the 1st. Live strategy is `vol_scaled` (config `live_strategy`).
-- Latest corrected backtest: equal_topk $100→$1,142 with 72% max drawdown;
-  kelly $100→$506; market $100→$935; vol_scaled $100→$114 with 26% max drawdown.
+  the 1st. Live strategy is `topk_spy` (config `live_strategy`): the model's
+  top 8 equal-weighted, with slots the ranking can't fill held in SPY.
+- **Tie guard (2026-08-11):** `select_top_k` in strategies.py fills the top-k
+  with whole equal-value prediction groups only; a group larger than the
+  remaining slots is refused (unfilled slots → cash, or SPY under SpyFloor).
+  Degenerate refits — early stopping keeping ~no trees when its recent
+  validation tail shows no signal — previously collapsed `nlargest` into
+  buying the first 8 tickers alphabetically. Never reintroduce order-dependent
+  tie-breaking. Holdout after the guard (2024-07+, $100): topk_spy $252
+  (Sharpe 1.43), equal_topk $222, spy_hold $139.
 
 ## Commands
 
@@ -55,7 +62,8 @@ src/stocks_ml/
               (model zoo + wrappers), tuning.py (random search),
               optuna_tuning.py (TPE, CV-selected), champion.py (tournament)
   backtest/   simulator.py (no-lookahead walk-forward), strategies.py
-              (equal_topk / vol_scaled / kelly), metrics.py, report.py,
+              (equal_topk / vol_scaled / kelly + SpyFloor variants kelly_spy /
+              topk_spy; select_top_k tie guard), metrics.py, report.py,
               survivorship.py
   live/       signals.py, ledger.py
   cli.py
@@ -191,8 +199,6 @@ scoring calendars, or all-missing folds.
 
 ## Open items / likely next steps
 
-- Decide `live_strategy`: stay `vol_scaled` (safe, near-zero return) or switch
-  to `kelly` (evidence-backed recommendation). One line in config/config.yaml.
 - Let the shadow ledger accumulate (Saturday cycle) before real money — this
   was always the plan; backtest numbers lean on friendly fill assumptions.
 - Possible research: honest Optuna re-run on the current 4-fold design;
