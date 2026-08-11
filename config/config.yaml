@@ -20,9 +20,10 @@ dd_full: 0.25              # drawdown to go fully to cash
 kelly_fraction: 0.25
 kelly_cap: 0.20
 cost_bps: 5.0              # one-way slippage/spread, basis points of traded value
-live_strategy: topk_spy    # strategy used by `stocks-ml signals`; holdout champion
-                           # (2024-07+: $100->$252, Sharpe 1.43) — picks the model's
-                           # top 8, holds SPY for slots the ranking can't fill
+live_strategy: topk_spy    # strategy used by `stocks-ml signals`: the model's top 8
+                           # equal-weighted, SPY for slots the ranking can't fill.
+                           # Beats equal_topk on every tested holdout path; its edge
+                           # over plain SPY is path-dependent (see reports/backtest.md)
 membership_floor: "1996-01-01"   # earliest membership start when unknown
 fred_series:               # series_id: publication lag in calendar days
   VIXCLS: 1

@@ -25,8 +25,12 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   Degenerate refits — early stopping keeping ~no trees when its recent
   validation tail shows no signal — previously collapsed `nlargest` into
   buying the first 8 tickers alphabetically. Never reintroduce order-dependent
-  tie-breaking. Holdout after the guard (2024-07+, $100): topk_spy $252
-  (Sharpe 1.43), equal_topk $222, spy_hold $139.
+  tie-breaking. Guarded holdout results are strongly refit-anchor sensitive:
+  the official 2005-anchored run (reports/backtest.md) gives topk_spy $139 ≈
+  spy_hold $139, equal_topk $127, while a 2024-07-anchored rerun gave topk_spy
+  $252, equal_topk $222. The spread is timing luck of concentrated top-8 bets
+  (e.g. a healthy June-2026 refit bet semiconductors into a sector crash, week
+  −15.8%), not a bug — treat single-path holdout numbers with humility.
 
 ## Commands
 
