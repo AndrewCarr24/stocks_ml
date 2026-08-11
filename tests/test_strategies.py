@@ -80,4 +80,39 @@ def test_kelly_sizing_caps_and_renormalizes():
 
 def test_registry(tiny_cfg):
     strats = make_strategies(tiny_cfg)
-    assert set(strats) == {"equal_topk", "vol_scaled", "kelly"}
+    assert set(strats) == {"equal_topk", "vol_scaled", "kelly", "kelly_spy", "topk_spy"}
+
+
+def test_spy_floor_routes_remainder_to_spy():
+    from stocks_ml.backtest.strategies import FractionalKelly, SpyFloor
+
+    inner = FractionalKelly(fraction=0.25, cap=0.20)
+    wrapped = SpyFloor(inner)
+    w_inner = inner.propose_weights(PREDS, VOLS, OK)
+    w = wrapped.propose_weights(PREDS, VOLS, OK)
+    # stock sleeve identical to the inner strategy
+    for tk, val in w_inner.items():
+        assert w[tk] == pytest.approx(val)
+    # remainder is exactly SPY; invariants hold
+    assert w["SPY"] == pytest.approx(1.0 - w_inner.sum())
+    assert w.sum() == pytest.approx(1.0)
+    assert (w >= -1e-12).all()
+
+
+def test_spy_floor_all_spy_when_inner_abstains():
+    from stocks_ml.backtest.strategies import EqualWeightTopK, SpyFloor
+
+    all_negative = pd.Series({"A": -0.01, "B": -0.02})
+    vols = pd.Series({"A": 0.2, "B": 0.2})
+    w = SpyFloor(EqualWeightTopK(k=2)).propose_weights(all_negative, vols, OK)
+    assert dict(w) == {"SPY": pytest.approx(1.0)}
+
+
+def test_spy_floor_no_spy_row_when_fully_invested():
+    from stocks_ml.backtest.strategies import EqualWeightTopK, SpyFloor
+
+    preds = pd.Series({"A": 0.05, "B": 0.03})
+    vols = pd.Series({"A": 0.2, "B": 0.2})
+    w = SpyFloor(EqualWeightTopK(k=2)).propose_weights(preds, vols, OK)
+    assert "SPY" not in w  # inner already sums to 1; no dust row
+    assert w.sum() == pytest.approx(1.0)

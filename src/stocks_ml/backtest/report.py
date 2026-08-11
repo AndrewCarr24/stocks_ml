@@ -94,6 +94,23 @@ def build_report(results: dict, bench: dict, flags: pd.DataFrame, n_trials: int,
         for name, nav in all_navs.items():
             lines.append(f"| {name} | {_fmt(_window_return(nav, holdout_start, nav.index.max()), True)} |")
 
+    # Recent five years, each NAV rescaled to $100 at the window start — "what
+    # would $100 have done had I started then". Note the champion was selected
+    # using CV folds that overlap most of this window, so unlike the holdout
+    # section these figures are not fully out-of-sample.
+    recent_start = max(nav.index.max() for nav in all_navs.values()) - pd.DateOffset(years=5)
+    lines += ["", f"## Recent five years ($100 at {recent_start.date()}; "
+                  "overlaps model-selection window — see holdout for the clean test)", "",
+              "| strategy | $100 → | CAGR | Sharpe | max DD |", "|---|---|---|---|---|"]
+    for name, nav in all_navs.items():
+        sub = nav[nav.index >= recent_start]
+        if len(sub) < 10:
+            continue
+        sub = 100.0 * (sub / sub.iloc[0])
+        s = summarize(sub)
+        lines.append(f"| {name} | ${s['terminal_100']:,.0f} | {_fmt(s['cagr'], True)} | "
+                     f"{_fmt(s['sharpe'])} | {_fmt(s['max_drawdown'], True)} |")
+
     lines += ["", "## Honesty notes", "",
               f"- Sharpe deflation assumes {n_trials} strategy/model trials.",
               "- Regime flags (SPY 200d SMA, VIX median) use full-sample statistics; "

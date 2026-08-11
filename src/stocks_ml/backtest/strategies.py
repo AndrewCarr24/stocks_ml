@@ -97,10 +97,45 @@ class FractionalKelly(Strategy):
         return w
 
 
+class SpyFloor(Strategy):
+    """Wraps a strategy so its UNALLOCATED fraction goes into SPY instead of cash.
+
+    The inner strategy's stock sleeve is untouched; whatever it leaves on the
+    table (1 - sum of its weights) buys the index. This changes the floor of the
+    strategy from "cash earning nothing" to "the market": the model's picks then
+    only need to beat SPY — not zero — to justify their allocation. The Kelly
+    sleeve is confidence-scaled by construction (weights ∝ predicted edge /
+    variance), so SpyFloor(FractionalKelly) directly implements "invest part by
+    model confidence, rest in the S&P 500."
+
+    Deliberately NOT applied to VolScaledTopK: its drawdown guard's whole point
+    is a cash refuge during crashes, and routing guard-freed money into SPY
+    would re-expose it to the very drawdown it is fleeing."""
+
+    def __init__(self, inner: Strategy, spy_ticker: str = "SPY"):
+        self.inner = inner
+        self.spy_ticker = spy_ticker
+        self.name = f"{inner.name}_spy"
+
+    def propose_weights(self, preds, vols, risk):
+        w = self.inner.propose_weights(preds, vols, risk).copy()
+        # Guard against the inner strategy ever emitting SPY itself (it never
+        # should — SPY has no panel predictions — but summing twice would breach
+        # the no-leverage invariant).
+        w = w.drop(self.spy_ticker, errors="ignore")
+        remainder = 1.0 - float(w.sum())
+        if remainder > 1e-9:
+            w[self.spy_ticker] = remainder
+        return w
+
+
 def make_strategies(cfg) -> dict[str, Strategy]:
     return {
         "equal_topk": EqualWeightTopK(cfg.top_k),
         "vol_scaled": VolScaledTopK(cfg.top_k, cfg.vol_target, cfg.avg_correlation,
                                     cfg.dd_derisk, cfg.dd_full),
         "kelly": FractionalKelly(cfg.kelly_fraction, cfg.kelly_cap),
+        # SPY-floor variants: unallocated money holds the index instead of cash.
+        "kelly_spy": SpyFloor(FractionalKelly(cfg.kelly_fraction, cfg.kelly_cap)),
+        "topk_spy": SpyFloor(EqualWeightTopK(cfg.top_k)),
     }

@@ -224,3 +224,26 @@ def test_drawdown_reflects_intraweek_peak(tiny_cfg):
     # NAV peaks at the Wednesday spike (120) then settles at 106: the next signal
     # must see dd = 1 - 106/120, not 0
     assert max(strat.seen) == pytest.approx(1 - 106.0 / 120.0, abs=1e-6)
+
+
+def test_simulator_supports_spy_holdings(tiny_cfg):
+    """A strategy may hold SPY (which has prices but no panel predictions):
+    the simulator must trade and mark it like any other ticker."""
+    from dataclasses import replace
+
+    class HalfSpy(Strategy):
+        name = "half_spy"
+
+        def propose_weights(self, preds, vols, risk):
+            first = sorted(preds.dropna().index)[0]
+            return pd.Series({first: 0.5, "SPY": 0.5})
+
+    panel, prices, _ = _world()
+    res = run_backtest(panel, prices, HalfSpy(), Flat(), replace(tiny_cfg, cost_bps=0.0))
+    # in _world every ticker (incl. SPY) compounds at the same daily rate, so a
+    # 50/50 AAA+SPY portfolio must track that same path — proving the SPY leg
+    # was actually bought and marked, not silently dropped to cash
+    realized = res.nav.iloc[-1] / res.nav.iloc[0]
+    ideal = 1.01 ** np.busday_count(res.nav.index[0].date(), res.nav.index[-1].date())
+    assert realized == pytest.approx(ideal, rel=0.01)
+    assert (res.weights.get("SPY") == 0.5).all()
