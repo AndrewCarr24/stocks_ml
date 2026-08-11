@@ -88,11 +88,23 @@ def build_report(results: dict, bench: dict, flags: pd.DataFrame, n_trials: int,
         lines.append(f"| {label} | {row} |")
 
     if holdout_start is not None:
+        # THE decision table: the only window fully clean of model selection.
+        # Strategy comparisons should lead with these numbers, not the
+        # since-2005 headline (whose window overlaps CV/tuning).
         lines += ["", f"## Holdout period (≥ {pd.Timestamp(holdout_start).date()}, "
-                      "never used for model selection)", "",
-                  "| strategy | window return |", "|---|---|"]
+                      "never used for model selection — the primary strategy comparison)",
+                  "", "| strategy | $100 → | total return | ann. Sharpe | max DD | worst week |",
+                  "|---|---|---|---|---|---|"]
         for name, nav in all_navs.items():
-            lines.append(f"| {name} | {_fmt(_window_return(nav, holdout_start, nav.index.max()), True)} |")
+            sub = nav[nav.index >= holdout_start]
+            if len(sub) < 10:
+                continue
+            sub = 100.0 * (sub / sub.iloc[0])
+            s = summarize(sub)
+            lines.append(f"| {name} | ${s['terminal_100']:,.0f} | "
+                         f"{_fmt(s['terminal_100'] / 100.0 - 1.0, True)} | {_fmt(s['sharpe'])} | "
+                         f"{_fmt(s['max_drawdown'], True)} | {_fmt(s['worst_week'], True)} |")
+        lines += ["", "![holdout equity curves](equity_holdout.png)"]
 
     # Recent five years, each NAV rescaled to $100 at the window start — "what
     # would $100 have done had I started then". Note the champion was selected
@@ -161,6 +173,32 @@ def run_all_backtests(store, cfg, models_dir="models", out_dir="reports") -> Pat
     fig.tight_layout()
     fig.savefig(out / "equity.png", dpi=120)
     plt.close(fig)
+
+    # Persist the daily NAV series so charts/analysis can be regenerated without
+    # re-running the multi-hour simulation.
+    all_navs = {**{k: r.nav for k, r in results.items()}, **bench}
+    pd.DataFrame(all_navs).to_csv(out / "navs.csv", index_label="date")
+
+    # Holdout-only chart: the clean test. Every curve rescaled to $100 at the
+    # holdout start; solid = strategies, dashed = benchmarks. Strategy evaluation
+    # should lead with this view — the full-history chart overlaps the
+    # model-selection window.
+    if hold_start is not None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for name, nav in all_navs.items():
+            sub = nav[nav.index >= hold_start]
+            if len(sub) < 2:
+                continue
+            sub = 100.0 * (sub / sub.iloc[0])
+            style = "--" if name in bench else "-"
+            ax.plot(sub.index, sub.values, style, label=name,
+                    alpha=0.7 if name in bench else 1.0)
+        ax.set_ylabel(f"$100 at holdout start ({pd.Timestamp(hold_start).date()})")
+        ax.set_title("Holdout period — never used for model selection")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(out / "equity_holdout.png", dpi=120)
+        plt.close(fig)
 
     report = build_report(results, bench, flags, n_trials, champ_name, hold_start)
     path = out / "backtest.md"

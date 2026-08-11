@@ -73,6 +73,10 @@ IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
 
 ## Iron rules (breaking these silently corrupts everything)
 
+0. **Strategy evaluation leads with the HOLDOUT section/chart** (backtest.md's
+   holdout table + reports/equity_holdout.png), never the since-2005 headline —
+   the full-history window overlaps model selection. Owner-mandated.
+
 1. **No lookahead.** Every feature at week t uses only data knowable at t's
   close: date-only EDGAR/Form 4 records become available the next calendar day;
   revision-prone FRED and non-effective-dated sector features are model-excluded;

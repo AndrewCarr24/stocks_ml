@@ -46,4 +46,26 @@ def test_run_all_backtests_writes_report(synthetic_store, tiny_cfg, tmp_path):
     assert "bull" in text
     assert "Recent five years" in text
     assert "kelly_spy" in text and "topk_spy" in text
+    assert (tmp_path / "reports" / "navs.csv").exists()  # NAVs persisted for re-charting
+
+
+def test_holdout_artifacts_written_when_holdout_configured(synthetic_store, tiny_cfg, tmp_path):
+    from dataclasses import replace
+
+    from stocks_ml.features.panel import build_panel
+    from stocks_ml.models.champion import run_training
+    from stocks_ml.models.candidates import MomentumRank, ZeroForecast
+
+    cfg = replace(tiny_cfg, holdout_years=1)
+    build_panel(synthetic_store, cfg)
+    models_dir = tmp_path / "models"
+    run_training(synthetic_store, cfg,
+                 candidates={"zero": ZeroForecast(), "momentum": MomentumRank()},
+                 out_dir=models_dir)
+    out = run_all_backtests(synthetic_store, cfg, models_dir=models_dir,
+                            out_dir=tmp_path / "reports")
+    text = out.read_text()
+    assert "primary strategy comparison" in text          # holdout leads evaluation
+    assert "ann. Sharpe" in text                          # full metrics, not bare return
+    assert (tmp_path / "reports" / "equity_holdout.png").exists()
     assert (tmp_path / "reports" / "equity.png").exists()
