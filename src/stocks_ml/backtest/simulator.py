@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 from sklearn.base import clone
@@ -21,9 +21,62 @@ class BacktestResult:
     n_fits: int
 
 
-def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
-                 removal_haircuts: pd.DataFrame | None = None) -> BacktestResult:
+@dataclass
+class WalkForwardPredictions:
+    """Per-rebalance-date cross-sectional predictions plus the fit count behind them."""
+    preds: dict = field(default_factory=dict)   # {rebalance date: pd.Series by ticker}
+    n_fits: int = 0
+
+
+def walk_forward_predictions(panel, estimator, cfg, start=None, end=None) -> WalkForwardPredictions:
+    """Staggered-refit ensemble walk: refresh one member per rebalance week.
+
+    At each rebalance the newest member trains on data ending purge_days
+    earlier; the ensemble keeps the last ``cfg.retrain_weeks`` members, so a
+    date is always scored by models whose training cutoffs are 0..retrain_weeks-1
+    weeks stale, and the prediction is their plain mean. This makes predictions
+    independent of when the walk started (no refit-anchor luck: a 2-week shift
+    in the old single-model schedule swung the June-2026 holdout between a
+    degenerate abstention and a semiconductor bet). Averaging raw values also
+    degrades gracefully: a degenerate member adds a near-constant offset that
+    leaves healthy members' ranking intact, and if every member is degenerate
+    the surviving ties are refused downstream by select_top_k.
+
+    Strategies share one walk (predictions don't depend on the strategy), so
+    run_all_backtests computes this once and passes it to every run_backtest."""
     fcols = feature_cols(panel)
+    rdates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    if start:
+        rdates = rdates[rdates >= pd.Timestamp(start)]
+    if end:
+        rdates = rdates[rdates <= pd.Timestamp(end)]
+    labeled = panel[panel["label"].notna()]
+
+    members: list = []          # (fit_date, model), oldest first
+    out = WalkForwardPredictions()
+    for t in rdates:
+        train_end = t - pd.Timedelta(days=cfg.purge_days)
+        train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
+        train = labeled[labeled["date"].between(train_start, train_end)]
+        if cfg.train_sample_rows:
+            train = train.sort_values("date").tail(cfg.train_sample_rows)
+        if len(train) >= MIN_TRAIN_ROWS and train["date"].nunique() >= MIN_TRAIN_WEEKS:
+            members.append((t, clone(estimator).fit(dated_features(train, fcols), train["label"])))
+            out.n_fits += 1
+            if len(members) > cfg.retrain_weeks:
+                members.pop(0)
+        if not members:
+            continue
+        rows = panel[panel["date"] == t]
+        member_preds = [pd.Series(m.predict(rows[fcols]), index=rows["ticker"].values)
+                        for _, m in members]
+        out.preds[t] = pd.concat(member_preds, axis=1).mean(axis=1).dropna()
+    return out
+
+
+def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
+                 removal_haircuts: pd.DataFrame | None = None,
+                 predictions: WalkForwardPredictions | None = None) -> BacktestResult:
     open_w = prices.pivot(index="date", columns="ticker", values="open").sort_index().ffill()
     close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
     cal = close_w.index
@@ -48,8 +101,8 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         rdates = rdates[rdates <= pd.Timestamp(end)]
     tail = pd.Timestamp(end) if end else cal[-1]
 
-    labeled = panel[panel["label"].notna()]
-    model, last_fit, n_fits = None, None, 0
+    if predictions is None:
+        predictions = walk_forward_predictions(panel, estimator, cfg, start=start, end=end)
     cash, shares = 100.0, {}
     navs, weight_rows = {}, {}
     hwm, total_costs = 100.0, 0.0
@@ -59,22 +112,11 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         return cash + sum(s * px.get(t, 0.0) for t, s in shares.items())
 
     for i, t in enumerate(rdates):
-        need_fit = model is None or (t - last_fit).days >= cfg.retrain_weeks * 7
-        if need_fit:
-            train_end = t - pd.Timedelta(days=cfg.purge_days)
-            train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
-            train = labeled[labeled["date"].between(train_start, train_end)]
-            if cfg.train_sample_rows:
-                train = train.sort_values("date").tail(cfg.train_sample_rows)
-            if len(train) >= MIN_TRAIN_ROWS and train["date"].nunique() >= MIN_TRAIN_WEEKS:
-                model = clone(estimator).fit(dated_features(train, fcols), train["label"])
-                last_fit, n_fits = t, n_fits + 1
-        if model is None:
+        preds = predictions.preds.get(t)
+        if preds is None:
             continue
 
         rows = panel[panel["date"] == t]
-        preds = pd.Series(model.predict(rows[fcols]), index=rows["ticker"].values)
-        preds = preds.dropna()
         vols = pd.Series(rows["aux_vol"].values, index=rows["ticker"].values)
 
         # drawdown as of t: NAV marks so far end at t (never beyond — see marking
@@ -142,4 +184,5 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
 
     nav = pd.Series(navs).sort_index()
     weights_df = pd.DataFrame(weight_rows).T.fillna(0.0)
-    return BacktestResult(nav=nav, weights=weights_df, total_costs=total_costs, n_fits=n_fits)
+    return BacktestResult(nav=nav, weights=weights_df, total_costs=total_costs,
+                          n_fits=predictions.n_fits)

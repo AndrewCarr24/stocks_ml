@@ -31,13 +31,25 @@ def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list
 
     labeled = panel[panel["label"].notna()]
     latest = panel["date"].max()
-    train_end = latest - pd.Timedelta(days=cfg.purge_days)
-    train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
-    labeled = labeled[labeled["date"].between(train_start, train_end)]
-    model = clone(estimator).fit(dated_features(labeled, fcols), labeled["label"])
-
     rows = panel[panel["date"] == latest]
-    preds = pd.Series(model.predict(rows[fcols]), index=rows["ticker"].values)
+
+    # Staggered-refit ensemble, mirroring the simulator: one member per week of
+    # staleness (0..retrain_weeks-1), each trained on the trailing window ending
+    # purge_days before its own cutoff; the signal is their plain mean. Keeps
+    # live predictions independent of refit-anchor luck.
+    member_preds = []
+    for weeks_back in range(cfg.retrain_weeks):
+        train_end = latest - pd.Timedelta(days=7 * weeks_back + cfg.purge_days)
+        train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
+        train = labeled[labeled["date"].between(train_start, train_end)]
+        if train.empty:
+            continue
+        model = clone(estimator).fit(dated_features(train, fcols), train["label"])
+        member_preds.append(pd.Series(model.predict(rows[fcols]),
+                                      index=rows["ticker"].values))
+    if not member_preds:
+        raise ValueError("no ensemble member had training data — cannot generate signals")
+    preds = pd.concat(member_preds, axis=1).mean(axis=1)
     vols = pd.Series(rows["aux_vol"].values, index=rows["ticker"].values)
 
     closes = latest_closes(prices)

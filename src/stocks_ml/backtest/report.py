@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from stocks_ml.backtest.metrics import regime_flags, regime_summaries, summarize
-from stocks_ml.backtest.simulator import run_backtest
+from stocks_ml.backtest.simulator import run_backtest, walk_forward_predictions
 from stocks_ml.backtest.strategies import make_strategies
 from stocks_ml.models.candidates import get_candidates
 from stocks_ml.models.champion import load_champion, holdout_start_date
@@ -143,7 +143,11 @@ def run_all_backtests(store, cfg, models_dir="models", out_dir="reports") -> Pat
     champ_name, estimator = load_champion(models_dir)
 
     strategies = make_strategies(cfg)
-    results = {name: run_backtest(panel, prices, strat, estimator, cfg)
+    # One prediction walk serves every strategy: predictions depend only on the
+    # estimator, and the staggered ensemble makes them start-anchor independent.
+    predictions = walk_forward_predictions(panel, estimator, cfg)
+    results = {name: run_backtest(panel, prices, strat, estimator, cfg,
+                                  predictions=predictions)
                for name, strat in strategies.items()}
 
     any_nav = next(iter(results.values())).nav

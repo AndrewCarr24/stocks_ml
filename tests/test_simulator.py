@@ -87,9 +87,68 @@ def test_costs_reduce_nav_and_cash_never_negative(tiny_cfg):
 def test_retrain_cadence(tiny_cfg):
     panel, prices, _ = _world()
     res = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg)
-    # weekly rebalances, refit every retrain_weeks -> fits ~= rebalances / retrain_weeks
-    expected = int(np.ceil(len(res.weights) / tiny_cfg.retrain_weeks))
-    assert abs(res.n_fits - expected) <= 1
+    # staggered ensemble: one member refreshed per rebalance week
+    assert res.n_fits == len(res.weights)
+
+
+class CutoffEcho(BaseEstimator, RegressorMixin):
+    """Predicts a constant derived from its training cutoff — makes ensemble
+    membership observable in the predictions."""
+
+    def fit(self, X, y):
+        self.cutoff_ = pd.Timestamp(X.attrs["dates"].max()).toordinal()
+        return self
+
+    def predict(self, X):
+        return np.full(len(X), float(self.cutoff_))
+
+
+def test_predictions_average_staggered_members(tiny_cfg):
+    from stocks_ml.backtest.simulator import walk_forward_predictions
+
+    panel, prices, rdates = _world()
+    wf = walk_forward_predictions(panel, CutoffEcho(), tiny_cfg)
+    scored = sorted(wf.preds)
+    t = scored[-1]  # well past warmup: ensemble holds retrain_weeks members
+    # members were refreshed at t, t-1w, ..., each trained on labeled data up
+    # to its own cutoff; CutoffEcho echoes that cutoff, so the ensemble mean
+    # must equal the mean of the last retrain_weeks echoes
+    idx = scored.index(t)
+    expected_members = scored[idx - tiny_cfg.retrain_weeks + 1: idx + 1]
+    labeled = panel[panel["label"].notna()]
+    echoes = []
+    for m in expected_members:
+        cut = m - pd.Timedelta(days=tiny_cfg.purge_days)
+        echoes.append(float(pd.Timestamp(labeled[labeled["date"] <= cut]["date"].max()).toordinal()))
+    assert wf.preds[t].iloc[0] == pytest.approx(np.mean(echoes))
+
+
+def test_predictions_independent_of_walk_start(tiny_cfg):
+    """The refit-anchor bug: a shifted start must not change predictions once
+    the ensemble is warmed up (retrain_weeks members present)."""
+    from stocks_ml.backtest.simulator import walk_forward_predictions
+
+    panel, prices, rdates = _world()
+    full = walk_forward_predictions(panel, CutoffEcho(), tiny_cfg)
+    shifted_start = sorted(full.preds)[len(full.preds) // 2 + 1]  # mid-walk, offset anchor
+    late = walk_forward_predictions(panel, CutoffEcho(), tiny_cfg, start=shifted_start)
+    warm = sorted(late.preds)[tiny_cfg.retrain_weeks - 1:]
+    assert len(warm) >= 5
+    for t in warm:
+        pd.testing.assert_series_equal(full.preds[t], late.preds[t])
+
+
+def test_precomputed_predictions_reproduce_internal_walk(tiny_cfg):
+    from stocks_ml.backtest.simulator import walk_forward_predictions
+
+    panel, prices, _ = _world()
+    internal = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg)
+    shared = walk_forward_predictions(panel, Flat(), tiny_cfg)
+    external = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg,
+                            predictions=shared)
+    pd.testing.assert_series_equal(internal.nav, external.nav)
+    pd.testing.assert_frame_equal(internal.weights, external.weights)
+    assert internal.n_fits == external.n_fits
 
 
 def test_weights_recorded(tiny_cfg):
