@@ -3,7 +3,8 @@ import pandas as pd
 import pytest
 
 from stocks_ml.backtest.strategies import (
-    EqualWeightTopK, FractionalKelly, RiskState, VolScaledTopK, make_strategies,
+    EqualWeightTopK, FractionalKelly, RiskState, SpyFloor, VolScaledTopK,
+    make_strategies, select_top_k,
 )
 
 PREDS = pd.Series({"A": 0.05, "B": 0.03, "C": 0.01, "D": -0.02, "E": np.nan})
@@ -81,6 +82,64 @@ def test_kelly_sizing_caps_and_renormalizes():
 def test_registry(tiny_cfg):
     strats = make_strategies(tiny_cfg)
     assert set(strats) == {"equal_topk", "vol_scaled", "kelly", "kelly_spy", "topk_spy"}
+
+
+def test_select_top_k_takes_small_standout_tie():
+    # 4 standouts tied at the top: the whole group fits, so all are taken,
+    # then the next levels keep filling.
+    preds = pd.Series({"W": 0.05, "X": 0.05, "Y": 0.05, "Z": 0.05,
+                       "M": 0.03, "N": 0.02, "P": 0.01, "Q": 0.005, "R": 0.001})
+    picks = select_top_k(preds, 8)
+    assert set(picks) == {"W", "X", "Y", "Z", "M", "N", "P", "Q"}
+
+
+def test_select_top_k_refuses_group_bigger_than_remaining_slots():
+    # 3 genuine picks, then a 6-way tie that would need 5 more slots: the tie
+    # is refused whole, never sampled.
+    tied = {f"T{i}": 0.02 for i in range(6)}
+    preds = pd.Series({"A": 0.09, "B": 0.07, "C": 0.05, **tied})
+    picks = select_top_k(preds, 8)
+    assert set(picks) == {"A", "B", "C"}
+
+
+def test_select_top_k_degenerate_two_level_predictions_select_nothing():
+    # The failure that motivated the guard: ~150 stocks tied at the top value.
+    preds = pd.Series(0.000257, index=[f"S{i:03d}" for i in range(500)])
+    preds.iloc[:151] = 0.000265
+    assert len(select_top_k(preds, 8)) == 0
+
+
+def test_select_top_k_ignores_row_order():
+    # Selection must be a function of values only — never of ticker order.
+    preds = pd.Series({"AAA": 0.02, "BBB": 0.02, "CCC": 0.02, "DDD": 0.05})
+    for order in (["AAA", "BBB", "CCC", "DDD"], ["DDD", "CCC", "BBB", "AAA"]):
+        assert set(select_top_k(preds.reindex(order), 2)) == {"DDD"}
+
+
+def test_equal_topk_unfilled_tie_slots_stay_cash():
+    tied = {f"T{i}": 0.02 for i in range(7)}   # 7-way tie > 6 remaining slots
+    preds = pd.Series({"A": 0.09, "B": 0.07, **tied})
+    vols = pd.Series(0.2, index=preds.index)
+    w = EqualWeightTopK(k=8).propose_weights(preds, vols, OK)
+    _check_invariants(w)
+    assert set(w.index) == {"A", "B"}
+    assert w.sum() == pytest.approx(2 / 8)
+
+
+def test_topk_spy_holds_spy_on_degenerate_predictions():
+    preds = pd.Series(0.000257, index=[f"S{i:03d}" for i in range(500)])
+    preds.iloc[:151] = 0.000265
+    vols = pd.Series(0.2, index=preds.index)
+    w = SpyFloor(EqualWeightTopK(k=8)).propose_weights(preds, vols, OK)
+    assert dict(w) == {"SPY": pytest.approx(1.0)}
+
+
+def test_vol_scaled_refuses_degenerate_tie():
+    preds = pd.Series(0.000257, index=[f"S{i:03d}" for i in range(500)])
+    preds.iloc[:151] = 0.000265
+    vols = pd.Series(0.2, index=preds.index)
+    strat = VolScaledTopK(k=8, vol_target=0.15, rho=0.3, dd_derisk=0.15, dd_full=0.25)
+    assert strat.propose_weights(preds, vols, OK).empty
 
 
 def test_spy_floor_routes_remainder_to_spy():

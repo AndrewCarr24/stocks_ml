@@ -25,6 +25,30 @@ class Strategy:
         return preds[common], vols[common]
 
 
+def select_top_k(preds: pd.Series, k: int) -> pd.Index:
+    """Top-k selection that never splits a tie.
+
+    Slots fill with whole groups of equally-predicted stocks, best value first.
+    A group larger than the remaining slots is refused outright: sampling
+    inside a tie would select by row order (alphabetical), turning "the model
+    can't tell these apart" into fake conviction. Near-constant predictions —
+    the degenerate refits where early stopping kept ~no trees — therefore
+    select nothing, and the unfilled slots fall through to the strategy's
+    floor (cash, or SPY under SpyFloor)."""
+    pos = preds[preds > 0]
+    selected: list = []
+    remaining = k
+    for value in np.sort(pos.unique())[::-1]:
+        members = pos.index[pos == value]
+        if len(members) > remaining:
+            break
+        selected.extend(members)
+        remaining -= len(members)
+        if remaining == 0:
+            break
+    return pd.Index(selected)
+
+
 class EqualWeightTopK(Strategy):
     name = "equal_topk"
 
@@ -33,8 +57,8 @@ class EqualWeightTopK(Strategy):
 
     def propose_weights(self, preds, vols, risk):
         preds, vols = self._clean(preds, vols)
-        picks = preds[preds > 0].nlargest(self.k)
-        return pd.Series(1.0 / self.k, index=picks.index)
+        picks = select_top_k(preds, self.k)
+        return pd.Series(1.0 / self.k, index=picks)
 
 
 class VolScaledTopK(Strategy):
@@ -67,10 +91,10 @@ class VolScaledTopK(Strategy):
     def propose_weights(self, preds, vols, risk):
         exposure = self._exposure(risk.drawdown)
         preds, vols = self._clean(preds, vols)
-        picks = preds[preds > 0].nlargest(self.k)
-        if picks.empty or exposure == 0.0:
+        picks = select_top_k(preds, self.k)
+        if len(picks) == 0 or exposure == 0.0:
             return pd.Series(dtype=float)
-        v = vols[picks.index].clip(lower=1e-4)
+        v = vols[picks].clip(lower=1e-4)
         w = (1.0 / v) / (1.0 / v).sum()
         var = (w**2 * v**2).sum()
         cross = np.outer(w * v, w * v)
