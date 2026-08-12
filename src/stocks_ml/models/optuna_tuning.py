@@ -14,7 +14,8 @@ import optuna
 from stocks_ml.models.champion import _eligible
 from stocks_ml.models.cv import evaluate_candidate
 from stocks_ml.models.tuning import (
-    _FAMILY_SPEC, _full_params, _make_estimator, prepare_tuning_data,
+    _FAMILY_SPEC, FAMILY_EVAL_OVERRIDES, _full_params, _make_estimator,
+    prepare_tuning_data,
 )
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -31,7 +32,22 @@ def _suggest_zeroable(trial, name, low, high):
 
 def suggest_params(trial, family: str) -> dict:
     """Sample one hyperparameter config for `family` from Optuna's continuous spaces."""
-    if family == "xgb":
+    if family == "ltr":
+        # learning-to-rank shares the xgb tree space; NDCG truncation depth is
+        # part of the objective, so it is searched too (top-of-list focus).
+        ndcg_at = trial.suggest_categorical("ndcg_at", [8, 16, 32])
+        return {
+            "eval_metric": f"ndcg@{ndcg_at}",
+            "max_depth": trial.suggest_int("max_depth", 2, 8),
+            "learning_rate": trial.suggest_float("learning_rate", 5e-3, 3e-1, log=True),
+            "n_estimators": 2000,
+            "min_child_weight": trial.suggest_int("min_child_weight", 5, 200),
+            "reg_alpha": _suggest_zeroable(trial, "reg_alpha", 1e-4, 10.0),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-2, 50.0, log=True),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.2, 1.0),
+        }
+    if family in ("xgb", "xgb4w"):
         return {
             "max_depth": trial.suggest_int("max_depth", 2, 8),
             "learning_rate": trial.suggest_float("learning_rate", 5e-3, 3e-1, log=True),
@@ -78,12 +94,15 @@ def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
         raise ValueError(f"unknown family {family!r}; valid: {sorted(_FAMILY_SPEC)}")
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    labeled, fcols, splits = prepare_tuning_data(store, cfg)
+    eval_spec = FAMILY_EVAL_OVERRIDES.get(family, {})
+    label_col = eval_spec.get("label_col", "label")
+    labeled, fcols, splits = prepare_tuning_data(store, cfg, **eval_spec)
 
     def objective(trial):
         params = suggest_params(trial, family)
         est = _make_estimator(family, params)
-        result = evaluate_candidate("optuna", est, labeled, splits, fcols)
+        result = evaluate_candidate("optuna", est, labeled, splits, fcols,
+                                    label_col=label_col)
         trial.set_user_attr("mean_ic", result.mean_ic if math.isfinite(result.mean_ic) else None)
         trial.set_user_attr("fold_ics", [x if math.isfinite(x) else None
                            for x in result.fold_ics])

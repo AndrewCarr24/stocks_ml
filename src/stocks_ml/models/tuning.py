@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from stocks_ml.features.panel import feature_cols
+from stocks_ml.features.panel import LABEL_4W_PURGE_DAYS, feature_cols
 from stocks_ml.models.candidates import (
     ICElasticNet, TimeTailEarlyStopCatBoost, TimeTailEarlyStopLGBM,
-    TimeTailEarlyStopXGB, make_xgb,
+    TimeTailEarlyStopXGB, WeekGroupedXGBRanker, make_xgb,
 )
 from stocks_ml.models.champion import _eligible
 from stocks_ml.models.cv import evaluate_candidate, make_splits
@@ -63,6 +63,16 @@ _FAMILY_SPEC = {
     "catboost": (TimeTailEarlyStopCatBoost, {
         "depth": 6, "learning_rate": 0.1, "l2_leaf_reg": 3.0, "iterations": 1500}),
     "enet": (ICElasticNet, {"alpha": 1e-4, "l1_ratio": 0.5}),
+    # league families (Optuna-only; no random-search grid):
+    "ltr": (WeekGroupedXGBRanker, None),
+    "xgb4w": (TimeTailEarlyStopXGB, None),      # 4-week label, monthly pipeline
+}
+
+# Families whose CV evaluation departs from the default weekly label. The
+# 4-week label spans ~29 calendar days of future prices, so both the fold
+# purge and the wrapper's inner early-stop purge must exceed it.
+FAMILY_EVAL_OVERRIDES = {
+    "xgb4w": {"label_col": "label_4w", "purge_days": LABEL_4W_PURGE_DAYS},
 }
 
 _LEGACY_NAMES = {"xgb": ("xgb_tuned.json", "tuning.md")}
@@ -107,10 +117,15 @@ def _full_params(hyperparams: dict, family: str = "xgb") -> dict:
     defaults = _FAMILY_SPEC[family][0]()
     common = {"eval_fraction": defaults.eval_fraction,
               "early_stopping_rounds": defaults.early_stopping_rounds}
-    if family == "xgb":
+    if family in ("xgb", "xgb4w"):
         common["early_stop_purge_days"] = defaults.early_stop_purge_days
         common["early_stop_metric"] = defaults.early_stop_metric
-    if family in ("xgb", "lgbm"):
+    if family == "xgb4w":
+        # inner early-stop split must purge past the 4-week label span
+        common["early_stop_purge_days"] = LABEL_4W_PURGE_DAYS
+    if family == "ltr":
+        common["early_stop_purge_days"] = defaults.early_stop_purge_days
+    if family in ("xgb", "xgb4w", "ltr", "lgbm"):
         return {**hyperparams, "n_jobs": -1, "random_state": 0, **common}
     return {**hyperparams, "random_state": 0, **common}  # catboost
 
@@ -119,26 +134,32 @@ def _make_estimator(family: str, params: dict):
     """Construct a fresh tunable estimator for the family from sampled hyperparams,
     adding the seed/jobs kwargs the grid doesn't carry (matching _full_params)."""
     klass = _FAMILY_SPEC[family][0]
-    if family in ("xgb", "lgbm"):
+    if family == "xgb4w":
+        return klass(**params, n_jobs=-1, random_state=0,
+                     early_stop_purge_days=LABEL_4W_PURGE_DAYS)
+    if family in ("xgb", "ltr", "lgbm"):
         return klass(**params, n_jobs=-1, random_state=0)
     if family == "catboost":
         return klass(**params, random_state=0)
     return klass(**params)
 
 
-def prepare_tuning_data(store, cfg):
+def prepare_tuning_data(store, cfg, label_col: str = "label",
+                        purge_days: int | None = None):
     """The leakage-critical setup shared by random-search and Optuna tuning:
     the labeled frame (with the train_sample_rows truncation mirror + date-order
     assertion) and the CV splits (holdout-excluded, identical to run_training).
-    Returns (labeled, fcols, splits)."""
+    Returns (labeled, fcols, splits). Families on other labels pass `label_col`
+    and a `purge_days` exceeding that label's calendar span."""
     panel = store.read("panel")
     fcols = feature_cols(panel)
-    labeled = panel[panel["label"].notna()]
+    labeled = panel[panel[label_col].notna()]
     from stocks_ml.models.champion import holdout_start_date
     all_dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
     holdout_start = holdout_start_date(all_dates, cfg.holdout_years)
-    if holdout_start is not None and "label_end_date" in labeled:
-        labeled = labeled[labeled["label_end_date"] < holdout_start]
+    end_col = {"label": "label_end_date", "label_4w": "label_end_date_4w"}[label_col]
+    if holdout_start is not None and end_col in labeled:
+        labeled = labeled[labeled[end_col] < holdout_start]
     # Mirrors run_training's truncation (champion.py) exactly — must stay in sync.
     if cfg.train_sample_rows:
         labeled = labeled.sort_values("date").tail(cfg.train_sample_rows)
@@ -149,7 +170,8 @@ def prepare_tuning_data(store, cfg):
     )
     dates = pd.DatetimeIndex(sorted(labeled["date"].unique()))
     # SAME calendar-year holdout construction as run_training.
-    splits = make_splits(dates, cfg.n_cv_folds, cfg.purge_days,
+    purge = cfg.purge_days if purge_days is None else purge_days
+    splits = make_splits(dates, cfg.n_cv_folds, purge,
                          0, cfg.eval_start, cfg.cv_train_years,
                          holdout_start=holdout_start)
     return labeled, fcols, splits

@@ -52,7 +52,9 @@ def cmd_train(args, cfg):
 
 
 _DEFAULT_SAMPLES = {"xgb": 40, "lgbm": 40, "catboost": 12, "enet": 12}
-_DEFAULT_TRIALS = {"xgb": 100, "lgbm": 100, "catboost": 60, "enet": 40}
+_DEFAULT_TRIALS = {"xgb": 100, "lgbm": 100, "catboost": 60, "enet": 40,
+                   "ltr": 60, "xgb4w": 60}
+_OPTUNA_ONLY = {"ltr", "xgb4w"}  # league families: no random-search grid
 
 
 def cmd_tune(args, cfg):
@@ -67,6 +69,8 @@ def cmd_tune(args, cfg):
         print(f"wrote models/optuna_{args.family}.md{artifact}; "
             f"best CV IC {result['best_cv_ic']:.4f} | {status}")
         return
+    if args.family in _OPTUNA_ONLY:
+        raise SystemExit(f"family {args.family!r} tunes via Optuna only; add --optuna")
     from stocks_ml.models.tuning import tune_model
 
     n = args.samples if args.samples is not None else _DEFAULT_SAMPLES[args.family]
@@ -159,7 +163,8 @@ def main():
     p_ingest.add_argument("--full", action="store_true")
     sub.add_parser("train", help="champion model selection")
     p_tune = sub.add_parser("tune", help="hyperparameter tuning via walk-forward CV")
-    p_tune.add_argument("--family", choices=["xgb", "lgbm", "catboost", "enet"], default="xgb")
+    p_tune.add_argument("--family", choices=["xgb", "lgbm", "catboost", "enet",
+                                             "ltr", "xgb4w"], default="xgb")
     p_tune.add_argument("--samples", type=int, default=None,
                         help="random-search configs (default: per-family — xgb/lgbm 40, catboost/enet 12)")
     p_tune.add_argument("--optuna", action="store_true",

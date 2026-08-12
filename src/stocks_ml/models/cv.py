@@ -83,10 +83,10 @@ def weekly_rank_ic(df: pd.DataFrame) -> pd.Series:
 
 
 def evaluate_candidate(name: str, estimator, panel: pd.DataFrame, splits: list[Split],
-                       fcols: list[str]) -> CandidateResult:
+                       fcols: list[str], label_col: str = "label") -> CandidateResult:
     from stocks_ml.models.candidates import dated_features
 
-    labeled = panel[np.isfinite(panel["label"])]
+    labeled = panel[np.isfinite(panel[label_col])]
     if labeled.duplicated(["date", "ticker"]).any():
         raise ValueError("panel must have exactly one labeled row per date and ticker")
     fold_ics, all_ics, fold_diagnostics = [], [], []
@@ -100,7 +100,7 @@ def evaluate_candidate(name: str, estimator, panel: pd.DataFrame, splits: list[S
             fold_ics.append(float("nan"))
             continue
         model = clone(estimator)
-        model.fit(dated_features(train, fcols), train["label"])
+        model.fit(dated_features(train, fcols), train[label_col])
         diagnostic = {
             "train_start": str(pd.Timestamp(train["date"].min()).date()),
             "train_end": str(pd.Timestamp(train["date"].max()).date()),
@@ -128,7 +128,7 @@ def evaluate_candidate(name: str, estimator, panel: pd.DataFrame, splits: list[S
                 "best_iteration": int(best_iteration) if best_iteration is not None else None,
             })
         fold_diagnostics.append(diagnostic)
-        scored = test[["date", "label"]].copy()
+        scored = test[["date", label_col]].rename(columns={label_col: "label"})
         preds = np.asarray(model.predict(test[fcols]), dtype=float)
         if len(preds) != len(test):
             raise ValueError(

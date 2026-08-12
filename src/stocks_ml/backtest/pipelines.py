@@ -16,6 +16,7 @@ Guardrails (agreed before wave 1):
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,13 +29,16 @@ from stocks_ml.backtest.metrics import summarize
 from stocks_ml.backtest.report import benchmark_navs
 from stocks_ml.backtest.simulator import run_backtest, walk_forward_predictions
 from stocks_ml.backtest.strategies import ConfidenceTopK, EqualWeightTopK, SpyFloor
-from stocks_ml.models.candidates import (TopQuintileClassifier, WeekGroupedXGBRanker,
-                                         make_tuned)
+from stocks_ml.features.panel import LABEL_4W_PURGE_DAYS as PURGE_DAYS_4W
+from stocks_ml.models.candidates import (TimeTailEarlyStopXGB, TopQuintileClassifier,
+                                         WeekGroupedXGBRanker, make_tuned)
 from stocks_ml.models.champion import holdout_start_date
 
-# The 4-week label spans ~29 calendar days of future prices; its pipelines must
-# purge at least that plus the weekly label's usual 10-day safety margin.
-PURGE_DAYS_4W = 42
+
+def _optuna_params(models_dir: str, family: str) -> dict | None:
+    """CV-selected Optuna params for a league family, if that search has run."""
+    path = Path(models_dir) / f"{family}_optuna.json"
+    return json.loads(path.read_text()) if path.exists() else None
 
 
 @dataclass
@@ -55,16 +59,23 @@ def wave1_pipelines(cfg, models_dir: str = "models") -> list[Pipeline]:
         pipes.append(Pipeline(
             "incumbent_weekly", incumbent, SpyFloor(EqualWeightTopK(cfg.top_k)),
             "champion regression (RMSE-trained), weekly, topk_spy — the baseline"))
+    ltr_params = _optuna_params(models_dir, "ltr")
     pipes.append(Pipeline(
-        "ltr_weekly", WeekGroupedXGBRanker(), SpyFloor(EqualWeightTopK(cfg.top_k)),
-        "learning-to-rank (rank:ndcg, week = query group), weekly, topk_spy"))
-    monthly = make_tuned("xgb", models_dir)
+        "ltr_weekly", WeekGroupedXGBRanker(**(ltr_params or {})),
+        SpyFloor(EqualWeightTopK(cfg.top_k)),
+        "learning-to-rank (rank:ndcg, week = query group), weekly, topk_spy"
+        + (" — CV-tuned" if ltr_params else " — untuned defaults")))
+    m4_params = _optuna_params(models_dir, "xgb4w")
+    monthly = (TimeTailEarlyStopXGB(**m4_params) if m4_params
+               else make_tuned("xgb", models_dir))
     if monthly is not None:
         # inner early-stop split must also respect the longer label span
         monthly.set_params(early_stop_purge_days=PURGE_DAYS_4W)
         pipes.append(Pipeline(
             "monthly_reg", monthly, SpyFloor(EqualWeightTopK(cfg.top_k)),
-            "champion hyperparameters on the 4-week label, monthly cadence, topk_spy",
+            ("CV-tuned 4-week-label regression" if m4_params
+             else "champion hyperparameters on the 4-week label")
+            + ", monthly cadence, topk_spy",
             label_col="label_4w", purge_days=PURGE_DAYS_4W, rebalance_every=4))
     pipes.append(Pipeline(
         "quintile_prob_weekly", TopQuintileClassifier(),

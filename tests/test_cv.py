@@ -128,3 +128,16 @@ def test_evaluate_candidate_rejects_duplicate_stock_week_rows():
     splits = make_splits(dates, n_folds=3, purge_days=10, holdout_weeks=0)
     with pytest.raises(ValueError, match="one labeled row"):
         evaluate_candidate("duplicate", Oracle(), panel, splits, ["f_signal", "f_junk"])
+
+
+def test_evaluate_candidate_alternate_label_col():
+    panel = _panel()
+    # move the signal into a 4-week-style label column; weekly label all-NaN
+    panel = panel.rename(columns={"label": "label_4w"})
+    panel["label"] = np.nan
+    dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    splits = make_splits(dates, 2, purge_days=42, holdout_weeks=0)
+    res = evaluate_candidate("oracle4w", Oracle(), panel, splits,
+                             ["f_signal", "f_junk"], label_col="label_4w")
+    assert res.mean_ic > 0.8          # oracle ranks the 4w label near-perfectly
+    assert res.n_test_weeks == res.expected_test_weeks

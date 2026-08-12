@@ -286,6 +286,11 @@ def calendar_features(dates: pd.DatetimeIndex) -> pd.DataFrame:
                          "f_woq": week_of_quarter.astype(float)})
 
 
+# The 4-week label spans ~29 calendar days of future prices; anything training
+# or splitting on label_4w must purge at least this many calendar days.
+LABEL_4W_PURGE_DAYS = 42
+
+
 def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int) -> pd.DataFrame:
     open_ = _wide(prices, "open")
     cal = open_.index
