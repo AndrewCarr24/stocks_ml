@@ -107,6 +107,61 @@ def _section(lines, title, navs, bench_names, lo=None, hi=None, note=""):
                      f"{s['max_drawdown']:.1%} | {s['worst_week']:.1%} |")
 
 
+def render_combined_charts(out_dir: str = "reports") -> list[Path]:
+    """Every model and strategy on shared equity charts (full history + holdout).
+
+    Merges the strategy zoo's navs.csv with the league's pipelines_navs.csv —
+    valid only because both are generated from the same panel vintage (the
+    2026-08-12 reconciliation: incumbent_weekly == topk_spy to the week, so the
+    duplicate row is dropped). Regenerate both CSVs before trusting the output
+    if either run is stale."""
+    out = Path(out_dir)
+    frames = []
+    zoo_path, lg_path = out / "navs.csv", out / "pipelines_navs.csv"
+    if zoo_path.exists():
+        frames.append(pd.read_csv(zoo_path, parse_dates=["date"], index_col="date"))
+    if lg_path.exists():
+        lg = pd.read_csv(lg_path, parse_dates=["date"], index_col="date")
+        if frames:  # zoo present: drop the league's duplicates of it
+            lg = lg.drop(columns=["incumbent_weekly", "spy_hold", "cash"],
+                         errors="ignore")
+        frames.append(lg)
+    if not frames:
+        return []
+    navs = pd.concat(frames, axis=1)
+    navs = navs.loc[:, ~navs.columns.duplicated()]
+    bench = {"spy_hold", "cash"}
+
+    written = []
+    specs = [("equity_all.png", None, "All models and strategies — $100 at start (log scale)", True),
+             ("equity_all_holdout.png", pd.Timestamp("2024-07-19"),
+              "All models and strategies — holdout, $100 at 2024-07-19", False)]
+    for fname, lo, title, log in specs:
+        fig, ax = plt.subplots(figsize=(11, 6.5))
+        for name in navs.columns:
+            nav = navs[name].dropna()
+            if lo is not None:
+                nav = nav[nav.index >= lo]
+            if len(nav) < 2:
+                continue
+            nav = 100.0 * nav / nav.iloc[0]
+            style = "--" if name in bench else "-"
+            ax.plot(nav.index, nav.values, style, label=name,
+                    alpha=0.6 if name in bench else 1.0,
+                    linewidth=1.1 if name in bench else 1.5)
+        if log:
+            ax.set_yscale("log")
+        ax.set_title(title)
+        ax.set_ylabel("$100 →")
+        ax.legend(fontsize=8, ncol=2)
+        fig.tight_layout()
+        path = out / fname
+        fig.savefig(path, dpi=120)
+        plt.close(fig)
+        written.append(path)
+    return written
+
+
 def run_league(store, cfg, models_dir: str = "models", out_dir: str = "reports") -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -183,6 +238,10 @@ def run_league(store, cfg, models_dir: str = "models", out_dir: str = "reports")
     plt.close(fig)
 
     pd.DataFrame(navs).to_csv(out / "pipelines_navs.csv", index_label="date")
+    lines += ["", "Combined view of every model and strategy: "
+                  "![all, full history](equity_all.png) "
+                  "![all, holdout](equity_all_holdout.png)"]
     path = out / "pipelines.md"
     path.write_text("\n".join(lines))
+    render_combined_charts(out_dir)
     return path
