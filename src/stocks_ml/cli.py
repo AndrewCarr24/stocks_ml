@@ -121,6 +121,8 @@ def cmd_signals(args, cfg):
     from stocks_ml.backtest.pipelines import _optuna_params
     from stocks_ml.models.candidates import WeekGroupedXGBRanker
 
+    from stocks_ml.backtest.strategies import EqualWeightTopK, SpyFloor
+
     ltr_params = _optuna_params("models", "ltr")
     challenger = WeekGroupedXGBRanker(**(ltr_params or {}))
     ledger2 = Ledger.load(f"ledger_{CHALLENGER_TAG}.json")
@@ -129,7 +131,8 @@ def cmd_signals(args, cfg):
         ledger2.save(f"ledger_{CHALLENGER_TAG}.json")
     md2, trades2 = generate_signals(
         store, cfg, ledger2, estimator=challenger,
-        model_name=f"ltr{' (CV-tuned)' if ltr_params else ' (untuned)'}")
+        model_name=f"ltr{' (CV-tuned)' if ltr_params else ' (untuned)'}",
+        strategy=SpyFloor(EqualWeightTopK(cfg.challenger_top_k)))
     path2 = out / f"{date.today()}-{CHALLENGER_TAG}.md"
     path2.write_text(md2)
     trades2_path = out / f"{date.today()}-{CHALLENGER_TAG}-trades.json"

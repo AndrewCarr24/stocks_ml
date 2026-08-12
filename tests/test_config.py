@@ -8,7 +8,8 @@ from stocks_ml.config import load_config
 def test_load_config_defaults():
     cfg = load_config("config/config.yaml")
     assert cfg.horizon_days == 5
-    assert cfg.top_k == 8
+    assert cfg.top_k == 16
+    assert cfg.challenger_top_k == 12
     assert cfg.fred_series["VIXCLS"] == 1
     assert "net_income" in cfg.edgar_concepts
     assert cfg.data_dir == Path("data")

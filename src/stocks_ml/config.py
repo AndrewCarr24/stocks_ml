@@ -33,6 +33,8 @@ class Config:
     membership_floor: pd.Timestamp
     fred_series: dict = field(default_factory=dict)
     edgar_concepts: dict = field(default_factory=dict)
+    # shadow-race challenger's own pre-holdout-selected portfolio breadth
+    challenger_top_k: int = 12
 
 
 def load_config(path: str | Path = "config/config.yaml") -> Config:
@@ -51,6 +53,7 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         cv_train_years=int(raw.get("cv_train_years", 2)),
         train_sample_rows=raw.get("train_sample_rows"),
         top_k=int(raw["top_k"]),
+        challenger_top_k=int(raw.get("challenger_top_k", raw["top_k"])),
         vol_target=float(raw["vol_target"]),
         avg_correlation=float(raw["avg_correlation"]),
         dd_derisk=float(raw["dd_derisk"]),

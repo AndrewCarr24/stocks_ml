@@ -18,7 +18,14 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
 - **Live:** GitHub Actions runs the weekly cycle every Saturday 13:00 UTC
   (signals + paper ledger, committed back to the repo) and a monthly retrain on
   the 1st. Live strategy is `topk_spy` (config `live_strategy`): the model's
-  top 8 equal-weighted, with slots the ranking can't fill held in SPY.
+  top-k equal-weighted, unfilled slots held in SPY. k-sweep 2026-08-12
+  (pre-holdout-selected, protocol declared before results): champion k=16
+  (pre-holdout Sharpe 0.63 vs 0.52 at the old k=8; its now-admissible holdout
+  row: \$206 / Sharpe 1.17 / DD 27% — first champion config to beat SPY's 1.05
+  holdout Sharpe). LTR challenger runs its own `challenger_top_k: 12`.
+  Magnitude-proportional weighting and score-cutoff dynamic-k both LOST to
+  equal weights pre-holdout (LTR scores are not scale-comparable across
+  refits — never use absolute score cutoffs across weeks).
 - **Shadow race (2026-08-11):** the Saturday cycle also runs an LTR challenger
   (WeekGroupedXGBRanker, models/ltr_optuna.json — selected by NDCG@8 on CV
   folds, never mean IC: mean-IC selection demonstrably degrades a top-k

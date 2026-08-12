@@ -24,7 +24,8 @@ def replay_guard_state(nav_history, dd_derisk: float, dd_full: float) -> bool:
 
 
 def generate_signals(store, cfg, ledger, models_dir="models",
-                     estimator=None, model_name=None) -> tuple[str, list]:
+                     estimator=None, model_name=None,
+                     strategy=None) -> tuple[str, list]:
     """Weekly signal for the champion, or — when `estimator` is passed — for a
     shadow challenger racing the champion on its own paper ledger."""
     panel = store.read("panel")
@@ -63,7 +64,8 @@ def generate_signals(store, cfg, ledger, models_dir="models",
 
     hwm = max((n for _, n in ledger.nav_history), default=nav)
     dd = max(0.0, 1.0 - nav / hwm) if hwm > 0 else 0.0
-    strategy = make_strategies(cfg)[cfg.live_strategy]
+    if strategy is None:
+        strategy = make_strategies(cfg)[cfg.live_strategy]
     if hasattr(strategy, "restore_guard"):
         strategy.restore_guard(replay_guard_state(ledger.nav_history, cfg.dd_derisk, cfg.dd_full))
     weights = strategy.propose_weights(preds, vols, RiskState(drawdown=dd))

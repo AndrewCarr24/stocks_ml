@@ -12,7 +12,8 @@ holdout_years: 2           # most recent years excluded from champion selection 
 n_cv_folds: 4
 cv_train_years: 2           # fixed trailing calendar years used to fit each CV fold
 train_sample_rows: null    # optional cap on training rows (most recent kept); null = all
-top_k: 8
+top_k: 16               # k-sweep 2026-08-12: pre-holdout Sharpe peak (0.63 vs 0.52 at k=8)
+challenger_top_k: 12    # LTR challenger's own pre-holdout-selected k
 vol_target: 0.15           # annualized portfolio vol cap (VolScaledTopK)
 avg_correlation: 0.3       # assumed pairwise correlation for portfolio vol estimate
 dd_derisk: 0.15            # drawdown to halve exposure
