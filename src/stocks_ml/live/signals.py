@@ -23,11 +23,17 @@ def replay_guard_state(nav_history, dd_derisk: float, dd_full: float) -> bool:
     return guarded
 
 
-def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list]:
+def generate_signals(store, cfg, ledger, models_dir="models",
+                     estimator=None, model_name=None) -> tuple[str, list]:
+    """Weekly signal for the champion, or — when `estimator` is passed — for a
+    shadow challenger racing the champion on its own paper ledger."""
     panel = store.read("panel")
     prices = store.read("prices")
     fcols = feature_cols(panel)
-    champ_name, estimator = load_champion(models_dir)
+    if estimator is None:
+        champ_name, estimator = load_champion(models_dir)
+    else:
+        champ_name = model_name or type(estimator).__name__
 
     labeled = panel[panel["label"].notna()]
     latest = panel["date"].max()

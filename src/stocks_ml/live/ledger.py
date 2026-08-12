@@ -14,6 +14,26 @@ def latest_closes(prices: pd.DataFrame) -> pd.Series:
     return prices.sort_values("date").groupby("ticker")["close"].last()
 
 
+CHALLENGER_TAG = "ltr"   # shadow-race challenger; its files carry this suffix
+
+
+def find_latest_trades(signals_dir="signals", tag: str | None = None):
+    """Newest trades file for the champion (tag=None) or a tagged challenger.
+
+    Champion trade files are `<date>-trades.json`; challenger files are
+    `<date>-<tag>-trades.json`. The champion glob must exclude tagged files or
+    `ledger apply` would silently apply the challenger's trades to the real
+    ledger."""
+    from pathlib import Path as _P
+
+    files = sorted(_P(signals_dir).glob("*-trades.json"))
+    if tag:
+        files = [f for f in files if f.name.endswith(f"-{tag}-trades.json")]
+    else:
+        files = [f for f in files if not f.name.endswith(f"-{CHALLENGER_TAG}-trades.json")]
+    return files[-1] if files else None
+
+
 @dataclass
 class Ledger:
     cash: float = 0.0

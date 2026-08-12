@@ -82,10 +82,40 @@ def weekly_rank_ic(df: pd.DataFrame) -> pd.Series:
     return df.groupby("date").apply(_ic, include_groups=False).dropna()
 
 
+def weekly_ndcg(df: pd.DataFrame, k: int = 8) -> pd.Series:
+    """Per-week NDCG@k of predictions against label-quintile relevance grades.
+
+    The top-of-list metric for learning-to-rank candidates: mean Spearman IC
+    grades the whole 500-stock ordering, but a top-k strategy only consumes
+    the head, and selecting an LTR model by mean IC demonstrably steers it
+    away from what makes it good. Same quintile grading (0..4) the ranker
+    trains on; same per-week validity gates as weekly_rank_ic."""
+    from sklearn.metrics import ndcg_score
+
+    def _ndcg(g):
+        values = g[["label", "pred"]]
+        if (len(g) < 3 or not np.isfinite(values.to_numpy()).all()
+                or g["label"].nunique() < 2 or g["pred"].nunique() < 2):
+            return np.nan
+        pct = g["label"].rank(pct=True)
+        rel = (np.ceil(pct * 5) - 1).clip(0, 4)
+        return float(ndcg_score([rel.to_numpy()], [g["pred"].to_numpy()],
+                                k=min(k, len(g))))
+
+    return df.groupby("date").apply(_ndcg, include_groups=False).dropna()
+
+
 def evaluate_candidate(name: str, estimator, panel: pd.DataFrame, splits: list[Split],
-                       fcols: list[str], label_col: str = "label") -> CandidateResult:
+                       fcols: list[str], label_col: str = "label",
+                       metric: str = "rank_ic") -> CandidateResult:
     from stocks_ml.models.candidates import dated_features
 
+    if metric == "rank_ic":
+        scorer = weekly_rank_ic
+    elif metric == "ndcg8":
+        scorer = weekly_ndcg
+    else:
+        raise ValueError(f"unknown metric {metric!r}; valid: rank_ic, ndcg8")
     labeled = panel[np.isfinite(panel[label_col])]
     if labeled.duplicated(["date", "ticker"]).any():
         raise ValueError("panel must have exactly one labeled row per date and ticker")
@@ -135,7 +165,7 @@ def evaluate_candidate(name: str, estimator, panel: pd.DataFrame, splits: list[S
                 f"{name} returned {len(preds)} predictions for {len(test)} test rows"
             )
         scored["pred"] = preds
-        ics = weekly_rank_ic(scored)
+        ics = scorer(scored)
         complete_ics = ics.reindex(expected_dates)
         fold_ics.append(float(complete_ics.mean())
                         if complete_ics.notna().all() else float("nan"))

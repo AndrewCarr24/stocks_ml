@@ -96,13 +96,15 @@ def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
     out.mkdir(parents=True, exist_ok=True)
     eval_spec = FAMILY_EVAL_OVERRIDES.get(family, {})
     label_col = eval_spec.get("label_col", "label")
-    labeled, fcols, splits = prepare_tuning_data(store, cfg, **eval_spec)
+    metric = eval_spec.get("metric", "rank_ic")
+    prep = {k: v for k, v in eval_spec.items() if k in ("label_col", "purge_days")}
+    labeled, fcols, splits = prepare_tuning_data(store, cfg, **prep)
 
     def objective(trial):
         params = suggest_params(trial, family)
         est = _make_estimator(family, params)
         result = evaluate_candidate("optuna", est, labeled, splits, fcols,
-                                    label_col=label_col)
+                                    label_col=label_col, metric=metric)
         trial.set_user_attr("mean_ic", result.mean_ic if math.isfinite(result.mean_ic) else None)
         trial.set_user_attr("fold_ics", [x if math.isfinite(x) else None
                            for x in result.fold_ics])
@@ -176,10 +178,12 @@ def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
         top_lines.append(f"| {t['number']} | {t['value']:.4f} | {folds} | "
                          f"{t['n_test_weeks']}/{t['expected_test_weeks']} | "
                          f"{iterations or 'n/a'} |")
+    metric_name = {"rank_ic": "mean weekly rank IC",
+                   "ndcg8": "mean weekly NDCG@8"}[metric]
     (out / f"optuna_{family}.md").write_text(
         f"# {family} Optuna tuning\n\n"
-        f"TPE search, {n_trials} trials, seed {seed}. Selection uses only mean "
-        f"weekly rank IC on the pre-holdout purged walk-forward CV folds. The "
+        f"TPE search, {n_trials} trials, seed {seed}. Selection uses only "
+        f"{metric_name} on the pre-holdout purged walk-forward CV folds. The "
         f"holdout is never read by tuning.\n\n"
         f"| metric | value |\n|---|---|\n"
         f"| best CV mean IC | {best_cv:.4f} |\n"

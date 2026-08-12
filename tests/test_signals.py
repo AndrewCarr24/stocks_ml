@@ -36,3 +36,33 @@ def test_generate_signals(synthetic_store, tiny_cfg, tmp_path):
     assert isinstance(trades, list)
     for ticker, delta_shares, price in trades:
         assert isinstance(ticker, str) and price > 0
+
+
+def test_generate_signals_with_challenger_estimator(synthetic_store, tiny_cfg, tmp_path):
+    from stocks_ml.features.panel import build_panel
+    from stocks_ml.models.candidates import MomentumRank
+
+    build_panel(synthetic_store, tiny_cfg)
+    ledger = Ledger.load(tmp_path / "ledger_ltr.json")
+    ledger.cash = 100.0
+    # estimator override: no champion file needed, name flows into the header
+    md, trades = generate_signals(synthetic_store, tiny_cfg, ledger,
+                                  models_dir=str(tmp_path / "nonexistent"),
+                                  estimator=MomentumRank(), model_name="ltr (test)")
+    assert "ltr (test)" in md
+    assert "Target portfolio" in md
+    assert isinstance(trades, list)
+
+
+def test_find_latest_trades_separates_champion_and_challenger(tmp_path):
+    from stocks_ml.live.ledger import find_latest_trades
+
+    d = tmp_path / "signals"
+    d.mkdir()
+    (d / "2026-08-01-trades.json").write_text("[]")
+    (d / "2026-08-08-trades.json").write_text("[]")
+    (d / "2026-08-08-ltr-trades.json").write_text("[]")
+    champ = find_latest_trades(signals_dir=d)
+    chall = find_latest_trades(signals_dir=d, tag="ltr")
+    assert champ.name == "2026-08-08-trades.json"       # never the challenger's
+    assert chall.name == "2026-08-08-ltr-trades.json"

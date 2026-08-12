@@ -101,24 +101,46 @@ def cmd_torture(args, cfg):
 
 
 def cmd_signals(args, cfg):
-    from stocks_ml.live.ledger import Ledger
+    from stocks_ml.live.ledger import CHALLENGER_TAG, Ledger
     from stocks_ml.live.signals import generate_signals
 
-    ledger = Ledger.load("ledger.json")
-    md, trades = generate_signals(_store(cfg), cfg, ledger)
+    store = _store(cfg)
     out = Path("signals")
     out.mkdir(exist_ok=True)
+
+    ledger = Ledger.load("ledger.json")
+    md, trades = generate_signals(store, cfg, ledger)
     path = out / f"{date.today()}.md"
     path.write_text(md)
     trades_path = out / f"{date.today()}-trades.json"
     trades_path.write_text(json.dumps([[t, d, p] for t, d, p in trades]))
     print(f"wrote {path} and {trades_path} ({len(trades)} trades suggested)")
 
+    # Shadow race: the LTR challenger runs the same strategy on its own paper
+    # ledger, giving a true out-of-sample head-to-head against the champion.
+    from stocks_ml.backtest.pipelines import _optuna_params
+    from stocks_ml.models.candidates import WeekGroupedXGBRanker
+
+    ltr_params = _optuna_params("models", "ltr")
+    challenger = WeekGroupedXGBRanker(**(ltr_params or {}))
+    ledger2 = Ledger.load(f"ledger_{CHALLENGER_TAG}.json")
+    if not (ledger2.positions or ledger2.cash):
+        ledger2 = Ledger(cash=100.0)          # first run: same $100 start
+        ledger2.save(f"ledger_{CHALLENGER_TAG}.json")
+    md2, trades2 = generate_signals(
+        store, cfg, ledger2, estimator=challenger,
+        model_name=f"ltr{' (CV-tuned)' if ltr_params else ' (untuned)'}")
+    path2 = out / f"{date.today()}-{CHALLENGER_TAG}.md"
+    path2.write_text(md2)
+    trades2_path = out / f"{date.today()}-{CHALLENGER_TAG}-trades.json"
+    trades2_path.write_text(json.dumps([[t, d, p] for t, d, p in trades2]))
+    print(f"wrote {path2} and {trades2_path} ({len(trades2)} challenger trades)")
+
 
 def cmd_ledger(args, cfg):
-    from stocks_ml.live.ledger import Ledger, latest_closes
+    from stocks_ml.live.ledger import Ledger, find_latest_trades, latest_closes
 
-    path = Path("ledger.json")
+    path = Path(args.ledger)
     ledger = Ledger.load(path)
     if args.action == "init":
         ledger = Ledger(cash=args.cash)
@@ -134,10 +156,10 @@ def cmd_ledger(args, cfg):
         if args.file:
             tpath = Path(args.file)
         else:
-            candidates = sorted(Path("signals").glob("*-trades.json"))
-            if not candidates:
-                raise SystemExit("no signals/*-trades.json found; run `stocks-ml signals` first")
-            tpath = candidates[-1]
+            tpath = find_latest_trades(tag=args.tag)
+            if tpath is None:
+                raise SystemExit("no matching signals/*-trades.json found; "
+                                 "run `stocks-ml signals` first")
         if tpath.name in ledger.applied_files and not args.force:
             print(f"already applied {tpath.name}; skipping (use --force to re-apply)")
             return
@@ -182,9 +204,13 @@ def main():
     p_led.add_argument("action", choices=["init", "mark", "show", "apply"])
     p_led.add_argument("--cash", type=float, default=100.0)
     p_led.add_argument("--file", default=None,
-                       help="trades JSON to apply (default: newest signals/*-trades.json)")
+                       help="trades JSON to apply (default: newest matching signals/*-trades.json)")
     p_led.add_argument("--force", action="store_true",
                        help="re-apply a trades file even if already recorded in applied_files")
+    p_led.add_argument("--ledger", default="ledger.json",
+                       help="ledger file (challenger shadow race uses ledger_ltr.json)")
+    p_led.add_argument("--tag", default=None,
+                       help="trades-file tag for default apply lookup (challenger: ltr)")
 
     args = parser.parse_args()
     cfg = load_config(args.config)

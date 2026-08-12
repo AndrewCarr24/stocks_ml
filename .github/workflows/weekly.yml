@@ -47,6 +47,11 @@ jobs:
 
       - run: uv run stocks-ml ledger mark
 
+      # Shadow race: the LTR challenger's paper ledger, same cycle.
+      - run: uv run stocks-ml ledger apply --ledger ledger_ltr.json --tag ltr
+
+      - run: uv run stocks-ml ledger mark --ledger ledger_ltr.json
+
       - name: Save data cache
         uses: actions/cache/save@v4
         with:
@@ -57,7 +62,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add signals ledger.json
+          git add signals ledger.json ledger_ltr.json
           git diff --cached --quiet || git commit -m "chore(weekly): signals + ledger $(date -u +%F)"
           git push
 

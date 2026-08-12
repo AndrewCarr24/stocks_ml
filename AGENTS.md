@@ -19,6 +19,15 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   (signals + paper ledger, committed back to the repo) and a monthly retrain on
   the 1st. Live strategy is `topk_spy` (config `live_strategy`): the model's
   top 8 equal-weighted, with slots the ranking can't fill held in SPY.
+- **Shadow race (2026-08-11):** the Saturday cycle also runs an LTR challenger
+  (WeekGroupedXGBRanker, models/ltr_optuna.json — selected by NDCG@8 on CV
+  folds, never mean IC: mean-IC selection demonstrably degrades a top-k
+  ranker) on its own paper ledger `ledger_ltr.json` with the same topk_spy
+  strategy and the same $100 start. Files: signals/<date>-ltr.md,
+  <date>-ltr-trades.json. The race verdict — champion vs challenger on truly
+  unseen weeks — is the ONLY evidence that may change `live_strategy` or the
+  champion; further holdout grading of league variants is frozen (winner's
+  curse: ~7 configs have already been graded on it).
 - **Tie guard (2026-08-11):** `select_top_k` in strategies.py fills the top-k
   with whole equal-value prediction groups only; a group larger than the
   remaining slots is refused (unfilled slots → cash, or SPY under SpyFloor).

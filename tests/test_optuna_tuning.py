@@ -43,7 +43,7 @@ def test_objective_returns_sentinel_on_degenerate(monkeypatch, synthetic_store, 
 
     build_panel(synthetic_store, tiny_cfg)
 
-    def fake_eval(name, est, labeled, splits, fcols, label_col="label"):
+    def fake_eval(name, est, labeled, splits, fcols, **kwargs):
         return CandidateResult(name=name, mean_ic=0.9,
                                fold_ics=[0.9, float("nan"), 0.9], n_test_weeks=10,
                                expected_test_weeks=15, expected_folds=3)
@@ -68,7 +68,7 @@ def test_tune_optuna_writes_cv_winner_without_reading_holdout(
     cfg = replace(tiny_cfg, holdout_years=1)
     build_panel(synthetic_store, cfg)
 
-    def fake_eval(name, est, labeled, splits, fcols, label_col="label"):
+    def fake_eval(name, est, labeled, splits, fcols, **kwargs):
         # Holdout rows are physically absent from the tuning frame.
         last_cv_date = max(s.test_end for s in splits)
         assert labeled[labeled["date"] > last_cv_date].shape[0] == 0

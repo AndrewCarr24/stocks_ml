@@ -68,11 +68,15 @@ _FAMILY_SPEC = {
     "xgb4w": (TimeTailEarlyStopXGB, None),      # 4-week label, monthly pipeline
 }
 
-# Families whose CV evaluation departs from the default weekly label. The
-# 4-week label spans ~29 calendar days of future prices, so both the fold
-# purge and the wrapper's inner early-stop purge must exceed it.
+# Families whose CV evaluation departs from the default weekly label / metric.
+# The 4-week label spans ~29 calendar days of future prices, so both the fold
+# purge and the wrapper's inner early-stop purge must exceed it. LTR selects
+# by NDCG@8 — mean Spearman IC grades the whole cross-section and demonstrably
+# selects a worse top-of-list ranker (wave-2 league: mean-IC-tuned ltr fell
+# from $227 to $189 on the holdout).
 FAMILY_EVAL_OVERRIDES = {
     "xgb4w": {"label_col": "label_4w", "purge_days": LABEL_4W_PURGE_DAYS},
+    "ltr": {"metric": "ndcg8"},
 }
 
 _LEGACY_NAMES = {"xgb": ("xgb_tuned.json", "tuning.md")}

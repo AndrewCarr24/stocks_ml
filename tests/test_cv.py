@@ -141,3 +141,26 @@ def test_evaluate_candidate_alternate_label_col():
                              ["f_signal", "f_junk"], label_col="label_4w")
     assert res.mean_ic > 0.8          # oracle ranks the 4w label near-perfectly
     assert res.n_test_weeks == res.expected_test_weeks
+
+
+def test_weekly_ndcg_rewards_top_of_list():
+    panel = _panel(n_weeks=8)
+    perfect = panel.rename(columns={"f_signal": "pred"})[["date", "label", "pred"]]
+    from stocks_ml.models.cv import weekly_ndcg
+    good = weekly_ndcg(perfect)
+    bad = weekly_ndcg(perfect.assign(pred=-perfect["pred"]))
+    assert good.mean() > 0.95            # near-perfect ordering
+    assert good.mean() > bad.mean() + 0.2
+    # constant predictions are invalid weeks, not free points
+    flat = weekly_ndcg(perfect.assign(pred=0.0))
+    assert flat.empty
+
+
+def test_evaluate_candidate_ndcg_metric():
+    panel = _panel()
+    dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    splits = make_splits(dates, 2, purge_days=10, holdout_weeks=0)
+    res = evaluate_candidate("oracle", Oracle(), panel, splits,
+                             ["f_signal", "f_junk"], metric="ndcg8")
+    assert res.mean_ic > 0.9             # mean weekly NDCG@8 of a near-oracle
+    assert res.n_test_weeks == res.expected_test_weeks
