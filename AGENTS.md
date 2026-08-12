@@ -225,6 +225,24 @@ scoring calendars, or all-missing folds.
 
 ## Open items / likely next steps
 
+- **Better data for survivorship (owner-requested 2026-08-12):** the monthly
+  pipeline's outsized crisis-recovery returns (Apr-2009 picks: AIG/C/FITB/HBAN
+  at $1.86-$23) lean on the distressed-rebound trade, exactly where the ~200
+  missing delisted tickers flatter results most. A delisted-inclusive price
+  source (Tiingo key exists — rotate it, was exposed in chat — or similar)
+  is the fix; until then treat monthly_reg's since-2005 figures as an upper
+  bound (see reports for the torture/price-floor probes).
+- **Research-backed roadmap in docs/research/ (owner-supplied papers, 2026-08):**
+  ranked actions in recommendations-2026-08.md — (1) momentum block past 12
+  weeks, skip-adjusted (f_mom_26w, f_mom_52w_skip4w, f_mom_interm); (2) EDGAR
+  bundle: f_sue, f_net_issuance, f_nincr (+R&D/mktcap), ablate on label_4w
+  where fundamentals should shine; (3) trials ledger + paired-ΔIC t≥3
+  adoption hurdle + DSR with cross-trial variance (metrics.py currently uses
+  single-path variance — known deviation from Bailey-López de Prado). Also:
+  IC≈0.02 is the published large-cap ceiling (GKX/GHZ/HXZ) — calibrate
+  expectations; don't expand liquidity/idio-vol as alpha (HXZ veto);
+  RankBlend(xgb,enet) and trimmed staggered ensemble are the two principled
+  combination candidates (Timmermann).
 - Let the shadow ledger accumulate (Saturday cycle) before real money — this
   was always the plan; backtest numbers lean on friendly fill assumptions.
 - Possible research: honest Optuna re-run on the current 4-fold design;
