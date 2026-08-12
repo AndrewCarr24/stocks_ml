@@ -164,3 +164,23 @@ def test_evaluate_candidate_ndcg_metric():
                              ["f_signal", "f_junk"], metric="ndcg8")
     assert res.mean_ic > 0.9             # mean weekly NDCG@8 of a near-oracle
     assert res.n_test_weeks == res.expected_test_weeks
+
+
+def test_ablation_harness_detects_signal_family(tmp_path, monkeypatch):
+    """Removing the true signal column must produce a large positive paired t."""
+    import stocks_ml.models.ablation as ab
+    from stocks_ml.models.ablation import run_ablation
+
+    panel = _panel(n_weeks=80)
+    monkeypatch.setattr(ab, "prepare_tuning_data",
+                        lambda store, cfg, label_col="label", purge_days=None: (
+                            panel, ["f_signal", "f_junk"],
+                            make_splits(pd.DatetimeIndex(sorted(panel["date"].unique())),
+                                        2, purge_days=10, holdout_weeks=0)))
+    monkeypatch.setattr(ab, "record_trials", lambda rows, path=None: len(rows))
+    from sklearn.linear_model import Ridge
+    res = run_ablation(store=None, cfg=None, family_name="signal_test",
+                       features=["f_signal"], estimator=Ridge(alpha=1.0),
+                       out_dir=tmp_path)
+    assert res["t_stat"] > 3 and res["adopt"]
+    assert (tmp_path / "ablation_signal_test.md").exists()

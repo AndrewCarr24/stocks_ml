@@ -1,0 +1,1964 @@
+[
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t0",
+  "cv_metric": 0.008377506234828934,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t1",
+  "cv_metric": 0.030141071562496093,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t2",
+  "cv_metric": 0.027589361665492737,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t3",
+  "cv_metric": 0.026050583561239623,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t4",
+  "cv_metric": 0.012413224691803011,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t5",
+  "cv_metric": 0.020612794908420707,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t6",
+  "cv_metric": 0.026838396089500456,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t7",
+  "cv_metric": 0.010244444014203704,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t8",
+  "cv_metric": 0.036424820895998106,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t9",
+  "cv_metric": 0.028222203511767747,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t10",
+  "cv_metric": 0.013469215460136434,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t11",
+  "cv_metric": 0.028200307725854246,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t12",
+  "cv_metric": 0.017349139612807943,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t13",
+  "cv_metric": 0.013355738486420127,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t14",
+  "cv_metric": 0.023360726290196088,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t15",
+  "cv_metric": 0.024083788730386614,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t16",
+  "cv_metric": 0.028019575446739397,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t17",
+  "cv_metric": 0.01918488284250099,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t18",
+  "cv_metric": 0.0208303408714669,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t19",
+  "cv_metric": 0.015229780975031077,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t20",
+  "cv_metric": 0.022150797574496346,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t21",
+  "cv_metric": 0.026355041525467755,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t22",
+  "cv_metric": 0.028033943002200242,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t23",
+  "cv_metric": 0.037843498678724816,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t24",
+  "cv_metric": 0.02548650599823506,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t25",
+  "cv_metric": 0.028229293528436238,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t26",
+  "cv_metric": 0.023006182812158788,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t27",
+  "cv_metric": 0.025245961537429504,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t28",
+  "cv_metric": 0.017632319771184003,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t29",
+  "cv_metric": 0.024177799430290463,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t30",
+  "cv_metric": 0.025442737983196496,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t31",
+  "cv_metric": 0.02835413079464134,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t32",
+  "cv_metric": 0.02190586364525481,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t33",
+  "cv_metric": 0.02619775583353472,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t34",
+  "cv_metric": 0.02560050367980156,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t35",
+  "cv_metric": 0.02130984269815017,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t36",
+  "cv_metric": 0.01981441042846897,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t37",
+  "cv_metric": 0.024146488587087605,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t38",
+  "cv_metric": 0.022421696434019783,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t39",
+  "cv_metric": 0.01605226190662848,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t40",
+  "cv_metric": 0.016472242401108488,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t41",
+  "cv_metric": 0.028335671562565293,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t42",
+  "cv_metric": 0.028723709337995083,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t43",
+  "cv_metric": 0.03138213075394239,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t44",
+  "cv_metric": 0.026727670385991425,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t45",
+  "cv_metric": 0.026646441764414098,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t46",
+  "cv_metric": 0.02643545574236132,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t47",
+  "cv_metric": 0.017678227429335665,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t48",
+  "cv_metric": 0.024643692792927593,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t49",
+  "cv_metric": 0.030466354715494165,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t50",
+  "cv_metric": 0.03632037404793804,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t51",
+  "cv_metric": 0.030794169752563074,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t52",
+  "cv_metric": 0.019708222333552818,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t53",
+  "cv_metric": 0.02757743475862392,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t54",
+  "cv_metric": 0.023336163980592683,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t55",
+  "cv_metric": 0.027110927217299168,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t56",
+  "cv_metric": 0.01317309703598743,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t57",
+  "cv_metric": 0.012373100676300762,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t58",
+  "cv_metric": 0.02582667224315755,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb4w_seed0_t59",
+  "cv_metric": 0.03082169968996153,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t0",
+  "cv_metric": 0.01293007684696207,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t1",
+  "cv_metric": 0.01159858486699322,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t2",
+  "cv_metric": 0.008936519669089784,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t3",
+  "cv_metric": 0.0058671587166289505,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t4",
+  "cv_metric": 0.015450327659986909,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t5",
+  "cv_metric": 0.006474955536828563,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t6",
+  "cv_metric": 0.0036241044064139302,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t7",
+  "cv_metric": 0.0007111940254659523,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t8",
+  "cv_metric": 0.01803658983829176,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t9",
+  "cv_metric": 0.009604088605811896,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t10",
+  "cv_metric": -0.0035289257684258573,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t11",
+  "cv_metric": 0.010917940297962269,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t12",
+  "cv_metric": 0.006307781011298688,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t13",
+  "cv_metric": 0.009873844079400512,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t14",
+  "cv_metric": 0.00658380229859961,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t15",
+  "cv_metric": 0.00033189850163519775,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t16",
+  "cv_metric": 0.011487568448784964,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t17",
+  "cv_metric": 0.012832625642826776,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t18",
+  "cv_metric": -0.0002636905252077247,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t19",
+  "cv_metric": 0.01511182795633358,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t20",
+  "cv_metric": 0.00562144546929932,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t21",
+  "cv_metric": 0.01512811465191444,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t22",
+  "cv_metric": 0.012130976361838937,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t23",
+  "cv_metric": 0.019011425656357158,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t24",
+  "cv_metric": 0.014533719433438792,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t25",
+  "cv_metric": 0.00976222981388763,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t26",
+  "cv_metric": -0.00017258372892062544,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t27",
+  "cv_metric": 0.01620400658369045,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t28",
+  "cv_metric": 0.006693648442496267,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t29",
+  "cv_metric": 0.012102807955816114,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t30",
+  "cv_metric": 0.009804877476458269,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t31",
+  "cv_metric": 0.0068747155528291444,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t32",
+  "cv_metric": 0.015215218772203571,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t33",
+  "cv_metric": 0.01125216438601389,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t34",
+  "cv_metric": 0.01087214276963713,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t35",
+  "cv_metric": 0.00808043192642851,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t36",
+  "cv_metric": 0.009168530672820467,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t37",
+  "cv_metric": 0.011758898469211056,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t38",
+  "cv_metric": 0.007279929270597601,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t39",
+  "cv_metric": 0.008364606318164833,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t40",
+  "cv_metric": 0.012827727420696104,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t41",
+  "cv_metric": 0.015890620368969675,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t42",
+  "cv_metric": 0.01944845924808837,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t43",
+  "cv_metric": 0.016929258913961277,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t44",
+  "cv_metric": 0.019753604647651715,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t45",
+  "cv_metric": 0.017946746699989018,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t46",
+  "cv_metric": 0.016144720601876546,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t47",
+  "cv_metric": 0.010659738431358722,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t48",
+  "cv_metric": 0.004196595161741697,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t49",
+  "cv_metric": 0.00863138028817345,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t50",
+  "cv_metric": 0.017193898103065142,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t51",
+  "cv_metric": 0.011652004641456446,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t52",
+  "cv_metric": 0.0173347805691914,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t53",
+  "cv_metric": 0.008496565039498848,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t54",
+  "cv_metric": 0.016130325084084626,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t55",
+  "cv_metric": 0.016849509821803648,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t56",
+  "cv_metric": 0.0023023231266165183,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t57",
+  "cv_metric": 0.008814632697179046,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t58",
+  "cv_metric": 0.009652359768174803,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t59",
+  "cv_metric": 0.015946503418375328,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t60",
+  "cv_metric": 0.017370585412345173,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t61",
+  "cv_metric": 0.017011533795202576,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t62",
+  "cv_metric": 0.018490689923986434,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t63",
+  "cv_metric": 0.016848384881108458,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t64",
+  "cv_metric": -0.0009102832902969057,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t65",
+  "cv_metric": 0.012944267900566965,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t66",
+  "cv_metric": 0.015878714232359765,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t67",
+  "cv_metric": -0.0005201764883811258,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t68",
+  "cv_metric": 0.006761641547145122,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t69",
+  "cv_metric": 0.015187507350105527,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t70",
+  "cv_metric": 0.017275510365913172,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t71",
+  "cv_metric": 0.018817484680118242,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t72",
+  "cv_metric": 0.017934064022346954,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t73",
+  "cv_metric": 0.016445969181129262,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t74",
+  "cv_metric": 0.017946405712855207,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t75",
+  "cv_metric": 0.012221015745262498,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t76",
+  "cv_metric": 0.01636786167572142,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t77",
+  "cv_metric": 0.00443607079609304,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t78",
+  "cv_metric": 0.01742846006558425,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t79",
+  "cv_metric": 0.009461276894534649,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t80",
+  "cv_metric": 0.00610461896681637,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t81",
+  "cv_metric": 0.019386471069935247,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t82",
+  "cv_metric": 0.018411957696826707,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t83",
+  "cv_metric": 0.01663935229697041,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t84",
+  "cv_metric": 0.01878308532925279,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t85",
+  "cv_metric": 0.017945664706847747,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t86",
+  "cv_metric": 0.017232508166475764,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t87",
+  "cv_metric": -0.00040452786550685625,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t88",
+  "cv_metric": 0.01846299709032019,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t89",
+  "cv_metric": 0.01818432834962657,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t90",
+  "cv_metric": 0.01689525225636443,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t91",
+  "cv_metric": 0.018317145140391723,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t92",
+  "cv_metric": 0.01733695405540886,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t93",
+  "cv_metric": 0.01841551111277228,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t94",
+  "cv_metric": 0.017539718492193487,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t95",
+  "cv_metric": 0.01865880230996232,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t96",
+  "cv_metric": 0.017557157391620153,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t97",
+  "cv_metric": 0.018144625827480373,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t98",
+  "cv_metric": 0.014054798505875928,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_xgb_seed0_t99",
+  "cv_metric": 0.012324657086275798,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t0",
+  "cv_metric": 0.02,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t1",
+  "cv_metric": 0.02,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t2",
+  "cv_metric": 0.02,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t3",
+  "cv_metric": 0.01687997378517008,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t4",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t5",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t6",
+  "cv_metric": 0.016641031252675294,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t7",
+  "cv_metric": 0.013994570560767201,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t8",
+  "cv_metric": 0.01399713635792984,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t9",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t10",
+  "cv_metric": 0.014004107796733127,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t11",
+  "cv_metric": 0.015045188064405267,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t12",
+  "cv_metric": 0.019040529592837727,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t13",
+  "cv_metric": 0.017171742071433845,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t14",
+  "cv_metric": 0.014227212783803588,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t15",
+  "cv_metric": 0.021965062930796173,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t16",
+  "cv_metric": 0.016631981654168307,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t17",
+  "cv_metric": 0.014180946222623654,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t18",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t19",
+  "cv_metric": 0.018718446745088185,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t20",
+  "cv_metric": 0.015155622866016388,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t21",
+  "cv_metric": 0.01822371013033041,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t22",
+  "cv_metric": 0.018852682975331377,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t23",
+  "cv_metric": 0.018898669657587287,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t24",
+  "cv_metric": 0.018489465750810292,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t25",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t26",
+  "cv_metric": 0.020070839469121162,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t27",
+  "cv_metric": 0.014733243415719919,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t28",
+  "cv_metric": 0.01804181423641308,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t29",
+  "cv_metric": 0.016263512901112387,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t30",
+  "cv_metric": 0.015695862611777422,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t31",
+  "cv_metric": 0.019037975641765823,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t32",
+  "cv_metric": 0.017466453771962053,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t33",
+  "cv_metric": 0.01567396400167096,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t34",
+  "cv_metric": 0.017279300383803233,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t35",
+  "cv_metric": 0.01422491409257513,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t36",
+  "cv_metric": 0.017384330905816682,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t37",
+  "cv_metric": 0.014049087126993534,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t38",
+  "cv_metric": 0.01801433839861163,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_enet_seed0_t39",
+  "cv_metric": 0.018906037067965755,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t0",
+  "cv_metric": 0.509284933593029,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t1",
+  "cv_metric": 0.49717722265534436,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t2",
+  "cv_metric": 0.516810435704093,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t3",
+  "cv_metric": 0.5124612153453016,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t4",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t5",
+  "cv_metric": 0.5162460694487954,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t6",
+  "cv_metric": 0.5031757852990724,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t7",
+  "cv_metric": 0.5083315250663979,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t8",
+  "cv_metric": 0.5026040385872595,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t9",
+  "cv_metric": 0.5140938553390069,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t10",
+  "cv_metric": 0.5140271779841976,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t11",
+  "cv_metric": 0.49688874371775543,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t12",
+  "cv_metric": 0.5164815291306195,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t13",
+  "cv_metric": 0.5091905920545399,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t14",
+  "cv_metric": 0.4933929239716709,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t15",
+  "cv_metric": 0.5079671943310448,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t16",
+  "cv_metric": 0.5027110537684665,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t17",
+  "cv_metric": 0.5162156252849411,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t18",
+  "cv_metric": 0.5101033809413026,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t19",
+  "cv_metric": 0.5010311463966789,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t20",
+  "cv_metric": 0.5141766577647744,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t21",
+  "cv_metric": 0.5032649223707824,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t22",
+  "cv_metric": 0.5039067780659598,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t23",
+  "cv_metric": 0.5172338480808616,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t24",
+  "cv_metric": 0.50330802008965,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t25",
+  "cv_metric": 0.5088526614515286,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t26",
+  "cv_metric": 0.5050845192750881,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t27",
+  "cv_metric": 0.5099324326026858,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t28",
+  "cv_metric": 0.510017827935071,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t29",
+  "cv_metric": 0.5032350217976692,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t30",
+  "cv_metric": 0.5070683866814715,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t31",
+  "cv_metric": 0.5072232826388929,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t32",
+  "cv_metric": 0.5128723853115095,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t33",
+  "cv_metric": 0.5080588525319439,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t34",
+  "cv_metric": 0.502397881765051,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t35",
+  "cv_metric": 0.509794555440671,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t36",
+  "cv_metric": 0.5100325380486854,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t37",
+  "cv_metric": 0.5082614891088102,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t38",
+  "cv_metric": 0.5074208916161067,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t39",
+  "cv_metric": 0.508304677773744,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t40",
+  "cv_metric": 0.505445384457024,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t41",
+  "cv_metric": 0.5159610666470588,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t42",
+  "cv_metric": 0.49736430211641613,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t43",
+  "cv_metric": 0.5062630636318157,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t44",
+  "cv_metric": 0.4960373721040644,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t45",
+  "cv_metric": 0.5158608093551205,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t46",
+  "cv_metric": 0.5164768953028255,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t47",
+  "cv_metric": 0.5097526098240656,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t48",
+  "cv_metric": 0.5134233341192453,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t49",
+  "cv_metric": 0.5057292144972799,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t50",
+  "cv_metric": 0.5070560072500706,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t51",
+  "cv_metric": 0.5106851859967533,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t52",
+  "cv_metric": 0.49738212968321505,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t53",
+  "cv_metric": 0.5085424576456752,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t54",
+  "cv_metric": 0.5044413957621148,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t55",
+  "cv_metric": 0.5069362984919661,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t56",
+  "cv_metric": 0.5090931472977729,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t57",
+  "cv_metric": 0.5066573202269651,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t58",
+  "cv_metric": 0.5117408394518361,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "optuna_ltr_seed0_t59",
+  "cv_metric": 0.507859499971523,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "incumbent_weekly",
+  "pre_holdout_sharpe": 0.5212
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "ltr_weekly",
+  "pre_holdout_sharpe": 0.5097
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "monthly_reg",
+  "pre_holdout_sharpe": 0.8351
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "quintile_prob_weekly",
+  "pre_holdout_sharpe": 0.4773
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "xgb_tuned+equal_topk",
+  "pre_holdout_sharpe": 0.4183
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "xgb_tuned+vol_scaled",
+  "pre_holdout_sharpe": 0.0565
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "xgb_tuned+kelly",
+  "pre_holdout_sharpe": 0.4386
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "xgb_tuned+kelly_spy",
+  "pre_holdout_sharpe": 0.6397
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "xgb_tuned+topk_spy",
+  "pre_holdout_sharpe": 0.5212
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "ltr_weekly_untuned_w1",
+  "notes": "superseded variant, graded on holdout during waves 1-2"
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "ltr_weekly_meanic_w2",
+  "notes": "superseded variant, graded on holdout during waves 1-2"
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "league_pipeline",
+  "name": "monthly_reg_borrowed_w1",
+  "notes": "superseded variant, graded on holdout during waves 1-2"
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_xgb_cfg0",
+  "cv_metric": 0.06849228589286518,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_xgb_cfg1",
+  "cv_metric": 0.023185563776765953,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_xgb_cfg2",
+  "cv_metric": 0.08199742727842513,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_xgb_cfg3",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_lgbm_cfg0",
+  "cv_metric": 0.03421171478680073,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_lgbm_cfg1",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_lgbm_cfg2",
+  "cv_metric": 0.15000293547833882,
+  "eligible": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_enet_cfg0",
+  "cv_metric": 0.07539682539682545,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_enet_cfg1",
+  "cv_metric": 0.10383597883597888,
+  "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "tune_trial",
+  "name": "random_enet_cfg2",
+  "cv_metric": 0.06283068783068785,
+  "eligible": true
+ }
+]

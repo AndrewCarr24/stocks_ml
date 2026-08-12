@@ -173,7 +173,7 @@ def run_league(store, cfg, models_dir: str = "models", out_dir: str = "reports")
     start = pd.Timestamp(cfg.backtest_start)
 
     pipes = wave1_pipelines(cfg, models_dir)
-    navs, meta = {}, {}
+    navs, meta, ledger_rows = {}, {}, []
     for p in pipes:
         wf = walk_forward_predictions(
             panel, p.estimator, cfg, start=start, label_col=p.label_col,
@@ -184,8 +184,16 @@ def run_league(store, cfg, models_dir: str = "models", out_dir: str = "reports")
             rebalance_every=p.rebalance_every)
         navs[p.name] = res.nav
         meta[p.name] = res
+        pre = res.nav[res.nav.index < hold_start] if hold_start is not None else res.nav
+        pre_sr = summarize(pre)["sharpe"]
+        ledger_rows.append({"kind": "league_pipeline", "name": p.name,
+                            "pre_holdout_sharpe": (round(pre_sr, 4)
+                                                   if pd.notna(pre_sr) else None)})
         print(f"done {p.name}: ${res.nav.iloc[-1]:,.0f} "
               f"({res.n_fits} fits, costs ${res.total_costs:.2f})", flush=True)
+
+    from stocks_ml.models.trials import record_trials
+    record_trials(ledger_rows, Path(models_dir) / "trials_ledger.json")
 
     bench = benchmark_navs(prices, fred, next(iter(navs.values())).index)
     navs.update(bench)

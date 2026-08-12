@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from scipy import stats
+
 from stocks_ml.backtest.metrics import regime_flags, regime_summaries, summarize
 from stocks_ml.backtest.simulator import run_backtest, walk_forward_predictions
 from stocks_ml.backtest.strategies import make_strategies
@@ -47,7 +49,8 @@ def _fmt(x, pct=False):
 
 
 def build_report(results: dict, bench: dict, flags: pd.DataFrame, n_trials: int,
-                 champion_name: str, holdout_start) -> str:
+                 champion_name: str, holdout_start,
+                 cross_trial_var: float | None = None) -> str:
     lines = [f"# Backtest report", "",
              f"Champion model: **{champion_name}** · strategies × candidates tried: "
              f"**{n_trials}** (used to deflate Sharpe)", ""]
@@ -57,7 +60,7 @@ def build_report(results: dict, bench: dict, flags: pd.DataFrame, n_trials: int,
               "| strategy | $100 → | CAGR | Sharpe | Deflated Sharpe | Sortino | max DD "
               "| worst week | underwater (d) | costs $ | fits |", "|---|" + "---|" * 10]
     for name, r in results.items():
-        s = summarize(r.nav, n_trials=n_trials)
+        s = summarize(r.nav, n_trials=n_trials, cross_trial_var=cross_trial_var)
         lines.append(
             f"| {name} | ${s['terminal_100']:,.0f} | {_fmt(s['cagr'], True)} | "
             f"{_fmt(s['sharpe'])} | {_fmt(s['deflated_sharpe'])} | {_fmt(s['sortino'])} | "
@@ -123,8 +126,33 @@ def build_report(results: dict, bench: dict, flags: pd.DataFrame, n_trials: int,
         lines.append(f"| {name} | ${s['terminal_100']:,.0f} | {_fmt(s['cagr'], True)} | "
                      f"{_fmt(s['sharpe'])} | {_fmt(s['max_drawdown'], True)} |")
 
-    lines += ["", "## Honesty notes", "",
-              f"- Sharpe deflation assumes {n_trials} strategy/model trials.",
+    # MinTRL: how many live shadow-ledger weeks certify a strategy at this
+    # trial count (Bailey-LdP; turns "let it accumulate" into a threshold).
+    mintrl_note = "- MinTRL unavailable (needs a live strategy row and ledger variance)."
+    live = results.get(getattr(build_report, "_live_strategy", "topk_spy"))
+    if live is not None and holdout_start is not None and cross_trial_var is not None:
+        from stocks_ml.backtest.metrics import expected_max_sr, min_track_record
+        hold = live.nav[live.nav.index >= holdout_start]
+        wk = hold.resample("W-FRI").last().pct_change().dropna()
+        if len(wk) > 10 and wk.std() > 0:
+            sr_w = float(wk.mean() / wk.std())
+            sr0_w = expected_max_sr(n_trials, cross_trial_var / 52.0)
+            mtrl = min_track_record(sr_w, sr0_w,
+                                    skew=float(stats.skew(wk)),
+                                    kurt=float(stats.kurtosis(wk, fisher=False)))
+            mintrl_note = (
+                f"- MinTRL: with N={n_trials} trials, the expected-max weekly SR of a "
+                f"zero-skill strategy is {sr0_w:.3f}; a live strategy matching the "
+                f"holdout live-strategy weekly SR ({sr_w:.3f}) needs "
+                + (f"**≥ {mtrl:.0f} weeks** of shadow ledger to certify SR>0 at 95%."
+                   if np.isfinite(mtrl) else
+                   "**no finite record** — it does not clear the expected-max bar."))
+    lines += ["", "## Honesty notes", "", mintrl_note,
+              f"- Sharpe deflation uses N={n_trials} trials and "
+              + ("the ledger's empirical cross-trial SR variance "
+                 f"({cross_trial_var:.4f})." if cross_trial_var is not None else
+                 "the single-path variance proxy (trials ledger too thin; "
+                 "under-deflates diverse trials)."),
               "- Regime flags (SPY 200d SMA, VIX median) use full-sample statistics; "
               "they are reporting lenses, not tradable signals.",
               "- Fundamentals are sparse before ~2009 (EDGAR XBRL phase-in).",
@@ -159,12 +187,22 @@ def run_all_backtests(store, cfg, models_dir="models", out_dir="reports") -> Pat
 
     dates = pd.DatetimeIndex(sorted(panel.date.unique()))
     hold_start = holdout_start_date(dates, cfg.holdout_years)
-    # Deflated-Sharpe trial count grows with the candidate zoo. The per-family
-    # tuning configs stay internal to each *_tuned candidate (selected via plain
-    # CV, never the holdout/backtest), so they are not counted here — same as any
-    # other in-candidate choice.
+    # Trial accounting: the ledger is the census (every tuning trial, tournament
+    # candidate, league pipeline, strategy variant). The old strategies-times-
+    # candidates heuristic remains a floor for installs with no ledger yet.
+    from stocks_ml.models.trials import ledger_stats, record_trials
+
+    rows = []
+    for name, res in results.items():
+        pre = res.nav[res.nav.index < hold_start] if hold_start is not None else res.nav
+        sr = summarize(pre)["sharpe"]
+        rows.append({"kind": "strategy_variant", "name": f"{champ_name}+{name}",
+                     "pre_holdout_sharpe": round(sr, 4) if np.isfinite(sr) else None})
+    ledger_path = Path(models_dir) / "trials_ledger.json"
+    record_trials(rows, ledger_path)
+    n_ledger, cross_var = ledger_stats(ledger_path)
     n_candidates = len(get_candidates(cfg, models_dir))
-    n_trials = len(strategies) * n_candidates
+    n_trials = max(n_ledger, len(strategies) * n_candidates)
 
     fig, ax = plt.subplots(figsize=(10, 6))
     for name, r in results.items():
@@ -204,7 +242,8 @@ def run_all_backtests(store, cfg, models_dir="models", out_dir="reports") -> Pat
         fig.savefig(out / "equity_holdout.png", dpi=120)
         plt.close(fig)
 
-    report = build_report(results, bench, flags, n_trials, champ_name, hold_start)
+    report = build_report(results, bench, flags, n_trials, champ_name, hold_start,
+                          cross_trial_var=cross_var)
     path = out / "backtest.md"
     path.write_text(report)
     return path

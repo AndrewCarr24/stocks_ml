@@ -57,8 +57,15 @@ def worst_week(nav: pd.Series) -> float:
     return float(weekly.min()) if not weekly.empty else float("nan")
 
 
-def deflated_sharpe(returns: pd.Series, n_trials: int, periods: int = 252) -> float:
-    """Bailey & Lopez de Prado (2014). Returns P(true SR > 0 | n_trials tried)."""
+def deflated_sharpe(returns: pd.Series, n_trials: int, periods: int = 252,
+                    cross_trial_var: float | None = None) -> float:
+    """Bailey & Lopez de Prado (2014). Returns P(true SR > 0 | n_trials tried).
+
+    `cross_trial_var` is the variance of ANNUALIZED Sharpes across the actual
+    trials (from the trials ledger) — the paper's prescribed input for the
+    expected-max benchmark. When None (ledger too thin), falls back to the
+    single-path estimator-variance proxy, which under-deflates when trials
+    were diverse; reports should state which input was used."""
     T = len(returns)
     if T < 10 or returns.std() == 0:
         return float("nan")
@@ -68,12 +75,38 @@ def deflated_sharpe(returns: pd.Series, n_trials: int, periods: int = 252) -> fl
     if n_trials <= 1:
         sr0 = 0.0
     else:
-        var_sr = (1 - skew * sr + (kurt - 1) / 4 * sr**2) / (T - 1)
+        if cross_trial_var is not None:
+            var_sr = cross_trial_var / periods   # annualized -> per-period scale
+        else:
+            var_sr = (1 - skew * sr + (kurt - 1) / 4 * sr**2) / (T - 1)
         z1 = stats.norm.ppf(1 - 1.0 / n_trials)
         z2 = stats.norm.ppf(1 - 1.0 / (n_trials * np.e))
         sr0 = np.sqrt(max(var_sr, 0)) * ((1 - EULER_GAMMA) * z1 + EULER_GAMMA * z2)
     denom = np.sqrt(max(1 - skew * sr + (kurt - 1) / 4 * sr**2, 1e-12))
     return float(stats.norm.cdf((sr - sr0) * np.sqrt(T - 1) / denom))
+
+
+def expected_max_sr(n_trials: int, var_sr: float) -> float:
+    """Bailey-LdP expected maximum SR among n_trials of true-zero strategies
+    with cross-trial SR variance var_sr (same periodicity as the SR in use)."""
+    if n_trials <= 1 or var_sr <= 0:
+        return 0.0
+    z1 = stats.norm.ppf(1 - 1.0 / n_trials)
+    z2 = stats.norm.ppf(1 - 1.0 / (n_trials * np.e))
+    return float(np.sqrt(var_sr) * ((1 - EULER_GAMMA) * z1 + EULER_GAMMA * z2))
+
+
+def min_track_record(sr: float, sr_benchmark: float, skew: float = 0.0,
+                     kurt: float = 3.0, alpha: float = 0.05) -> float:
+    """Bailey-LdP Minimum Track Record Length, in observations of the SR's
+    periodicity: how long a live record must run before an observed SR clears
+    the expected-max benchmark at confidence 1-alpha. inf when sr <= benchmark
+    (no record length suffices)."""
+    if not np.isfinite(sr) or sr <= sr_benchmark:
+        return float("inf")
+    z = stats.norm.ppf(1 - alpha)
+    return float(1 + (1 - skew * sr + (kurt - 1) / 4 * sr**2)
+                 * (z / (sr - sr_benchmark)) ** 2)
 
 
 def regime_flags(spy_close: pd.Series, vix: pd.Series) -> pd.DataFrame:
@@ -84,7 +117,8 @@ def regime_flags(spy_close: pd.Series, vix: pd.Series) -> pd.DataFrame:
     return flags
 
 
-def summarize(nav: pd.Series, n_trials: int = 1) -> dict:
+def summarize(nav: pd.Series, n_trials: int = 1,
+              cross_trial_var: float | None = None) -> dict:
     rets = nav_to_returns(nav)
     return {
         "terminal_100": float(100.0 * nav.iloc[-1] / nav.iloc[0]),
@@ -94,7 +128,8 @@ def summarize(nav: pd.Series, n_trials: int = 1) -> dict:
         "max_drawdown": max_drawdown(nav),
         "worst_week": worst_week(nav),
         "longest_underwater_days": longest_underwater(nav),
-        "deflated_sharpe": deflated_sharpe(rets, n_trials),
+        "deflated_sharpe": deflated_sharpe(rets, n_trials,
+                                           cross_trial_var=cross_trial_var),
     }
 
 

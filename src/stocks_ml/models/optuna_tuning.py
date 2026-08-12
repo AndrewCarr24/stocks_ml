@@ -155,6 +155,12 @@ def tune_optuna(store, cfg, family: str, n_trials: int = 100, out_dir="models",
     }
     (out / f"optuna_{family}_trials.json").write_text(json.dumps(audit, indent=2))
 
+    from stocks_ml.models.trials import record_trials
+    record_trials([{
+        "kind": "tune_trial", "name": f"optuna_{family}_seed{seed}_t{t['number']}",
+        "cv_metric": t["mean_ic"], "eligible": t["eligible"],
+    } for t in trials], out / "trials_ledger.json")
+
     best_cv = study.best_value
     best_params = suggest_params(optuna.trial.FixedTrial(study.best_params), family)
     full = _full_params(best_params, family)

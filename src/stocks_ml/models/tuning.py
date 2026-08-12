@@ -245,6 +245,7 @@ def tune_model(store, cfg, family: str = "xgb", n_samples: int = 40,
 
     hyperparams = [_production_params(family)] + sample_configs(n_samples, family=family)
     records = []
+    from stocks_ml.models.trials import record_trials
     for i, params in enumerate(hyperparams):
         name = f"cfg{i}"
         est = _make_estimator(family, params)
@@ -261,6 +262,12 @@ def tune_model(store, cfg, family: str = "xgb", n_samples: int = 40,
         })
 
     results = pd.DataFrame(records)
+    record_trials([{
+        "kind": "tune_trial", "name": f"random_{family}_{r['name']}",
+        "cv_metric": r["mean_ic"] if pd.notna(r["mean_ic"]) else None,
+        "eligible": bool(r["eligible"]),
+    } for r in records], out / "trials_ledger.json")
+
     ranked = results.sort_values("mean_ic", ascending=False, na_position="last").reset_index(drop=True)
 
     best = select_best(ranked)

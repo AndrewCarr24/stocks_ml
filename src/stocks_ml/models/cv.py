@@ -24,6 +24,8 @@ class CandidateResult:
     expected_test_weeks: int
     expected_folds: int
     fold_diagnostics: list[dict] | None = None
+    # per-week scores (date-indexed) for paired ablation tests (t >= 3 rule)
+    weekly_scores: pd.Series | None = None
 
 
 def make_splits(dates: pd.DatetimeIndex, n_folds: int, purge_days: int,
@@ -176,4 +178,5 @@ def evaluate_candidate(name: str, estimator, panel: pd.DataFrame, splits: list[S
                            n_test_weeks=int(len(combined)),
                            expected_test_weeks=int(expected_test_weeks),
                            expected_folds=len(splits),
-                           fold_diagnostics=fold_diagnostics)
+                           fold_diagnostics=fold_diagnostics,
+                           weekly_scores=combined.sort_index())

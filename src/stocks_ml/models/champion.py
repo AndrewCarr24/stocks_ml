@@ -103,6 +103,13 @@ def run_training(store, cfg, candidates: dict | None = None, out_dir="models") -
     results = {name: evaluate_candidate(name, est, labeled, splits, fcols)
                for name, est in candidates.items()}
 
+    from stocks_ml.models.trials import record_trials
+    record_trials([{
+        "kind": "tournament_candidate", "name": n,
+        "cv_metric": r.mean_ic if np.isfinite(r.mean_ic) else None,
+        "eligible": _eligible(r),
+    } for n, r in results.items()], out / "trials_ledger.json")
+
     fit_df = labeled if holdout_start is None else labeled[labeled["date"] < holdout_start]
     fit_end = fit_df["date"].max()
     fit_df = fit_df[fit_df["date"] >= fit_end - pd.DateOffset(years=cfg.cv_train_years)]
