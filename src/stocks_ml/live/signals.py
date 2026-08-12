@@ -60,14 +60,7 @@ def generate_signals(store, cfg, ledger, models_dir="models") -> tuple[str, list
     strategy = make_strategies(cfg)[cfg.live_strategy]
     if hasattr(strategy, "restore_guard"):
         strategy.restore_guard(replay_guard_state(ledger.nav_history, cfg.dd_derisk, cfg.dd_full))
-    # trailing daily returns for the correlation cap, mirroring the simulator
-    from stocks_ml.backtest.simulator import CORR_WINDOW_DAYS
-
-    close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index()
-    trailing = (close_w.pct_change(fill_method=None)
-                .loc[lambda df: df.index <= latest].tail(CORR_WINDOW_DAYS))
-    weights = strategy.propose_weights(
-        preds, vols, RiskState(drawdown=dd, trailing_returns=trailing))
+    weights = strategy.propose_weights(preds, vols, RiskState(drawdown=dd))
 
     lines = [f"# Signals for {pd.Timestamp(latest).date()}",
              f"Champion: **{champ_name}** · strategy: **{cfg.live_strategy}** · "

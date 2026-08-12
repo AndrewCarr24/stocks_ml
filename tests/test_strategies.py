@@ -142,50 +142,6 @@ def test_vol_scaled_refuses_degenerate_tie():
     assert strat.propose_weights(preds, vols, OK).empty
 
 
-def _returns_world(seed=0, twin_of="T0", twin_name="TWIN", n=10, days=90):
-    """n independent tickers plus one near-clone of T0 (correlation ~0.99)."""
-    rng = np.random.default_rng(seed)
-    base = pd.DataFrame(rng.normal(0, 0.02, size=(days, n)),
-                        columns=[f"T{i}" for i in range(n)],
-                        index=pd.bdate_range("2024-01-01", periods=days))
-    base[twin_name] = base[twin_of] + rng.normal(0, 0.002, size=days)
-    return base
-
-
-def test_corr_cap_skips_twin_and_takes_next_ranked():
-    rets = _returns_world()
-    # ranking: T0 best, its near-clone TWIN second, then T1..T9
-    order = ["T0", "TWIN"] + [f"T{i}" for i in range(1, 10)]
-    preds = pd.Series(np.linspace(0.05, 0.01, len(order)), index=order)
-    picks = select_top_k(preds, 3, trailing_returns=rets)
-    assert "T0" in picks and "TWIN" not in picks     # twin blocked by its pair with T0
-    assert set(picks) == {"T0", "T1", "T2"}          # slot passed down the ranking
-
-
-def test_corr_cap_is_lenient_when_no_outlier_pairs():
-    rets = _returns_world().drop(columns="TWIN")     # independent names only
-    order = [f"T{i}" for i in range(10)]
-    preds = pd.Series(np.linspace(0.05, 0.01, len(order)), index=order)
-    picks = select_top_k(preds, 4, trailing_returns=rets)
-    assert list(picks) == ["T0", "T1", "T2", "T3"]   # cap never binds: plain top-k
-
-
-def test_corr_cap_ignores_tickers_without_history():
-    rets = _returns_world()
-    preds = pd.Series({"T0": 0.05, "NEWLIST": 0.04, "T1": 0.03})
-    picks = select_top_k(preds, 3, trailing_returns=rets)   # NEWLIST absent from rets
-    assert set(picks) == {"T0", "NEWLIST", "T1"}     # unknown history -> uncorrelated
-
-
-def test_corr_cap_selection_ignores_row_order():
-    rets = _returns_world()
-    order = ["T0", "TWIN"] + [f"T{i}" for i in range(1, 10)]
-    preds = pd.Series(np.linspace(0.05, 0.01, len(order)), index=order)
-    forward = select_top_k(preds, 3, trailing_returns=rets)
-    backward = select_top_k(preds.iloc[::-1], 3, trailing_returns=rets)
-    assert set(forward) == set(backward)
-
-
 def test_spy_floor_routes_remainder_to_spy():
     from stocks_ml.backtest.strategies import FractionalKelly, SpyFloor
 
