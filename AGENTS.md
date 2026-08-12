@@ -230,8 +230,10 @@ scoring calendars, or all-missing folds.
   at $1.86-$23) lean on the distressed-rebound trade, exactly where the ~200
   missing delisted tickers flatter results most. A delisted-inclusive price
   source (Tiingo key exists — rotate it, was exposed in chat — or similar)
-  is the fix; until then treat monthly_reg's since-2005 figures as an upper
-  bound (see reports for the torture/price-floor probes).
+  is the fix. PROBED 2026-08-12 (reports/monthly_probes.md): a $5 price
+  floor on picks collapses monthly_reg to SPY ($913 vs $930, Sharpe 0.65 =
+  SPY) — the entire excess came from sub-$5 distressed survivors. Treat the
+  monthly pipeline as unproven pending delisted-inclusive data.
 - **Research-backed roadmap in docs/research/ (owner-supplied papers, 2026-08):**
   ranked actions in recommendations-2026-08.md — (1) momentum block past 12
   weeks, skip-adjusted (f_mom_26w, f_mom_52w_skip4w, f_mom_interm); (2) EDGAR
