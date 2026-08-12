@@ -1960,5 +1960,101 @@
   "name": "random_enet_cfg2",
   "cv_metric": 0.06283068783068785,
   "eligible": true
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_equal_k4",
+  "pre_holdout_sharpe": 0.42
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_equal_k8",
+  "pre_holdout_sharpe": 0.52
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_equal_k12",
+  "pre_holdout_sharpe": 0.61
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_equal_k16",
+  "pre_holdout_sharpe": 0.63
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_equal_k24",
+  "pre_holdout_sharpe": 0.59
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_equal_k32",
+  "pre_holdout_sharpe": 0.6
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_prop_k8",
+  "pre_holdout_sharpe": 0.51
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_prop_k16",
+  "pre_holdout_sharpe": 0.59
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_equal_k4",
+  "pre_holdout_sharpe": 0.43
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_equal_k8",
+  "pre_holdout_sharpe": 0.51
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_equal_k12",
+  "pre_holdout_sharpe": 0.54
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_equal_k16",
+  "pre_holdout_sharpe": 0.53
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_equal_k24",
+  "pre_holdout_sharpe": 0.53
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_equal_k32",
+  "pre_holdout_sharpe": 0.49
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_floor60_dynk",
+  "pre_holdout_sharpe": 0.38
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "sweep_ltr_floor55_dynk",
+  "pre_holdout_sharpe": 0.29
  }
 ]
