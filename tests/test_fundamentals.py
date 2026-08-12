@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from stocks_ml.features.fundamentals import fundamental_features
 
@@ -79,3 +80,61 @@ def test_missing_ticker_yields_nans():
     base = pd.DataFrame({"date": [pd.Timestamp("2023-03-01")], "ticker": ["ZZZ"], "close": [5.0]})
     out = fundamental_features(_edgar(), base)
     assert out.iloc[0][["f_roe", "f_earnings_yield", "f_asset_growth"]].isna().all()
+
+
+def test_sue_seasonal_surprise_and_nincr():
+    from stocks_ml.features.fundamentals import earnings_quality_features
+
+    rows = []
+    # 10 quarters of AAA net income: rising, with known seasonal diffs
+    for i in range(10):
+        end = pd.Timestamp("2020-03-31") + pd.DateOffset(months=3 * i)
+        rows.append(["AAA", "net_income", end - pd.DateOffset(days=89), end,
+                     end + pd.Timedelta(days=30), 100.0 + 10 * i, "10-Q"])
+    edgar = pd.DataFrame(rows, columns=["ticker", "concept", "start", "end",
+                                        "filed", "val", "form"])
+    base = pd.DataFrame({"date": [pd.Timestamp("2023-01-06")],
+                         "ticker": ["AAA"], "close": [50.0]})
+    out = earnings_quality_features(edgar, base)
+    # seasonal diff is constant (+40): sigma -> 0 -> SUE undefined there; but
+    # nincr must count the run of positive seasonal surprises (capped at 8)
+    assert out["f_nincr"].iloc[0] >= 4
+    # constant surprises give zero sigma -> f_sue stays NaN, never inf
+    assert not np.isinf(out["f_sue"]).any()
+
+
+def test_sue_positive_for_accelerating_earnings():
+    from stocks_ml.features.fundamentals import earnings_quality_features
+
+    rng = np.random.default_rng(0)
+    rows = []
+    vals = []
+    for i in range(16):
+        # seasonal growth with noise so sigma > 0; last surprise strongly positive
+        v = 100 + 12 * i + rng.normal(0, 3)
+        vals.append(v)
+        end = pd.Timestamp("2019-03-31") + pd.DateOffset(months=3 * i)
+        rows.append(["AAA", "net_income", end - pd.DateOffset(days=89), end,
+                     end + pd.Timedelta(days=30), v, "10-Q"])
+    edgar = pd.DataFrame(rows, columns=["ticker", "concept", "start", "end",
+                                        "filed", "val", "form"])
+    base = pd.DataFrame({"date": [pd.Timestamp("2023-06-02")],
+                         "ticker": ["AAA"], "close": [50.0]})
+    out = earnings_quality_features(edgar, base)
+    assert np.isfinite(out["f_sue"].iloc[0])
+    assert out["f_sue"].iloc[0] > 0          # growing seasonal earnings
+
+
+def test_net_issuance_yoy_share_change():
+    from stocks_ml.features.fundamentals import earnings_quality_features
+
+    rows = []
+    for i, (end, val) in enumerate([("2021-12-31", 1000.0), ("2022-12-31", 1100.0)]):
+        e = pd.Timestamp(end)
+        rows.append(["AAA", "shares", e, e, e + pd.Timedelta(days=45), val, "10-K"])
+    edgar = pd.DataFrame(rows, columns=["ticker", "concept", "start", "end",
+                                        "filed", "val", "form"])
+    base = pd.DataFrame({"date": [pd.Timestamp("2023-06-02")],
+                         "ticker": ["AAA"], "close": [50.0]})
+    out = earnings_quality_features(edgar, base)
+    assert out["f_net_issuance"].iloc[0] == pytest.approx(0.10)   # +10% shares

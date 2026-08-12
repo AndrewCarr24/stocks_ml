@@ -26,6 +26,16 @@ REJECTED_MODEL_FEATURES = frozenset({
 # the conservative 35-day observation-date lag configured in config.yaml.
 POINT_IN_TIME_MACRO_SERIES = frozenset({"T10Y2Y", "FEDFUNDS"})
 
+# Generated but NOT yet admitted to production matrices: candidate families
+# awaiting their paired-ΔIC ablation (models/ablation.py, adopt at t >= 3).
+# Remove from this set only with an ablation report showing t >= 3.
+PENDING_ABLATION_FEATURES = frozenset({
+    # momentum block, docs/research recommendation #1
+    "f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm",
+    # EDGAR earnings-quality bundle, recommendation #2
+    "f_sue", "f_nincr", "f_net_issuance",
+})
+
 
 def _admitted_macro_feature(col: str) -> bool:
     return any(col == f"f_macro_{sid}" or col == f"f_macro_{sid}_chg"
@@ -52,6 +62,7 @@ def feature_cols(df: pd.DataFrame) -> list[str]:
     """Return only features admitted to production model matrices."""
     return [c for c in all_feature_cols(df)
             if c not in REJECTED_MODEL_FEATURES
+            and c not in PENDING_ABLATION_FEATURES
             # Only explicitly audited FRED series are admitted. Current
             # Wikipedia sectors are not effective-dated and remain excluded.
             and (not c.startswith("f_macro_") or _admitted_macro_feature(c))
@@ -171,6 +182,16 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
     out["f_hi_52w"] = close / close.rolling(252).max() - 1
     out["f_lo_52w"] = close / close.rolling(252).min() - 1
     out["aux_vol"] = out["f_vol_12w"]
+
+    # Skip-adjusted and intermediate momentum (docs/research recommendation #1;
+    # Jegadeesh-Titman 1993 skip-week, Novy-Marx 2012 intermediate horizon).
+    # The plain lookbacks above include the most recent days, which carry the
+    # OPPOSITE (reversal) signal; these hand the model the clean decomposition:
+    #   12w skipping the last week, the classic 12-1 (52w skipping 4w), and
+    #   Novy-Marx's t-12m..t-7m return that excludes recent months entirely.
+    out["f_mom_12w_skip1w"] = close.shift(5) / close.shift(60) - 1
+    out["f_mom_52w_skip4w"] = close.shift(20) / close.shift(252) - 1
+    out["f_mom_interm"] = close.shift(130) / close.shift(252) - 1
 
     # Cleaner one-week reversal: remove the market component using a beta
     # estimated strictly before the five-day return window. Both the beta and
@@ -320,7 +341,8 @@ def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.membership import members_asof
     from stocks_ml.data.prices import drop_corrupt_series
     from stocks_ml.features.events import filing_features, sec8k_features
-    from stocks_ml.features.fundamentals import fundamental_features
+    from stocks_ml.features.fundamentals import (earnings_quality_features,
+                                                 fundamental_features)
     from stocks_ml.features.insiders import insider_features, shares_outstanding_asof, short_features
     from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
 
@@ -363,6 +385,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     close_df.columns = ["date", "ticker", "close"]
     panel = panel.merge(close_df, on=["date", "ticker"], how="left")
     panel = fundamental_features(edgar, panel)
+    panel = earnings_quality_features(edgar, panel)
     panel = panel.merge(filing_features(edgar, prices, dates), on=["date", "ticker"], how="left")
     panel = panel.merge(sec8k_features(sec8k, sorted(prices["ticker"].unique()), dates),
                         on=["date", "ticker"], how="left")

@@ -69,3 +69,87 @@ def fundamental_features(edgar: pd.DataFrame, base: pd.DataFrame) -> pd.DataFram
         out["f_leverage"] = vals["liabilities"] / vals["assets"]
         out["f_log_mktcap"] = np.log(mktcap.where(mktcap > 0))
     return out.replace([np.inf, -np.inf], np.nan)
+
+
+def _quarterly_rows(edgar: pd.DataFrame, concept: str) -> pd.DataFrame:
+    """True quarterly durations from 10-Q/10-K facts (~70-110 day periods).
+
+    Q4 often appears only as the annual duration inside the 10-K, so seasonal
+    chains can have gaps — a structural absence handled by neutral-fill, never
+    by relaxing the join."""
+    f = edgar[(edgar.concept == concept) & (edgar.form.isin(["10-Q", "10-K"]))].copy()
+    days = (f["end"] - f["start"]).dt.days
+    return f[(days > 70) & (days < 110)]
+
+
+def _seasonal_pairs(rows: pd.DataFrame, tolerance_days: int = 45) -> pd.DataFrame:
+    """Match each quarterly fact with the same fiscal quarter one year earlier.
+
+    Knowable-when: max(filed, filed_prev) — a seasonal difference exists only
+    once both quarters are on file (same convention as asset growth)."""
+    rows = (rows.sort_values(["ticker", "end", "filed"])
+                .drop_duplicates(subset=["ticker", "end"], keep="last"))
+    left = rows.assign(target=rows["end"] - pd.Timedelta(days=365)).sort_values("target")
+    right = rows[["ticker", "end", "val", "filed"]].sort_values("end")
+    m = pd.merge_asof(left, right, left_on="target", right_on="end", by="ticker",
+                      tolerance=pd.Timedelta(days=tolerance_days),
+                      direction="nearest", suffixes=("", "_prev"))
+    m = m.dropna(subset=["val_prev"])
+    m["sdiff"] = m["val"] - m["val_prev"]
+    m["filed_eff"] = m[["filed", "filed_prev"]].max(axis=1)
+    return m.sort_values(["ticker", "end"])
+
+
+def earnings_quality_features(edgar: pd.DataFrame, base: pd.DataFrame) -> pd.DataFrame:
+    """SUE, consecutive-earnings-increases, and net share issuance.
+
+    docs/research recommendation #2 (Bernard-Thomas 1989; Green-Hand-Zhang 2017;
+    Hou-Xue-Zhang 2020 survivors). All filing-dated with the next-calendar-day
+    availability shift applied by _asof_join; NaN where history is short."""
+    out = base.copy()
+
+    pairs = _seasonal_pairs(_quarterly_rows(edgar, "net_income"))
+    if not pairs.empty:
+        # SUE: seasonal surprise scaled by the std of the last 8 surprises
+        # (min 4). The rolling window sees only rows already computed, and the
+        # feature's filed date is the current pair's filed_eff.
+        pairs["sigma"] = (pairs.groupby("ticker")["sdiff"]
+                          .transform(lambda s: s.rolling(8, min_periods=4).std()))
+        sue = pairs[pairs["sigma"] > 0].copy()
+        sue["val"] = sue["sdiff"] / sue["sigma"]
+        sue = (sue.drop(columns=["filed", "filed_prev", "val_prev"], errors="ignore")
+                  .rename(columns={"filed_eff": "filed"}))
+        out["f_sue"] = _asof_join(out, sue[["ticker", "filed", "end", "val"]], "sue")
+
+        # nincr: length of the current run of positive seasonal surprises
+        # (Green-Hand-Zhang's survivor), capped at 8 like the literature.
+        def _runs(s):
+            run, acc = 0, []
+            for pos in (s > 0):
+                run = run + 1 if pos else 0
+                acc.append(min(run, 8))
+            return pd.Series(acc, index=s.index, dtype=float)
+
+        pairs["nincr"] = pairs.groupby("ticker")["sdiff"].transform(_runs)
+        nincr = (pairs.drop(columns=["filed", "filed_prev", "val", "val_prev"],
+                            errors="ignore")
+                      .rename(columns={"filed_eff": "filed", "nincr": "val"}))
+        out["f_nincr"] = _asof_join(out, nincr[["ticker", "filed", "end", "val"]],
+                                    "nincr")
+    else:
+        out["f_sue"] = np.nan
+        out["f_nincr"] = np.nan
+
+    shares = edgar[edgar.concept == "shares"].copy()
+    ipairs = _seasonal_pairs(shares.assign(start=shares["end"]), tolerance_days=60) \
+        if not shares.empty else pd.DataFrame()
+    if not ipairs.empty:
+        iss = ipairs[ipairs["val_prev"] > 0].copy()
+        iss["val"] = iss["val"] / iss["val_prev"] - 1.0
+        iss = (iss.drop(columns=["filed", "filed_prev", "val_prev"], errors="ignore")
+                  .rename(columns={"filed_eff": "filed"}))
+        out["f_net_issuance"] = _asof_join(
+            out, iss[["ticker", "filed", "end", "val"]], "net_issuance")
+    else:
+        out["f_net_issuance"] = np.nan
+    return out

@@ -33,12 +33,15 @@ def run_ablation(store, cfg, family_name: str, features: list[str],
     Uses the champion's tuned config unless `estimator` is given."""
     labeled, fcols, splits = prepare_tuning_data(store, cfg, label_col=label_col,
                                                  purge_days=purge_days)
-    missing = [f for f in features if f not in fcols]
+    missing = [f for f in features if f not in labeled.columns]
     if missing:
-        raise ValueError(f"features not in the admitted model matrix: {missing}")
+        raise ValueError(f"features absent from the panel: {missing}")
     est = estimator or make_tuned("xgb", models_dir) or make_xgb()
 
-    with_res = evaluate_candidate("with_family", est, labeled, splits, fcols,
+    # WITH = admitted set plus the candidates (covers pending-ablation features
+    # excluded from feature_cols); WITHOUT = admitted set minus them.
+    full = fcols + [f for f in features if f not in fcols]
+    with_res = evaluate_candidate("with_family", est, labeled, splits, full,
                                   label_col=label_col)
     reduced = [c for c in fcols if c not in set(features)]
     without_res = evaluate_candidate("without_family", est, labeled, splits, reduced,

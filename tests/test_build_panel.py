@@ -188,3 +188,15 @@ def test_build_panel_drops_corrupt_tickers(synthetic_store, tiny_cfg):
     panel = build_panel(synthetic_store, tiny_cfg)
     assert "BADCO" not in panel.ticker.values
     assert "BADCO" in synthetic_store.manifest["corrupt_tickers"]
+
+
+def test_pending_ablation_features_generated_but_not_admitted(synthetic_store, tiny_cfg):
+    from stocks_ml.features.panel import PENDING_ABLATION_FEATURES, all_feature_cols
+
+    panel = build_panel(synthetic_store, tiny_cfg)
+    generated = set(all_feature_cols(panel))
+    admitted = set(feature_cols(panel))
+    # momentum candidates are price-derived and must exist in any panel;
+    # EDGAR ones may be absent in sparse fixtures
+    assert {"f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm"} <= generated
+    assert PENDING_ABLATION_FEATURES.isdisjoint(admitted)

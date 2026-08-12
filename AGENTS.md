@@ -245,6 +245,17 @@ scoring calendars, or all-missing folds.
   expectations; don't expand liquidity/idio-vol as alpha (HXZ veto);
   RankBlend(xgb,enet) and trimmed staggered ensemble are the two principled
   combination candidates (Timmermann).
+- **Reviewer triage (2026-08-12, second-agent review of docs/research):**
+  built now — trials ledger + cross-trial DSR + MinTRL (+ ENet shrinkage audit:
+  eligible-trial IC rises with alpha; the gate truncates heavier shrinkage, so
+  the selected config is already max-viable-shrinkage — no action). Queued,
+  CPU-bound: paired ablations for the two PENDING_ABLATION_FEATURES families
+  (momentum skip/intermediate; EDGAR sue/nincr/net_issuance — run on weekly AND
+  label_4w); rank-blend xgb+enet precheck (correlate their weekly_scores; build
+  candidate only if < ~0.95); decile-spread diagnostic. Deferred pending owner
+  design call: train-window-length candidates (needs folds to carry longer
+  windows with every candidate trimming back — touches the owner-fixed CV edge);
+  selection-stage IC deflation column in selection.md.
 - Let the shadow ledger accumulate (Saturday cycle) before real money — this
   was always the plan; backtest numbers lean on friendly fill assumptions.
 - Possible research: honest Optuna re-run on the current 4-fold design;
