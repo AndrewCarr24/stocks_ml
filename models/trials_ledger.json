@@ -2080,5 +2080,12 @@
   "cv_metric": 0.0008190604961170304,
   "t_stat": 0.18,
   "adopted": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "strategy_variant",
+  "name": "blend_v1_preregistered",
+  "pre_holdout_sharpe": 0.6427,
+  "notes": "pre-registered meta-allocation, constants untuned"
  }
 ]
