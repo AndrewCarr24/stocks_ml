@@ -31,6 +31,13 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   $252, equal_topk $222. The spread is timing luck of concentrated top-8 bets
   (e.g. a healthy June-2026 refit bet semiconductors into a sector crash, week
   −15.8%), not a bug — treat single-path holdout numbers with humility.
+- **Correlation cap (2026-08-11, owner-specified LENIENT):** select_top_k also
+  skips a candidate whose trailing-90d correlation with an already-selected
+  pick exceeds the week's CORR_PAIR_QUANTILE (0.99) of all universe pairs;
+  the slot passes to the next-ranked name. Only outlier pairs are refused
+  (~99% of pairs allowed; June-2026 replay: drops MU from the semis basket,
+  −15.6% → −13.2%). Simulator and signals feed RiskState.trailing_returns;
+  None disables the cap. The quantile is the leniency knob.
 
 ## Commands
 

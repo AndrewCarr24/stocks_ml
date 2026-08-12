@@ -7,10 +7,25 @@ import pandas as pd
 
 WEEKS_PER_YEAR = 52
 
+# Correlation cap: a candidate is skipped only when it would pair with an
+# already-selected pick above this quantile of ALL pairwise trailing
+# correlations in that week's universe. Deliberately lenient (owner-specified):
+# ~99% of possible pairs are allowed, so the cap is a no-op in typical weeks
+# and binds only on statistical outliers — share-class twins, one sector
+# crowding the whole book (the June-2026 semiconductor bet averaged 0.45
+# pairwise vs a 0.12 random-basket mean). Self-calibrating: the threshold is
+# recomputed weekly from the cross-section, so high-correlation regimes raise
+# the bar instead of freezing the strategy.
+CORR_PAIR_QUANTILE = 0.99
+MIN_CORR_OBS = 60  # trading days of overlapping returns needed to trust a correlation
+
 
 @dataclass
 class RiskState:
     drawdown: float = 0.0
+    # trailing daily returns (rows = days, cols = tickers), known at decision
+    # time; None disables the correlation cap (e.g. unit tests, missing data)
+    trailing_returns: pd.DataFrame | None = None
 
 
 class Strategy:
@@ -25,8 +40,27 @@ class Strategy:
         return preds[common], vols[common]
 
 
-def select_top_k(preds: pd.Series, k: int) -> pd.Index:
-    """Top-k selection that never splits a tie.
+def _pair_corr_cap(pos_index, trailing_returns):
+    """Correlation matrix over candidates + that week's outlier threshold.
+
+    Returns (corr, cap) or (None, None) when there isn't enough data to
+    calibrate — in which case the cap is disabled rather than guessed."""
+    cols = [t for t in pos_index if t in trailing_returns.columns]
+    r = trailing_returns[cols]
+    r = r.loc[:, r.notna().sum() >= MIN_CORR_OBS]
+    if r.shape[1] < 3:
+        return None, None
+    corr = r.corr()
+    vals = corr.values[np.triu_indices(len(corr), 1)]
+    vals = vals[np.isfinite(vals)]
+    if not len(vals):
+        return None, None
+    return corr, float(np.quantile(vals, CORR_PAIR_QUANTILE))
+
+
+def select_top_k(preds: pd.Series, k: int,
+                 trailing_returns: pd.DataFrame | None = None) -> pd.Index:
+    """Top-k selection that never splits a tie and refuses crowded pairs.
 
     Slots fill with whole groups of equally-predicted stocks, best value first.
     A group larger than the remaining slots is refused outright: sampling
@@ -34,14 +68,30 @@ def select_top_k(preds: pd.Series, k: int) -> pd.Index:
     can't tell these apart" into fake conviction. Near-constant predictions —
     the degenerate refits where early stopping kept ~no trees — therefore
     select nothing, and the unfilled slots fall through to the strategy's
-    floor (cash, or SPY under SpyFloor)."""
+    floor (cash, or SPY under SpyFloor).
+
+    With ``trailing_returns``, a candidate is additionally skipped when its
+    trailing correlation with ANY already-selected pick exceeds the week's
+    CORR_PAIR_QUANTILE pairwise threshold; its slot passes to the next-ranked
+    name, so the ranking concedes only the minimum needed to avoid outlier
+    crowding. Skipping is judged against prior selections only (never within
+    a tie group), keeping selection independent of row order. Tickers with
+    insufficient return history are treated as uncorrelated."""
     pos = preds[preds > 0]
+    corr, cap = (None, None)
+    if trailing_returns is not None and len(pos):
+        corr, cap = _pair_corr_cap(pos.index, trailing_returns)
     selected: list = []
     remaining = k
     for value in np.sort(pos.unique())[::-1]:
         members = pos.index[pos == value]
         if len(members) > remaining:
             break
+        if cap is not None and selected:
+            prior = [s for s in selected if s in corr.columns]
+            members = [t for t in members
+                       if t not in corr.index or not prior
+                       or not (corr.loc[t, prior] > cap + 1e-12).any()]
         selected.extend(members)
         remaining -= len(members)
         if remaining == 0:
@@ -57,7 +107,7 @@ class EqualWeightTopK(Strategy):
 
     def propose_weights(self, preds, vols, risk):
         preds, vols = self._clean(preds, vols)
-        picks = select_top_k(preds, self.k)
+        picks = select_top_k(preds, self.k, risk.trailing_returns)
         return pd.Series(1.0 / self.k, index=picks)
 
 
@@ -91,7 +141,7 @@ class VolScaledTopK(Strategy):
     def propose_weights(self, preds, vols, risk):
         exposure = self._exposure(risk.drawdown)
         preds, vols = self._clean(preds, vols)
-        picks = select_top_k(preds, self.k)
+        picks = select_top_k(preds, self.k, risk.trailing_returns)
         if len(picks) == 0 or exposure == 0.0:
             return pd.Series(dtype=float)
         v = vols[picks].clip(lower=1e-4)

@@ -11,6 +11,7 @@ from stocks_ml.models.candidates import dated_features
 
 MIN_TRAIN_ROWS = 50  # low floor: one real week has ~500 rows; small value keeps synthetic tests tradeable
 MIN_TRAIN_WEEKS = 12  # enough complete dates for a purged time-tail stopping split
+CORR_WINDOW_DAYS = 90  # trailing daily returns supplied to strategies' correlation cap
 
 
 @dataclass
@@ -103,6 +104,7 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
 
     if predictions is None:
         predictions = walk_forward_predictions(panel, estimator, cfg, start=start, end=end)
+    daily_rets = close_w.pct_change(fill_method=None)
     cash, shares = 100.0, {}
     navs, weight_rows = {}, {}
     hwm, total_costs = 100.0, 0.0
@@ -125,7 +127,11 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
         nav_t = past_navs.iloc[-1] if not past_navs.empty else 100.0
         dd = 1.0 - nav_t / hwm
 
-        weights = strategy.propose_weights(preds, vols, RiskState(drawdown=dd))
+        # returns strictly up to the decision date t (its close is known when
+        # the weekend signal is computed, same information set as the features)
+        trailing = daily_rets[daily_rets.index <= t].tail(CORR_WINDOW_DAYS)
+        weights = strategy.propose_weights(
+            preds, vols, RiskState(drawdown=dd, trailing_returns=trailing))
         if len(weights) and ((weights < -1e-9).any() or weights.sum() > 1 + 1e-9):
             raise ValueError(f"strategy {strategy.name!r} violated long-only/no-leverage invariant")
         weight_rows[t] = weights
