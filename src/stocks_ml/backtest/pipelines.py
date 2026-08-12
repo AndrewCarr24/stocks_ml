@@ -113,7 +113,9 @@ def run_league(store, cfg, models_dir: str = "models", out_dir: str = "reports")
     panel, prices, fred = store.read("panel"), store.read("prices"), store.read("fred")
     dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
     hold_start = holdout_start_date(dates, cfg.holdout_years)
-    start = pd.Timestamp(cfg.eval_start)
+    # Same exam as the strategy zoo (owner-mandated): full history from
+    # backtest_start, not just the CV-era window.
+    start = pd.Timestamp(cfg.backtest_start)
 
     pipes = wave1_pipelines(cfg, models_dir)
     navs, meta = {}, {}
@@ -145,9 +147,11 @@ def run_league(store, cfg, models_dir: str = "models", out_dir: str = "reports")
     _section(lines, f"Holdout (≥ {pd.Timestamp(hold_start).date()}) — the primary comparison",
              navs, set(bench), lo=hold_start,
              note="Never used for tuning or selection of any pipeline.")
-    _section(lines, f"Selection window ({start.date()} → {pd.Timestamp(hold_start).date()})",
-             navs, set(bench), lo=None, hi=hold_start,
-             note="Overlaps the incumbent's CV/tuning window — context, not verdict.")
+    _section(lines, f"Since {start.date()} (full history)",
+             navs, set(bench),
+             note="Same exam as the strategy zoo. Pre-holdout years overlap the "
+                  "tuned pipelines' CV/tuning windows — context, not verdict; "
+                  "the holdout section above is the clean test.")
 
     lines += ["", "## Cost and fit accounting", "",
               "| pipeline | rebalances/cadence | model fits | costs $ |", "|---|---|---|---|"]
