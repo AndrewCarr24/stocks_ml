@@ -61,6 +61,27 @@ class EqualWeightTopK(Strategy):
         return pd.Series(1.0 / self.k, index=picks)
 
 
+class ConfidenceTopK(Strategy):
+    """Top-k by score, where only scores above `floor` count as conviction.
+
+    Built for calibrated-probability models: with floor=0.5, a stock qualifies
+    only when the model says it is more likely than not to be a top-quintile
+    name. Reuses select_top_k on (score - floor), so the tie guard applies and
+    low-confidence weeks fill fewer slots — the shortfall lands in cash, or in
+    SPY under SpyFloor. Slots are 1/k each regardless of how many fill, same
+    conviction-budget semantics as EqualWeightTopK."""
+
+    name = "conf_topk"
+
+    def __init__(self, k: int, floor: float):
+        self.k, self.floor = k, floor
+
+    def propose_weights(self, preds, vols, risk):
+        preds, vols = self._clean(preds, vols)
+        picks = select_top_k(preds - self.floor, self.k)
+        return pd.Series(1.0 / self.k, index=picks)
+
+
 class VolScaledTopK(Strategy):
     name = "vol_scaled"
 

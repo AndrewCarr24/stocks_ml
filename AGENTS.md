@@ -36,15 +36,28 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
 
 ```bash
 uv sync                      # install (Python 3.12; automl_tool needs <3.13)
-uv run pytest                # 231 tests; MUST stay green with 0 warnings
+uv run pytest                # 255 tests; MUST stay green with 0 warnings
 uv run stocks-ml ingest      # fetch all data + rebuild panel (idempotent)
 uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
 uv run stocks-ml train       # champion tournament -> models/selection.md
 uv run stocks-ml backtest    # -> reports/backtest.md
+uv run stocks-ml pipelines   # multi-pipeline league -> reports/pipelines.md
 uv run stocks-ml signals     # weekly live signal
 uv run stocks-ml ledger init|apply|mark|show
 uv run stocks-ml torture     # survivorship stress test
 ```
+
+**Pipeline league (2026-08-11, owner's design):** pipelines may differ in
+training objective, strategy, and cadence, but are all judged by one $100
+cost-aware walk-forward exam (backtest/pipelines.py). Wave 1: incumbent
+regression; weekly learning-to-rank (WeekGroupedXGBRanker, rank:ndcg with
+week query groups, per-week quintile relevance grades); monthly-cadence
+regression on the panel's `label_4w` (4-week horizon; purge 42 days —
+consumers must purge past the label span); P(top-quintile) classifier
+(TopQuintileClassifier, extremes-only training) traded via ConfidenceTopK
+(floor 0.5) + SpyFloor. Challengers are deliberately untuned in wave 1; the
+league grows the Sharpe-deflation trial count; the shadow ledger stays the
+final judge.
 
 CI commits artifacts (signals/, ledger.json, models/, reports/) on its own
 schedule, so the repository may need to be synchronized before local work.

@@ -82,6 +82,13 @@ def cmd_backtest(args, cfg):
     print(f"wrote {path}")
 
 
+def cmd_pipelines(args, cfg):
+    from stocks_ml.backtest.pipelines import run_league
+
+    path = run_league(_store(cfg), cfg)
+    print(f"wrote {path}")
+
+
 def cmd_torture(args, cfg):
     from stocks_ml.backtest.survivorship import run_torture
 
@@ -160,6 +167,8 @@ def main():
     p_tune.add_argument("--trials", type=int, default=None,
                         help="Optuna trials (default: per-family — xgb/lgbm 100, catboost 60, enet 40)")
     sub.add_parser("backtest", help="run all strategies and write the report")
+    sub.add_parser("pipelines", help="multi-pipeline league: different targets/strategies/"
+                                     "cadences, one $100 walk-forward exam")
     sub.add_parser("signals", help="generate this week's trade signals")
     sub.add_parser("torture", help="survivorship torture test: empirical removal haircuts "
                                    "(requires `ingest` to have been re-run once for the "
@@ -175,7 +184,8 @@ def main():
     args = parser.parse_args()
     cfg = load_config(args.config)
     {"ingest": cmd_ingest, "train": cmd_train, "tune": cmd_tune, "backtest": cmd_backtest,
-     "signals": cmd_signals, "ledger": cmd_ledger, "torture": cmd_torture}[args.command](args, cfg)
+     "pipelines": cmd_pipelines, "signals": cmd_signals, "ledger": cmd_ledger,
+     "torture": cmd_torture}[args.command](args, cfg)
 
 
 if __name__ == "__main__":

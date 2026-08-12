@@ -142,6 +142,30 @@ def test_vol_scaled_refuses_degenerate_tie():
     assert strat.propose_weights(preds, vols, OK).empty
 
 
+def test_confidence_topk_floor_gates_conviction():
+    from stocks_ml.backtest.strategies import ConfidenceTopK, SpyFloor
+
+    probs = pd.Series({"A": 0.72, "B": 0.61, "C": 0.55, "D": 0.49, "E": 0.30})
+    vols = pd.Series(0.2, index=probs.index)
+    w = ConfidenceTopK(k=4, floor=0.5).propose_weights(probs, vols, OK)
+    assert set(w.index) == {"A", "B", "C"}          # D/E below the 50% floor
+    assert np.allclose(w, 0.25)                      # slots stay 1/k
+    # under SpyFloor, the low-confidence shortfall buys the index
+    w_spy = SpyFloor(ConfidenceTopK(k=4, floor=0.5)).propose_weights(probs, vols, OK)
+    assert w_spy["SPY"] == pytest.approx(0.25)
+    assert w_spy.sum() == pytest.approx(1.0)
+
+
+def test_confidence_topk_abstains_when_nothing_clears_floor():
+    from stocks_ml.backtest.strategies import ConfidenceTopK, SpyFloor
+
+    probs = pd.Series({"A": 0.45, "B": 0.40})
+    vols = pd.Series(0.2, index=probs.index)
+    assert ConfidenceTopK(k=4, floor=0.5).propose_weights(probs, vols, OK).empty
+    w = SpyFloor(ConfidenceTopK(k=4, floor=0.5)).propose_weights(probs, vols, OK)
+    assert dict(w) == {"SPY": pytest.approx(1.0)}
+
+
 def test_spy_floor_routes_remainder_to_spy():
     from stocks_ml.backtest.strategies import FractionalKelly, SpyFloor
 

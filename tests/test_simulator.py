@@ -138,6 +138,30 @@ def test_predictions_independent_of_walk_start(tiny_cfg):
         pd.testing.assert_series_equal(full.preds[t], late.preds[t])
 
 
+def test_rebalance_every_slows_the_cadence(tiny_cfg):
+    panel, prices, rdates = _world()
+    weekly = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg)
+    monthly = run_backtest(panel, prices, AlwaysFirst(), Flat(), tiny_cfg,
+                           rebalance_every=4)
+    # a quarter of the rebalances (and fits: one member per rebalance)
+    assert abs(len(monthly.weights) * 4 - len(weekly.weights)) <= 4
+    assert monthly.n_fits == len(monthly.weights)
+    # rebalance dates are a subset of the panel's every-4th date grid
+    grid = set(pd.DatetimeIndex(sorted(panel["date"].unique()))[::4])
+    assert set(monthly.weights.index) <= grid
+
+
+def test_walk_forward_respects_label_col_and_purge(tiny_cfg):
+    from stocks_ml.backtest.simulator import walk_forward_predictions
+
+    panel, prices, rdates = _world()
+    panel = panel.rename(columns={"label": "label_4w"})
+    panel["label"] = np.nan          # weekly label unusable: must not be touched
+    wf = walk_forward_predictions(panel, Flat(), tiny_cfg, label_col="label_4w",
+                                  purge_days=42, rebalance_every=4)
+    assert len(wf.preds) > 0 and wf.n_fits > 0
+
+
 def test_precomputed_predictions_reproduce_internal_walk(tiny_cfg):
     from stocks_ml.backtest.simulator import walk_forward_predictions
 

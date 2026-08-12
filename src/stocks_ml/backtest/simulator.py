@@ -28,40 +28,58 @@ class WalkForwardPredictions:
     n_fits: int = 0
 
 
-def walk_forward_predictions(panel, estimator, cfg, start=None, end=None) -> WalkForwardPredictions:
-    """Staggered-refit ensemble walk: refresh one member per rebalance week.
+def rebalance_calendar(panel, start=None, end=None, rebalance_every: int = 1) -> pd.DatetimeIndex:
+    """Rebalance dates: every `rebalance_every`-th panel date within [start, end].
 
-    At each rebalance the newest member trains on data ending purge_days
-    earlier; the ensemble keeps the last ``cfg.retrain_weeks`` members, so a
-    date is always scored by models whose training cutoffs are 0..retrain_weeks-1
-    weeks stale, and the prediction is their plain mean. This makes predictions
-    independent of when the walk started (no refit-anchor luck: a 2-week shift
-    in the old single-model schedule swung the June-2026 holdout between a
-    degenerate abstention and a semiconductor bet). Averaging raw values also
-    degrades gracefully: a degenerate member adds a near-constant offset that
-    leaves healthy members' ranking intact, and if every member is degenerate
-    the surviving ties are refused downstream by select_top_k.
-
-    Strategies share one walk (predictions don't depend on the strategy), so
-    run_all_backtests computes this once and passes it to every run_backtest."""
-    fcols = feature_cols(panel)
+    Sliced from the panel's full date sequence BEFORE the start filter, so the
+    cadence phase is a property of the panel, not of the walk's start — the
+    staggered ensemble's anchor-independence carries over to slower cadences."""
     rdates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    rdates = rdates[::rebalance_every]
     if start:
         rdates = rdates[rdates >= pd.Timestamp(start)]
     if end:
         rdates = rdates[rdates <= pd.Timestamp(end)]
-    labeled = panel[panel["label"].notna()]
+    return rdates
+
+
+def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
+                             label_col: str = "label", purge_days: int | None = None,
+                             rebalance_every: int = 1) -> WalkForwardPredictions:
+    """Staggered-refit ensemble walk: refresh one member per rebalance period.
+
+    At each rebalance the newest member trains on data ending purge_days
+    earlier; the ensemble keeps the last ``cfg.retrain_weeks`` members, so a
+    date is always scored by models whose training cutoffs are 0..retrain_weeks-1
+    rebalance periods stale, and the prediction is their plain mean. This makes
+    predictions independent of when the walk started (no refit-anchor luck: a
+    2-week shift in the old single-model schedule swung the June-2026 holdout
+    between a degenerate abstention and a semiconductor bet). Averaging raw
+    values also degrades gracefully: a degenerate member adds a near-constant
+    offset that leaves healthy members' ranking intact, and if every member is
+    degenerate the surviving ties are refused downstream by select_top_k.
+
+    Pipelines with other targets/cadences pass `label_col` (e.g. "label_4w"),
+    `purge_days` exceeding that label's calendar span, and `rebalance_every`
+    (panel dates per rebalance). Strategies share one walk (predictions don't
+    depend on the strategy), so callers compute this once per pipeline and
+    pass it to every run_backtest."""
+    purge = cfg.purge_days if purge_days is None else purge_days
+    fcols = feature_cols(panel)
+    rdates = rebalance_calendar(panel, start, end, rebalance_every)
+    labeled = panel[panel[label_col].notna()]
 
     members: list = []          # (fit_date, model), oldest first
     out = WalkForwardPredictions()
     for t in rdates:
-        train_end = t - pd.Timedelta(days=cfg.purge_days)
+        train_end = t - pd.Timedelta(days=purge)
         train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
         train = labeled[labeled["date"].between(train_start, train_end)]
         if cfg.train_sample_rows:
             train = train.sort_values("date").tail(cfg.train_sample_rows)
         if len(train) >= MIN_TRAIN_ROWS and train["date"].nunique() >= MIN_TRAIN_WEEKS:
-            members.append((t, clone(estimator).fit(dated_features(train, fcols), train["label"])))
+            members.append((t, clone(estimator).fit(dated_features(train, fcols),
+                                                    train[label_col])))
             out.n_fits += 1
             if len(members) > cfg.retrain_weeks:
                 members.pop(0)
@@ -76,7 +94,9 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None) -> Wal
 
 def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
                  removal_haircuts: pd.DataFrame | None = None,
-                 predictions: WalkForwardPredictions | None = None) -> BacktestResult:
+                 predictions: WalkForwardPredictions | None = None,
+                 label_col: str = "label", purge_days: int | None = None,
+                 rebalance_every: int = 1) -> BacktestResult:
     open_w = prices.pivot(index="date", columns="ticker", values="open").sort_index().ffill()
     close_w = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
     cal = close_w.index
@@ -94,15 +114,13 @@ def run_backtest(panel, prices, strategy, estimator, cfg, start=None, end=None,
             removal_lookup.setdefault(row.ticker, []).append(
                 (pd.Timestamp(row.date), float(row.haircut)))
 
-    rdates = pd.DatetimeIndex(sorted(panel["date"].unique()))
-    if start:
-        rdates = rdates[rdates >= pd.Timestamp(start)]
-    if end:
-        rdates = rdates[rdates <= pd.Timestamp(end)]
+    rdates = rebalance_calendar(panel, start, end, rebalance_every)
     tail = pd.Timestamp(end) if end else cal[-1]
 
     if predictions is None:
-        predictions = walk_forward_predictions(panel, estimator, cfg, start=start, end=end)
+        predictions = walk_forward_predictions(
+            panel, estimator, cfg, start=start, end=end, label_col=label_col,
+            purge_days=purge_days, rebalance_every=rebalance_every)
     cash, shares = 100.0, {}
     navs, weight_rows = {}, {}
     hwm, total_costs = 100.0, 0.0

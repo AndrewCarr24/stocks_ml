@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMRegressor
 from sklearn.base import BaseEstimator, RegressorMixin, clone
-from xgboost import XGBRegressor
+from xgboost import XGBClassifier, XGBRanker, XGBRegressor
 
 
 class ZeroForecast(BaseEstimator, RegressorMixin):
@@ -236,6 +236,125 @@ class TimeTailEarlyStopCatBoost(BaseEstimator, RegressorMixin):
 
     def predict(self, X):
         return np.asarray(self.model_.predict(X))
+
+
+class WeekGroupedXGBRanker(XGBRanker):
+    """Learning-to-rank XGBoost: each week is one query group (rank:ndcg).
+
+    Directly optimizes the ordering that top-k strategies consume, closing the
+    train-on-RMSE / select-on-rank-IC mismatch of the regression candidates.
+    Rows must be date-major sorted (the panel's layout) so qid groups are
+    contiguous. Time-tail early stopping on NDCG, same purge rationale as
+    TimeTailEarlyStopXGB. Wave-1 defaults reuse the tuned regressor's tree
+    shape; the learning rate is conventional for LTR — retune if promising.
+
+    Raw LTR scores are only comparable within a group, so predict() centers
+    each call on its median: production paths predict one cross-section at a
+    time, making "positive = above-median conviction" hold for select_top_k.
+    (Multi-week predict calls get a constant global shift, which cannot change
+    within-week orderings used by rank-IC scoring.)"""
+
+    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 75,
+                 early_stop_purge_days: int = 10, **kwargs):
+        self.eval_fraction = eval_fraction
+        self.early_stop_purge_days = early_stop_purge_days
+        defaults = dict(objective="rank:ndcg", eval_metric="ndcg@8",
+                        n_estimators=1500, learning_rate=0.05, max_depth=2,
+                        min_child_weight=20, subsample=0.8, colsample_bytree=0.5,
+                        reg_lambda=0.25)
+        defaults.update(kwargs)
+        super().__init__(early_stopping_rounds=early_stopping_rounds, **defaults)
+
+    def _wrapper_params(self) -> set:
+        return super()._wrapper_params() | {"eval_fraction", "early_stop_purge_days"}
+
+    def fit(self, X, y):
+        tr_mask, va_mask, dates = _time_tail_masks(
+            X, self.eval_fraction, self.early_stop_purge_days)
+        if dates is None:
+            # generic sklearn callers: one flat group, ordered split
+            dates = pd.DatetimeIndex([pd.Timestamp("2000-01-01")] * len(X))
+        qid = pd.factorize(dates, sort=True)[0]
+        # NDCG needs non-negative integer relevance, not continuous returns:
+        # grade each stock by its within-week label quintile (0 = worst .. 4 = best)
+        frame = pd.DataFrame({"y": np.asarray(y, dtype=float), "date": np.asarray(dates)})
+        pct = frame.groupby("date")["y"].rank(pct=True)
+        grades = (np.ceil(pct * 5).astype(int) - 1).clip(0, 4)
+        self.early_stop_train_dates_ = dates[tr_mask]
+        self.early_stop_validation_dates_ = dates[va_mask]
+        super().fit(X.loc[tr_mask], grades[tr_mask], qid=qid[tr_mask],
+                    eval_set=[(X.loc[va_mask], grades[va_mask])],
+                    eval_qid=[qid[va_mask]], verbose=False)
+        return self
+
+    def predict(self, X):
+        scores = np.asarray(super().predict(X), dtype=float)
+        return scores - np.median(scores)
+
+
+class TopQuintileClassifier(BaseEstimator, RegressorMixin):
+    """P(stock lands in the week's top label quintile), trained on extremes.
+
+    Per training week, the top `quantile` of labels becomes class 1 and the
+    bottom `quantile` class 0; the middle is dropped (standard practice — the
+    middle of the cross-section is mostly noise). XGBClassifier with
+    time-tail early stopping on AUC. predict() returns the raw probability of
+    the top class, so strategies can apply a calibrated confidence floor
+    (e.g. ConfidenceTopK: only probabilities above 0.5 count as conviction)."""
+
+    def __init__(self, quantile: float = 0.2, eval_fraction: float = 0.1,
+                 early_stopping_rounds: int = 75, early_stop_purge_days: int = 10,
+                 n_estimators: int = 1500, learning_rate: float = 0.05,
+                 max_depth: int = 3, min_child_weight: int = 20,
+                 subsample: float = 0.8, colsample_bytree: float = 0.5,
+                 reg_lambda: float = 0.25, random_state: int = 0):
+        self.quantile = quantile
+        self.eval_fraction = eval_fraction
+        self.early_stopping_rounds = early_stopping_rounds
+        self.early_stop_purge_days = early_stop_purge_days
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+        self.max_depth = max_depth
+        self.min_child_weight = min_child_weight
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
+        self.reg_lambda = reg_lambda
+        self.random_state = random_state
+
+    def _extreme_classes(self, y: pd.Series, dates: pd.DatetimeIndex) -> pd.Series:
+        frame = pd.DataFrame({"y": np.asarray(y, dtype=float),
+                              "date": np.asarray(dates)})
+        hi = frame.groupby("date")["y"].transform(lambda v: v.quantile(1 - self.quantile))
+        lo = frame.groupby("date")["y"].transform(lambda v: v.quantile(self.quantile))
+        cls = pd.Series(np.nan, index=frame.index)
+        cls[frame["y"] >= hi] = 1.0
+        cls[frame["y"] <= lo] = 0.0
+        return cls
+
+    def fit(self, X, y):
+        tr_mask, va_mask, dates = _time_tail_masks(
+            X, self.eval_fraction, self.early_stop_purge_days)
+        if dates is None:
+            dates = pd.DatetimeIndex([pd.Timestamp("2000-01-01")] * len(X))
+        cls = self._extreme_classes(pd.Series(np.asarray(y)), pd.DatetimeIndex(dates))
+        tr = tr_mask & cls.notna().to_numpy()
+        va = va_mask & cls.notna().to_numpy()
+        if not tr.any() or not va.any():
+            raise ValueError("top-quintile classifier has an empty train or validation block")
+        self.early_stop_train_dates_ = pd.DatetimeIndex(dates)[tr]
+        self.early_stop_validation_dates_ = pd.DatetimeIndex(dates)[va]
+        self.model_ = XGBClassifier(
+            n_estimators=self.n_estimators, learning_rate=self.learning_rate,
+            max_depth=self.max_depth, min_child_weight=self.min_child_weight,
+            subsample=self.subsample, colsample_bytree=self.colsample_bytree,
+            reg_lambda=self.reg_lambda, random_state=self.random_state,
+            eval_metric="auc", early_stopping_rounds=self.early_stopping_rounds)
+        self.model_.fit(X.loc[tr], cls[tr].astype(int),
+                        eval_set=[(X.loc[va], cls[va].astype(int))], verbose=False)
+        return self
+
+    def predict(self, X):
+        return self.model_.predict_proba(X)[:, 1]
 
 
 class ICElasticNet(BaseEstimator, RegressorMixin):

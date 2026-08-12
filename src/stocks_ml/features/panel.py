@@ -384,6 +384,16 @@ def build_panel(store, cfg) -> pd.DataFrame:
     member_median = panel.groupby("date")["fwd_ret"].transform("median")
     panel["label"] = panel["fwd_ret"] - member_median
 
+    # Four-week label for the monthly-cadence pipeline: identical open-to-open
+    # construction at 4x the horizon, recentered on members like the weekly one.
+    # Consumers must purge >= its ~4-week calendar span (see pipelines.py).
+    labels_4w = make_labels(prices, dates, cfg.horizon_days * 4).rename(columns={
+        "fwd_ret": "fwd_ret_4w", "label": "label_4w",
+        "label_end_date": "label_end_date_4w"})
+    panel = panel.merge(labels_4w, on=["date", "ticker"], how="left")
+    member_median_4w = panel.groupby("date")["fwd_ret_4w"].transform("median")
+    panel["label_4w"] = panel["fwd_ret_4w"] - member_median_4w
+
     sector = membership.dropna(subset=["sector"]).drop_duplicates("ticker")
     panel["sector"] = panel["ticker"].map(dict(zip(sector["ticker"], sector["sector"])))
     panel = pd.concat([panel, sector_relative_momentum(panel)], axis=1)

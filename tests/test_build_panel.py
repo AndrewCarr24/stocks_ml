@@ -81,6 +81,24 @@ def test_build_panel_labels_are_centered_on_point_in_time_members(synthetic_stor
     assert np.allclose(medians.dropna(), 0.0, atol=1e-15)
 
 
+def test_build_panel_four_week_label(synthetic_store, tiny_cfg):
+    panel = build_panel(synthetic_store, tiny_cfg)
+    # centered on point-in-time members, like the weekly label
+    expected = panel["fwd_ret_4w"] - panel.groupby("date")["fwd_ret_4w"].transform("median")
+    pd.testing.assert_series_equal(panel["label_4w"], expected, check_names=False)
+    # 4x horizon: the label window ends ~4x further out than the weekly one
+    both = panel.dropna(subset=["label_end_date", "label_end_date_4w"])
+    span_1w = (both["label_end_date"] - both["date"]).dt.days
+    span_4w = (both["label_end_date_4w"] - both["date"]).dt.days
+    assert (span_4w > span_1w).all()
+    assert 3.0 < (span_4w.median() / span_1w.median()) < 5.0
+    # the last ~4 weeks of the panel cannot have a complete 4-week label
+    last = panel["date"].max()
+    assert panel.loc[panel["date"] == last, "label_4w"].isna().all()
+    # never admitted as a model feature
+    assert {"label_4w", "fwd_ret_4w"}.isdisjoint(feature_cols(panel))
+
+
 def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):
     panel = build_panel(synthetic_store, tiny_cfg)
     fcols = feature_cols(panel)

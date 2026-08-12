@@ -3,7 +3,8 @@ import pandas as pd
 from sklearn.base import clone
 
 from stocks_ml.models.candidates import (
-    BASELINE_NAMES, AutoMLRegressor, MomentumRank, ZeroForecast, get_candidates, make_xgb,
+    BASELINE_NAMES, AutoMLRegressor, MomentumRank, TopQuintileClassifier,
+    WeekGroupedXGBRanker, ZeroForecast, get_candidates, make_xgb,
 )
 
 
@@ -12,6 +13,60 @@ def _xy(n=200, seed=1):
     X = pd.DataFrame({"f_mom_26w": rng.normal(size=n), "f_other": rng.normal(size=n)})
     y = pd.Series(2.0 * X["f_mom_26w"] + rng.normal(0, 0.1, n), name="label")
     return X, y
+
+
+def _dated_xy(n_weeks=60, per_week=50, seed=3):
+    """Date-major panel-like frame: signal in f_mom_26w, noise elsewhere."""
+    rng = np.random.default_rng(seed)
+    weeks = pd.date_range("2020-01-03", periods=n_weeks, freq="W-FRI")
+    n = n_weeks * per_week
+    X = pd.DataFrame({"f_mom_26w": rng.normal(size=n), "f_other": rng.normal(size=n)})
+    X.attrs["dates"] = np.repeat(weeks.to_numpy(), per_week)
+    y = pd.Series(0.02 * X["f_mom_26w"] + rng.normal(0, 0.01, n), name="label")
+    return X, y
+
+
+def test_week_grouped_ranker_learns_within_week_order():
+    X, y = _dated_xy()
+    model = WeekGroupedXGBRanker(n_estimators=300, early_stopping_rounds=100,
+                                 min_child_weight=5).fit(X, y)
+    preds = model.predict(X)
+    # scores must recover the within-week ordering driven by f_mom_26w
+    r = np.corrcoef(preds, X["f_mom_26w"])[0, 1]
+    assert r > 0.5
+    # predict() centers on the median: above-median conviction is positive
+    assert abs(np.median(preds)) < 1e-9
+
+
+def test_week_grouped_ranker_is_cloneable():
+    est = WeekGroupedXGBRanker(n_estimators=50)
+    c = clone(est)
+    assert c.get_params()["n_estimators"] == 50
+    assert c.get_params()["eval_fraction"] == est.eval_fraction
+
+
+def test_top_quintile_classifier_probabilities_track_signal():
+    X, y = _dated_xy()
+    model = TopQuintileClassifier(n_estimators=300, early_stopping_rounds=100,
+                                  min_child_weight=5).fit(X, y)
+    p = model.predict(X)
+    assert ((p >= 0) & (p <= 1)).all()
+    # higher signal -> higher probability of the top quintile. Magnitudes stay
+    # compressed when early stopping keeps few trees (the synthetic signal
+    # saturates validation AUC immediately), so assert on ordering, not scale.
+    hi = p[X["f_mom_26w"] > 1.0].mean()
+    lo = p[X["f_mom_26w"] < -1.0].mean()
+    assert hi > lo
+    assert np.corrcoef(p, X["f_mom_26w"])[0, 1] > 0.3
+
+
+def test_top_quintile_classifier_trains_on_extremes_only():
+    X, y = _dated_xy()
+    model = TopQuintileClassifier(quantile=0.2)
+    cls = model._extreme_classes(y, pd.DatetimeIndex(X.attrs["dates"]))
+    frac = cls.notna().mean()
+    assert 0.35 < frac < 0.45          # ~2 * quantile of rows kept
+    assert set(cls.dropna().unique()) == {0.0, 1.0}
 
 
 def test_zero_forecast():
