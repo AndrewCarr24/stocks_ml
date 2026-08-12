@@ -1823,37 +1823,37 @@
   "date": "2026-08-12",
   "kind": "league_pipeline",
   "name": "incumbent_weekly",
-  "pre_holdout_sharpe": 0.5212
+  "pre_holdout_sharpe": 0.6254
  },
  {
   "date": "2026-08-12",
   "kind": "league_pipeline",
   "name": "ltr_weekly",
-  "pre_holdout_sharpe": 0.5097
+  "pre_holdout_sharpe": 0.533
  },
  {
   "date": "2026-08-12",
   "kind": "league_pipeline",
   "name": "monthly_reg",
-  "pre_holdout_sharpe": 0.8351
+  "pre_holdout_sharpe": 0.7223
  },
  {
   "date": "2026-08-12",
   "kind": "league_pipeline",
   "name": "quintile_prob_weekly",
-  "pre_holdout_sharpe": 0.4773
+  "pre_holdout_sharpe": 0.4565
  },
  {
   "date": "2026-08-12",
   "kind": "strategy_variant",
   "name": "xgb_tuned+equal_topk",
-  "pre_holdout_sharpe": 0.4183
+  "pre_holdout_sharpe": 0.5111
  },
  {
   "date": "2026-08-12",
   "kind": "strategy_variant",
   "name": "xgb_tuned+vol_scaled",
-  "pre_holdout_sharpe": 0.0565
+  "pre_holdout_sharpe": 0.1347
  },
  {
   "date": "2026-08-12",
@@ -1871,7 +1871,7 @@
   "date": "2026-08-12",
   "kind": "strategy_variant",
   "name": "xgb_tuned+topk_spy",
-  "pre_holdout_sharpe": 0.5212
+  "pre_holdout_sharpe": 0.6254
  },
  {
   "date": "2026-08-12",

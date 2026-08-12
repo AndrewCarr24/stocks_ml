@@ -15,10 +15,10 @@ Never used for tuning or selection of any pipeline.
 
 | pipeline | $100 → | total return | ann. Sharpe | max DD | worst week |
 |---|---|---|---|---|---|
-| incumbent_weekly | $169 | +69.5% | 0.84 | 30.7% | -15.9% |
-| ltr_weekly | $213 | +113.2% | 1.03 | 36.4% | -18.0% |
-| monthly_reg | $145 | +45.2% | 0.68 | 27.2% | -14.3% |
-| quintile_prob_weekly | $118 | +17.5% | 0.41 | 28.8% | -12.2% |
+| incumbent_weekly | $206 | +105.6% | 1.17 | 27.0% | -14.4% |
+| ltr_weekly | $188 | +87.9% | 0.96 | 33.9% | -16.1% |
+| monthly_reg | $160 | +59.9% | 0.88 | 23.2% | -13.0% |
+| quintile_prob_weekly | $136 | +35.6% | 0.67 | 28.2% | -11.6% |
 | spy_hold (benchmark) | $139 | +38.6% | 1.05 | 18.8% | -9.1% |
 | cash (benchmark) | $108 | +8.2% | 157.31 | 0.0% | 0.1% |
 
@@ -28,10 +28,10 @@ Same exam as the strategy zoo. Pre-holdout years overlap the tuned pipelines' CV
 
 | pipeline | $100 → | total return | ann. Sharpe | max DD | worst week |
 |---|---|---|---|---|---|
-| incumbent_weekly | $1,764 | +1663.8% | 0.55 | 71.1% | -27.6% |
-| ltr_weekly | $2,293 | +2192.8% | 0.57 | 80.5% | -29.0% |
-| monthly_reg | $10,876 | +10776.1% | 0.82 | 65.4% | -22.0% |
-| quintile_prob_weekly | $734 | +634.1% | 0.47 | 59.3% | -27.4% |
+| incumbent_weekly | $3,406 | +3305.7% | 0.68 | 67.6% | -26.4% |
+| ltr_weekly | $2,190 | +2090.4% | 0.58 | 76.1% | -32.0% |
+| monthly_reg | $3,819 | +3718.8% | 0.74 | 67.8% | -24.3% |
+| quintile_prob_weekly | $719 | +619.2% | 0.48 | 59.7% | -28.8% |
 | spy_hold (benchmark) | $930 | +829.9% | 0.65 | 55.2% | -19.8% |
 | cash (benchmark) | $144 | +43.9% | 14.57 | 0.0% | -0.0% |
 
@@ -39,13 +39,15 @@ Same exam as the strategy zoo. Pre-holdout years overlap the tuned pipelines' CV
 
 | pipeline | rebalances/cadence | model fits | costs $ |
 |---|---|---|---|
-| incumbent_weekly | weekly | 1111 | 255.79 |
-| ltr_weekly | weekly | 1111 | 312.95 |
-| monthly_reg | every 4 wk | 276 | 339.65 |
-| quintile_prob_weekly | weekly | 1111 | 207.62 |
+| incumbent_weekly | weekly | 1111 | 320.85 |
+| ltr_weekly | weekly | 1111 | 258.20 |
+| monthly_reg | every 4 wk | 276 | 115.17 |
+| quintile_prob_weekly | weekly | 1111 | 192.46 |
 
 Honesty notes:
 - Wave-1 challengers are deliberately untuned (conventional defaults); the incumbent had an Optuna budget. A challenger that competes while untuned is the interesting signal.
 - Every pipeline graded here spends holdout novelty; the shadow ledger makes the final call.
 
 ![pipeline holdout equity](equity_pipelines.png)
+
+Combined view of every model and strategy: ![all, full history](equity_all.png) ![all, holdout](equity_all_holdout.png)
