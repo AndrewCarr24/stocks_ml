@@ -254,15 +254,16 @@ scoring calendars, or all-missing folds.
   combination candidates (Timmermann).
 - **Reviewer triage (2026-08-12, second-agent review of docs/research):**
   built now — trials ledger + cross-trial DSR + MinTRL (+ ENet shrinkage audit:
-  eligible-trial IC rises with alpha; the gate truncates heavier shrinkage, so
-  the selected config is already max-viable-shrinkage — no action). Queued,
-  CPU-bound: paired ablations for the two PENDING_ABLATION_FEATURES families
-  (momentum skip/intermediate; EDGAR sue/nincr/net_issuance — run on weekly AND
-  label_4w); rank-blend xgb+enet precheck (correlate their weekly_scores; build
-  candidate only if < ~0.95); decile-spread diagnostic. Deferred pending owner
-  design call: train-window-length candidates (needs folds to carry longer
-  windows with every candidate trimming back — touches the owner-fixed CV edge);
-  selection-stage IC deflation column in selection.md.
+  the selected config is already max-viable-shrinkage — no action).
+  **Ablations RUN 2026-08-12, all three families REJECTED at t>=3**
+  (reports/ablation_*.md): momentum skip/interm ΔIC −0.005 (t=−0.94), EDGAR
+  sue/nincr/issuance weekly −0.008 (t=−1.47), EDGAR on label_4w +0.0008
+  (t=0.18 — Novy-Marx's horizon prediction shows the right SIGN but is noise).
+  The six candidates stay in PENDING_ABLATION_FEATURES permanently unless
+  re-tested with new evidence; plain 26w/52w momentum already in the panel
+  likely spans the skip-adjusted variants. Still queued: rank-blend xgb+enet
+  precheck; decile-spread diagnostic. Deferred pending owner design call:
+  train-window-length candidates; selection-stage IC deflation column.
 - Let the shadow ledger accumulate (Saturday cycle) before real money — this
   was always the plan; backtest numbers lean on friendly fill assumptions.
 - Possible research: honest Optuna re-run on the current 4-fold design;

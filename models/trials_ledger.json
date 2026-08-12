@@ -2056,5 +2056,29 @@
   "kind": "strategy_variant",
   "name": "sweep_ltr_floor55_dynk",
   "pre_holdout_sharpe": 0.29
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "ablation",
+  "name": "ablation_momentum_skip_interm",
+  "cv_metric": -0.005216519121323372,
+  "t_stat": -0.937,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "ablation",
+  "name": "ablation_edgar_sue_bundle",
+  "cv_metric": -0.00757559979028047,
+  "t_stat": -1.472,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-12",
+  "kind": "ablation",
+  "name": "ablation_edgar_sue_bundle_4w",
+  "cv_metric": 0.0008190604961170304,
+  "t_stat": 0.18,
+  "adopted": false
  }
 ]
