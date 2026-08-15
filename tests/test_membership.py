@@ -141,3 +141,26 @@ def test_members_asof():
     assert set(members_asof(mem, "2005-01-01")) == {"AAA", "ZZZ"}
     assert set(members_asof(mem, "2015-01-01")) == {"AAA"}
     assert set(members_asof(mem, "2021-01-01")) == {"AAA", "ZZZ"}
+
+
+def test_locate_table_by_columns_not_position():
+    import pytest
+    from stocks_ml.data.membership import _locate_table
+
+    navbox = pd.DataFrame({"vteS&P 500 companies": [1], "vteS&P 500 companies.1": [2]})
+    changes = pd.DataFrame(columns=pd.MultiIndex.from_tuples([
+        ("Effective Date", "Effective Date"), ("Added", "Ticker"),
+        ("Removed", "Ticker"), ("Reason", "Reason")]))
+    # order scrambled + navbox first: located by content, not position
+    found = _locate_table([navbox, changes], ["date", "added", "removed", "reason"], "x")
+    assert found is changes
+    with pytest.raises(ValueError, match="structure changed"):
+        _locate_table([navbox], ["date", "added"], "x")
+
+
+def test_normalize_symbol_strips_wiki_formatting_junk():
+    from stocks_ml.data.membership import normalize_symbol
+
+    assert normalize_symbol("ITT |") == "ITT"
+    assert normalize_symbol(" BRK.B ") == "BRK-B"
+    assert normalize_symbol("JCP |") == "JCP"

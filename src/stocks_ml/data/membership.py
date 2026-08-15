@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import re
 from io import StringIO
 
 import pandas as pd
 import requests
 
 WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+# 2026-08-11: Wikipedia moved the "Selected changes" table off the main article
+# (revision 1368903137, "move to Historical components of the S&P 500").
+WIKI_CHANGES_URL = "https://en.wikipedia.org/wiki/Historical_components_of_the_S%26P_500"
 
 
 def normalize_symbol(s: str) -> str:
-    return str(s).strip().upper().replace(".", "-")
+    # Strip footnote/formatting junk Wikipedia cells sometimes carry (the
+    # 2026-08 "Historical components" page renders some tickers as "ITT |").
+    cleaned = re.sub(r"[^A-Za-z0-9.\-]", "", str(s).strip().split()[0] if str(s).strip() else "")
+    return cleaned.upper().replace(".", "-")
 
 
 def build_membership(current: pd.DataFrame, changes: pd.DataFrame, floor_date: pd.Timestamp) -> pd.DataFrame:
@@ -97,12 +104,43 @@ def _clean_wiki_tables(current_raw: pd.DataFrame, changes_raw: pd.DataFrame) -> 
     return current, changes
 
 
+def _flat_cols(table: pd.DataFrame) -> list[str]:
+    cols = table.columns
+    if isinstance(cols, pd.MultiIndex):
+        return ["_".join(str(c) for c in col).lower() for col in cols]
+    return [str(c).lower() for c in cols]
+
+
+def _locate_table(tables: list, required_fragments: list[str], page: str) -> pd.DataFrame:
+    """The table whose (flattened) columns contain every required fragment.
+
+    Wikipedia reshuffles pages without notice (the 2026-08 move of the changes
+    table broke positional indexing); locating by column content survives
+    reordering, added navboxes, and section moves within a page."""
+    for t in tables:
+        flat = _flat_cols(t)
+        if all(any(frag in c for c in flat) for frag in required_fragments):
+            return t
+    raise ValueError(
+        f"no table with columns matching {required_fragments} on {page}; "
+        "Wikipedia's structure changed again — inspect the page and update "
+        "membership.py (see the WIKI_CHANGES_URL move note)")
+
+
 def fetch_sp500_tables(user_agent: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Network: fetch and clean Wikipedia's current-constituents and changes tables."""
-    resp = requests.get(WIKI_URL, headers={"User-Agent": user_agent}, timeout=30)
+    """Network: fetch and clean the current-constituents table (main article)
+    and the membership-changes table (moved to its own article 2026-08)."""
+    headers = {"User-Agent": user_agent}
+    resp = requests.get(WIKI_URL, headers=headers, timeout=30)
     resp.raise_for_status()
-    tables = pd.read_html(StringIO(resp.text))
-    return _clean_wiki_tables(tables[0], tables[1])
+    current_raw = _locate_table(pd.read_html(StringIO(resp.text)),
+                                ["symbol", "gics sector"], WIKI_URL)
+    resp = requests.get(WIKI_CHANGES_URL, headers=headers, timeout=30)
+    resp.raise_for_status()
+    changes_raw = _locate_table(pd.read_html(StringIO(resp.text)),
+                                ["date", "added", "removed", "reason"],
+                                WIKI_CHANGES_URL)
+    return _clean_wiki_tables(current_raw, changes_raw)
 
 
 def ingest_membership(store, cfg, fetch_fn=None) -> pd.DataFrame:
