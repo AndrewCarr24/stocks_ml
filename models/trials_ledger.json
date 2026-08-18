@@ -2087,5 +2087,47 @@
   "name": "blend_v1_preregistered",
   "pre_holdout_sharpe": 0.6427,
   "notes": "pre-registered meta-allocation, constants untuned"
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "breadth_tilt_lin",
+  "pre_holdout_sharpe": 0.52
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "breadth_tilt_sq",
+  "pre_holdout_sharpe": 0.52
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "breadth_half_spy",
+  "pre_holdout_sharpe": 0.58
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "breadth_tilt_ema",
+  "pre_holdout_sharpe": 0.63
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "breadth_top50_ew",
+  "pre_holdout_sharpe": 0.48
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "breadth_baseline_k16_freshpanel",
+  "pre_holdout_sharpe": 0.5692
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "loser_ltr_stage1_diagnostic",
+  "notes": "bottom-trained ranker information probe; params borrowed"
  }
 ]

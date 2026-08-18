@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-VALID_NAMES = {"prices", "membership", "fred", "edgar", "panel", "removals", "form4", "shortint", "sec8k"}
+VALID_NAMES = {"prices", "membership", "fred", "edgar", "panel", "removals", "form4", "shortint", "sec8k",
+    "sharadar_prices", "sharadar_tickers", "sharadar_sp500",
+}
 
 
 class DataStore:
