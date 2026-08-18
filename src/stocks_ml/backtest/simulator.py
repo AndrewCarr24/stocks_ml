@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pandas as pd
 from sklearn.base import clone
@@ -45,7 +46,8 @@ def rebalance_calendar(panel, start=None, end=None, rebalance_every: int = 1) ->
 
 def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
                              label_col: str = "label", purge_days: int | None = None,
-                             rebalance_every: int = 1) -> WalkForwardPredictions:
+                             rebalance_every: int = 1,
+                             cache_path=None) -> WalkForwardPredictions:
     """Staggered-refit ensemble walk: refresh one member per rebalance period.
 
     At each rebalance the newest member trains on data ending purge_days
@@ -64,6 +66,16 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
     (panel dates per rebalance). Strategies share one walk (predictions don't
     depend on the strategy), so callers compute this once per pipeline and
     pass it to every run_backtest."""
+    # Walks cost hours of fits; cache_path (under the data dir, NOT tmp — the
+    # OS purges tmp and has eaten these before) lets studies reuse them. The
+    # caller owns invalidation: pass a new path when estimator/panel change.
+    if cache_path is not None:
+        cache_path = Path(cache_path)
+        if cache_path.exists():
+            stored = pd.read_parquet(cache_path)
+            return WalkForwardPredictions(
+                preds={pd.Timestamp(c): stored[c].dropna() for c in stored.columns},
+                n_fits=int(stored.attrs.get("n_fits", len(stored.columns))))
     purge = cfg.purge_days if purge_days is None else purge_days
     fcols = feature_cols(panel)
     rdates = rebalance_calendar(panel, start, end, rebalance_every)
@@ -89,6 +101,11 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
         member_preds = [pd.Series(m.predict(rows[fcols]), index=rows["ticker"].values)
                         for _, m in members]
         out.preds[t] = pd.concat(member_preds, axis=1).mean(axis=1).dropna()
+    if cache_path is not None:
+        frame = pd.DataFrame(out.preds)
+        frame.columns = [str(c) for c in frame.columns]
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(cache_path)
     return out
 
 

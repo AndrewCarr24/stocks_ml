@@ -180,7 +180,13 @@ def run_weights_backtest(prices: pd.DataFrame, targets: pd.DataFrame, cfg,
         shares = {tk: d / opens[tk] for tk, d in dollars.items()}
         cash = investable - sum(dollars.values())
         span_end = rdates[i + 1] if i + 1 < len(rdates) else cal[-1]
-        for day in cal[(cal >= exec_day) & (cal <= span_end)]:
-            px = close_w.loc[day]
-            navs[day] = cash + sum(s * px.get(tk, 0.0) for tk, s in shares.items())
+        span_days = cal[(cal >= exec_day) & (cal <= span_end)]
+        if shares:
+            tks = list(shares)
+            vec = np.array([shares[tk] for tk in tks])
+            vals = close_w.loc[span_days, tks].fillna(0.0).to_numpy() @ vec
+        else:
+            vals = np.zeros(len(span_days))
+        for day, v in zip(span_days, vals):
+            navs[day] = cash + float(v)
     return pd.Series(navs).sort_index(), total_costs
