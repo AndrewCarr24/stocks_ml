@@ -61,6 +61,41 @@ class EqualWeightTopK(Strategy):
         return pd.Series(1.0 / self.k, index=picks)
 
 
+class BandedTopK(Strategy):
+    """Top-k with an exit band: enter at the top, leave only on real decay.
+
+    The breadth study (2026-08-18) showed the champion's weekly signal is
+    noisy and that damping turnover was worth +0.11 Sharpe; this is the
+    band-rule version deployable at feasible position counts. A stock enters
+    only from the top-k of the ranking (via select_top_k — tie guard applies),
+    but once held it keeps its slot until its rank decays past `exit_rank`
+    (or its prediction turns non-positive). Classic hysteresis: churn in the
+    16-40 rank zone — pure noise trading — is eliminated.
+
+    Stateful across a walk (holdings memory); use a fresh instance per
+    backtest, same convention as VolScaledTopK's guard state."""
+
+    name = "banded_topk"
+
+    def __init__(self, k: int, exit_rank: int):
+        if exit_rank < k:
+            raise ValueError("exit_rank must be >= k (the band cannot be inverted)")
+        self.k, self.exit_rank = k, exit_rank
+        self._held: list = []
+
+    def propose_weights(self, preds, vols, risk):
+        preds, vols = self._clean(preds, vols)
+        ranks = preds.rank(ascending=False, method="min")
+        keep = [t for t in self._held
+                if t in ranks.index and ranks[t] <= self.exit_rank and preds[t] > 0]
+        free = self.k - len(keep)
+        if free > 0:
+            pool = preds.drop(index=keep, errors="ignore")
+            keep = keep + list(select_top_k(pool, free))
+        self._held = keep
+        return pd.Series(1.0 / self.k, index=pd.Index(keep))
+
+
 class ConfidenceTopK(Strategy):
     """Top-k by score, where only scores above `floor` count as conviction.
 

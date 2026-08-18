@@ -81,3 +81,15 @@ def test_latest_closes_uses_last_available_price():
     closes = latest_closes(prices)
     assert closes["AAA"] == 11.0
     assert closes["GONE"] == 5.0   # not zero — last available close
+
+
+def test_race_status_scoreboard():
+    from stocks_ml.live.ledger import Ledger, race_status
+
+    champ = Ledger(cash=0, positions={}, nav_history=[["2026-08-08", 101.0],
+                                                      ["2026-08-15", 103.0]])
+    chall = Ledger(cash=0, positions={}, nav_history=[["2026-08-08", 100.5],
+                                                      ["2026-08-15", 104.2]])
+    s = race_status(champ, chall)
+    assert "week 2" in s and "challenger leads" in s and "$104.20" in s
+    assert "No marked weeks" in race_status(Ledger(), Ledger())

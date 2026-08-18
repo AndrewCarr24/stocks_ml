@@ -102,3 +102,23 @@ class Ledger:
             else:
                 self.positions[ticker] = new
             self.trades.append([str(pd.Timestamp(date).date()), ticker, delta, price, fee])
+
+
+def race_status(champion: "Ledger", challenger: "Ledger") -> str:
+    """One-paragraph shadow-race scoreboard for the weekly signal markdown.
+
+    Reads only the two ledgers' NAV histories; DEPLOYMENT.md rule 3 is decided
+    from exactly these numbers, so printing them weekly makes the race verdict
+    accumulate in public with no manual bookkeeping."""
+    def last_nav(led):
+        return led.nav_history[-1][1] if led.nav_history else float("nan")
+
+    weeks = min(len(champion.nav_history), len(challenger.nav_history))
+    if weeks == 0:
+        return ("## Shadow race\n\nNo marked weeks yet — the race starts with "
+                "the first `ledger mark` on both ledgers.")
+    lead = "challenger" if last_nav(challenger) > last_nav(champion) else "champion"
+    return (f"## Shadow race (week {weeks})\n\n"
+            f"champion ${last_nav(champion):,.2f} vs challenger "
+            f"${last_nav(challenger):,.2f} — {lead} leads. Promotion review at "
+            f"week 52 per DEPLOYMENT.md rule 3.")

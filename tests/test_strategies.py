@@ -199,3 +199,33 @@ def test_spy_floor_no_spy_row_when_fully_invested():
     w = SpyFloor(EqualWeightTopK(k=2)).propose_weights(preds, vols, OK)
     assert "SPY" not in w  # inner already sums to 1; no dust row
     assert w.sum() == pytest.approx(1.0)
+
+
+def test_banded_topk_holds_until_rank_decays_past_band():
+    from stocks_ml.backtest.strategies import BandedTopK
+
+    strat = BandedTopK(k=2, exit_rank=4)
+    vols = pd.Series(0.2, index=list("ABCDEF"))
+    # week 1: A,B best -> held
+    w1 = strat.propose_weights(pd.Series({"A": .06, "B": .05, "C": .04, "D": .03,
+                                          "E": .02, "F": .01}), vols, OK)
+    assert set(w1.index) == {"A", "B"}
+    # week 2: B slips to rank 4 (inside band) -> still held despite C,D ranking higher
+    w2 = strat.propose_weights(pd.Series({"A": .06, "C": .05, "D": .045, "B": .04,
+                                          "E": .02, "F": .01}), vols, OK)
+    assert set(w2.index) == {"A", "B"}
+    # week 3: B falls to rank 5 (past band) -> evicted, top non-held enters
+    w3 = strat.propose_weights(pd.Series({"A": .06, "C": .05, "D": .045, "E": .042,
+                                          "B": .04, "F": .01}), vols, OK)
+    assert "B" not in w3.index and "C" in w3.index
+    # negative prediction evicts regardless of rank
+    w4 = strat.propose_weights(pd.Series({"A": -.01, "C": .05, "D": .045, "E": .042,
+                                          "B": .04, "F": .01}), vols, OK)
+    assert "A" not in w4.index
+
+
+def test_banded_topk_rejects_inverted_band():
+    from stocks_ml.backtest.strategies import BandedTopK
+
+    with pytest.raises(ValueError):
+        BandedTopK(k=16, exit_rank=8)

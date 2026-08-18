@@ -264,6 +264,19 @@ scoring calendars, or all-missing folds.
   likely spans the skip-adjusted variants. Still queued: rank-blend xgb+enet
   precheck; decile-spread diagnostic. Deferred pending owner design call:
   train-window-length candidates; selection-stage IC deflation column.
+- **Banded top-k (2026-08-18, pre-registered, cached-walk study):** BandedTopK
+  in strategies.py (enter top-k, hold until rank decays past exit band —
+  hysteresis against noise churn). banded(16,32) beats plain k16 on EVERY
+  column, same panel vintage: pre-holdout $1,848/SR 0.64/DD 64% vs
+  $1,194/0.57/66%; holdout $233/SR 1.28/DD 33% vs $198/1.05/36%; costs
+  $222 vs $228. Recommended live_strategy change AT THE NEXT SCHEDULED
+  REVIEW (DEPLOYMENT.md rule 4 — not mid-race, owner decision); both
+  configs are ledger trials.
+- **DEPLOYMENT.md (2026-08-18):** pre-registered sizing/kill/promotion/
+  change-budget contract; weekly signals now append a shadow-race
+  scoreboard (race_status in ledger.py). Membership ingest hardened:
+  falls back to stored data on fetch failure or implausible swings
+  (>15 tickers/week), hard-fails after 3 consecutive fallback weeks.
 - Let the shadow ledger accumulate (Saturday cycle) before real money — this
   was always the plan; backtest numbers lean on friendly fill assumptions.
 - Possible research: honest Optuna re-run on the current 4-fold design;

@@ -143,10 +143,54 @@ def fetch_sp500_tables(user_agent: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     return _clean_wiki_tables(current_raw, changes_raw)
 
 
+MAX_FALLBACK_WEEKS = 3        # stale membership tolerated this long, then hard-fail
+MAX_WEEKLY_MEMBER_DIFF = 15   # a bigger one-week membership swing is treated as bad data
+
+
 def ingest_membership(store, cfg, fetch_fn=None) -> pd.DataFrame:
+    """Fetch and rebuild membership, degrading gracefully on source failure.
+
+    Index membership moves a few names per month and changes are announced in
+    advance, so running one week on stored membership is harmless — while a
+    skipped Saturday cycle is not (2026-08-15: Wikipedia moved a table and the
+    whole weekly run died). Policy: on fetch/parse failure OR an implausible
+    one-week membership swing (> MAX_WEEKLY_MEMBER_DIFF tickers, the vandalism
+    guard), fall back to the stored membership with a loud manifest warning;
+    hard-fail only after MAX_FALLBACK_WEEKS consecutive fallbacks, so staleness
+    cannot quietly become permanent."""
     fetch = fetch_fn or (lambda: fetch_sp500_tables(cfg.user_agent))
-    current, changes = fetch()
+    prior = store.read("membership") if store.exists("membership") else None
+    fallback_weeks = int(store.manifest.get("membership_fallback_weeks", 0) or 0)
+
+    def _fallback(reason: str) -> pd.DataFrame:
+        if prior is None:
+            raise RuntimeError(f"membership fetch failed with no stored fallback: {reason}")
+        weeks = fallback_weeks + 1
+        if weeks > MAX_FALLBACK_WEEKS:
+            raise RuntimeError(
+                f"membership has run on stored data {fallback_weeks} consecutive "
+                f"ingests and the source is still broken ({reason}); fix the "
+                "fetcher — staleness must not become permanent")
+        store.set_manifest("membership_fallback_weeks", weeks)
+        store.set_manifest("membership_fallback_reason", reason)
+        print(f"[membership] WARNING: using STORED membership (fallback week "
+              f"{weeks}/{MAX_FALLBACK_WEEKS}): {reason}")
+        return prior
+
+    try:
+        current, changes = fetch()
+    except Exception as e:                       # noqa: BLE001 — any source break
+        return _fallback(f"fetch/parse error: {e}")
+
     mem = build_membership(current, changes, cfg.membership_floor)
+    if prior is not None:
+        today = pd.Timestamp.today().normalize()
+        n_diff = len(set(members_asof(mem, today)) ^ set(members_asof(prior, today)))
+        if n_diff > MAX_WEEKLY_MEMBER_DIFF:
+            return _fallback(f"implausible membership swing: {n_diff} tickers in one ingest")
+
+    store.set_manifest("membership_fallback_weeks", 0)
+    store.set_manifest("membership_fallback_reason", None)
     store.write("membership", mem)
     store.set_manifest("membership", {"n_tickers": int(mem["ticker"].nunique()),
                                       "n_stints": int(len(mem))})

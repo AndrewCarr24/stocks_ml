@@ -164,3 +164,58 @@ def test_normalize_symbol_strips_wiki_formatting_junk():
     assert normalize_symbol("ITT |") == "ITT"
     assert normalize_symbol(" BRK.B ") == "BRK-B"
     assert normalize_symbol("JCP |") == "JCP"
+
+
+def _fixture_tables():
+    current = pd.DataFrame({"ticker": ["AAA", "BBB"], "sector": ["T", "F"],
+                            "date_added": pd.to_datetime(["2010-01-01", "2011-01-01"])})
+    changes = pd.DataFrame({"date": pd.to_datetime(["2011-01-01"]),
+                            "added": ["BBB"], "removed": [None], "reason": ["x"]})
+    return current, changes
+
+
+def test_membership_falls_back_to_stored_on_fetch_failure(synthetic_store, tiny_cfg):
+    import pytest
+    from stocks_ml.data.membership import ingest_membership
+
+    def boom():
+        raise ValueError("wikipedia moved the table again")
+
+    # no stored membership -> hard failure
+    for f in [synthetic_store.root / "membership.parquet"]:
+        if f.exists():
+            f.unlink()
+    synthetic_store.manifest.pop("membership_fallback_weeks", None)
+    good = lambda: (_fixture_tables()[0], _fixture_tables()[1])
+    mem = ingest_membership(synthetic_store, tiny_cfg, fetch_fn=good)   # seed store
+    assert synthetic_store.manifest.get("membership_fallback_weeks") == 0
+
+    # failures 1..3 -> stored data with counter; 4th -> raises
+    for wk in (1, 2, 3):
+        out = ingest_membership(synthetic_store, tiny_cfg, fetch_fn=boom)
+        assert synthetic_store.manifest["membership_fallback_weeks"] == wk
+        assert set(out["ticker"]) == set(mem["ticker"])
+    with pytest.raises(RuntimeError, match="staleness"):
+        ingest_membership(synthetic_store, tiny_cfg, fetch_fn=boom)
+
+    # a successful fetch resets the counter
+    synthetic_store.set_manifest("membership_fallback_weeks", 2)
+    ingest_membership(synthetic_store, tiny_cfg, fetch_fn=good)
+    assert synthetic_store.manifest["membership_fallback_weeks"] == 0
+
+
+def test_membership_rejects_implausible_swing(synthetic_store, tiny_cfg):
+    from stocks_ml.data.membership import ingest_membership
+
+    cur, chg = _fixture_tables()
+    ingest_membership(synthetic_store, tiny_cfg,
+                      fetch_fn=lambda: (cur, chg))
+    # vandalized page: 20 brand-new members appear at once
+    vandal = pd.DataFrame({"ticker": [f"Z{i:02d}" for i in range(20)],
+                           "sector": ["T"] * 20,
+                           "date_added": pd.to_datetime(["2020-01-01"] * 20)})
+    out = ingest_membership(synthetic_store, tiny_cfg,
+                            fetch_fn=lambda: (vandal, chg))
+    assert synthetic_store.manifest["membership_fallback_weeks"] == 1
+    assert "implausible" in synthetic_store.manifest["membership_fallback_reason"]
+    assert set(out["ticker"]) == {"AAA", "BBB"}          # stored data served

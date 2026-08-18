@@ -139,6 +139,11 @@ def cmd_signals(args, cfg):
     trades2_path.write_text(json.dumps([[t, d, p] for t, d, p in trades2]))
     print(f"wrote {path2} and {trades2_path} ({len(trades2)} challenger trades)")
 
+    from stocks_ml.live.ledger import race_status
+    status = race_status(ledger, ledger2)
+    path.write_text(md + "\n\n" + status)
+    print(status.splitlines()[-1])
+
 
 def cmd_ledger(args, cfg):
     from stocks_ml.live.ledger import Ledger, find_latest_trades, latest_closes

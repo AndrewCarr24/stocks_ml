@@ -2129,5 +2129,17 @@
   "kind": "strategy_variant",
   "name": "loser_ltr_stage1_diagnostic",
   "notes": "bottom-trained ranker information probe; params borrowed"
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_banded_16_40",
+  "pre_holdout_sharpe": 0.614
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "sweep_champion_banded_16_32",
+  "pre_holdout_sharpe": 0.6405
  }
 ]
