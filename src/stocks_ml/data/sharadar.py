@@ -24,8 +24,9 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-BASE = "https://data.nasdaq.com/api/v3/datatables/SHARADAR/{table}.json"
-PAGE_PAUSE_S = 0.6            # free tier is throttle-happy; be polite
+BASE = "https://api.sharadar.com/v1.0/data/{table}"
+PAGE_LIMIT = 10000
+PAGE_PAUSE_S = 0.3
 
 
 def api_key(data_dir: str | Path = "data") -> str:
@@ -38,40 +39,37 @@ def api_key(data_dir: str | Path = "data") -> str:
     raise RuntimeError("no Sharadar key: set SHARADAR_API_KEY or create data/.sharadar_key")
 
 
-def fetch_datatable(table_name: str, key: str, fetch_fn=None, max_pages: int = 200,
-                    **filters) -> pd.DataFrame:
-    """All rows of a SHARADAR datatable matching `filters`, following cursors.
+def fetch_table(table_name: str, key: str, fetch_fn=None, max_pages: int = 500,
+                **filters) -> pd.DataFrame:
+    """All rows of a Sharadar Direct table matching `filters` (limit/offset paging).
 
-    fetch_fn(url, params) -> parsed-JSON dict is injectable for tests (house
-    rule: no network in tests). Raises on API errors with the vendor message
-    surfaced — a disabled/unentitled key should fail loudly, not emptily."""
-    def default_fetch(url, params):
-        r = requests.get(url, params=params, timeout=60)
-        d = r.json()
-        if "quandl_error" in d:
-            raise RuntimeError(f"Sharadar API error on {table_name}: "
-                               f"{d['quandl_error'].get('message')}")
-        r.raise_for_status()
-        return d
+    Direct API (https://sharadar.com/llms.txt): GET /data/{table}, key in the
+    x-api-key header (never the URL), response {"count": N, "data": [records]}.
+    fetch_fn(url, params, headers) -> parsed-JSON dict is injectable for tests
+    (house rule: no network in tests). Errors fail loudly: a 403 "Exceeds free
+    tier" is a subscription boundary, not an empty result."""
+    def default_fetch(url, params, headers):
+        r = requests.get(url, params=params, headers=headers, timeout=60)
+        if r.status_code != 200:
+            raise RuntimeError(f"Sharadar {table_name}: HTTP {r.status_code}: "
+                               f"{r.text[:200]}")
+        return r.json()
 
     fetch = fetch_fn or default_fetch
     url = BASE.format(table=table_name)
-    params = {**filters, "api_key": key}
-    frames, cursor, pages = [], None, 0
+    headers = {"x-api-key": key}
+    frames, offset, pages = [], 0, 0
     while True:
-        page_params = dict(params)
-        if cursor:
-            page_params["qopts.cursor_id"] = cursor
-        d = fetch(url, page_params)
-        dt = d["datatable"]
-        cols = [c["name"] for c in dt["columns"]]
-        frames.append(pd.DataFrame(dt["data"], columns=cols))
-        cursor = (d.get("meta") or {}).get("next_cursor_id")
+        d = fetch(url, {**filters, "format": "json", "limit": PAGE_LIMIT,
+                        "offset": offset}, headers)
+        rows = d.get("data", [])
+        frames.append(pd.DataFrame(rows))
         pages += 1
-        if not cursor:
+        if len(rows) < PAGE_LIMIT:
             break
         if pages >= max_pages:
-            raise RuntimeError(f"{table_name}: exceeded {max_pages} pages; narrow the query")
+            raise RuntimeError(f"{table_name}: exceeded {max_pages} pages; use bulk")
+        offset += PAGE_LIMIT
         if fetch_fn is None:
             time.sleep(PAGE_PAUSE_S)
     out = pd.concat(frames, ignore_index=True)
@@ -89,9 +87,9 @@ def fetch_prices(tickers: list[str], start, key: str, fetch_fn=None) -> pd.DataF
     SPLIT-adjusted only; closeadj is split+dividend adjusted; closeunadj is
     as-traded. We surface all three closes so contemporaneous-price analyses
     (the $5 floor) and total-return analyses stop sharing one ambiguous column."""
-    raw = fetch_datatable("SEP", key, fetch_fn=fetch_fn,
-                          ticker=",".join(tickers),
-                          **{"date.gte": pd.Timestamp(start).date().isoformat()})
+    raw = fetch_table("stocks", key, fetch_fn=fetch_fn,
+                      ticker=",".join(tickers),
+                      **{"from": pd.Timestamp(start).date().isoformat()})
     if raw.empty:
         return pd.DataFrame(columns=["date", "ticker", "open", "high", "low",
                                      "close", "volume", "closeadj", "closeunadj"])
@@ -101,9 +99,9 @@ def fetch_prices(tickers: list[str], start, key: str, fetch_fn=None) -> pd.DataF
 
 
 def fetch_tickers_meta(key: str, fetch_fn=None) -> pd.DataFrame:
-    """Ticker metadata (SHARADAR/TICKERS, table=SEP universe): includes
+    """Ticker metadata (tickers table): includes
     isdelisted — the coverage-audit column the free source can't provide."""
-    raw = fetch_datatable("TICKERS", key, fetch_fn=fetch_fn, table="SEP")
+    raw = fetch_table("tickers", key, fetch_fn=fetch_fn)
     keep = [c for c in ("ticker", "name", "exchange", "isdelisted", "category",
                         "sector", "industry", "firstpricedate", "lastpricedate")
             if c in raw.columns]
@@ -111,10 +109,10 @@ def fetch_tickers_meta(key: str, fetch_fn=None) -> pd.DataFrame:
 
 
 def fetch_sp500_membership(key: str, fetch_fn=None) -> pd.DataFrame:
-    """S&P 500 membership events (SHARADAR/SP500): rows of action
+    """S&P 500 membership events (sp500 table): rows of action
     ('added'/'removed'/'current') with dates — the licensed replacement for
     the Wikipedia changes table, mapped to the membership builder's schema."""
-    raw = fetch_datatable("SP500", key, fetch_fn=fetch_fn)
+    raw = fetch_table("sp500", key, fetch_fn=fetch_fn)
     if raw.empty:
         return pd.DataFrame(columns=["date", "action", "ticker", "name"])
     keep = [c for c in ("date", "action", "ticker", "name") if c in raw.columns]

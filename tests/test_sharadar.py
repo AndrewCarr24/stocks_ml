@@ -1,49 +1,46 @@
 import pandas as pd
 import pytest
 
-from stocks_ml.data.sharadar import (fetch_datatable, fetch_prices,
-                                     fetch_sp500_membership, ingest_sharadar)
+from stocks_ml.data.sharadar import (PAGE_LIMIT, fetch_prices,
+                                     fetch_sp500_membership, fetch_table,
+                                     ingest_sharadar)
 
 
-def _page(rows, cols, cursor=None):
-    return {"datatable": {"data": rows,
-                          "columns": [{"name": c, "type": "t"} for c in cols]},
-            "meta": {"next_cursor_id": cursor}}
+def _rec(ticker="AAPL", date="2026-01-02", closeunadj=210.0):
+    return {"ticker": ticker, "date": date, "open": 10, "high": 11, "low": 9,
+            "close": 10.5, "volume": 100, "closeadj": 10.4,
+            "closeunadj": closeunadj, "lastupdated": "2026-01-03"}
 
 
-SEP_COLS = ["ticker", "date", "open", "high", "low", "close", "volume",
-            "closeadj", "closeunadj", "lastupdated"]
-
-
-def test_fetch_datatable_follows_cursor_pagination():
-    pages = [_page([["AAPL", "2026-01-02", 1, 2, 0.5, 1.5, 100, 1.4, 150, "2026-01-03"]],
-                   SEP_COLS, cursor="abc"),
-             _page([["AAPL", "2026-01-03", 1, 2, 0.5, 1.6, 110, 1.5, 160, "2026-01-04"]],
-                   SEP_COLS, cursor=None)]
+def test_fetch_table_follows_offset_pagination():
+    pages = [{"count": PAGE_LIMIT, "data": [_rec(date="2026-01-02")] * PAGE_LIMIT},
+             {"count": 1, "data": [_rec(date="2026-01-03")]}]
     calls = []
 
-    def fake(url, params):
-        calls.append(params.get("qopts.cursor_id"))
+    def fake(url, params, headers):
+        calls.append(params["offset"])
+        assert headers == {"x-api-key": "k"}          # key in header, never URL
         return pages[len(calls) - 1]
 
-    out = fetch_datatable("SEP", "k", fetch_fn=fake)
-    assert len(out) == 2
-    assert calls == [None, "abc"]                 # cursor threaded through
+    out = fetch_table("stocks", "k", fetch_fn=fake)
+    assert len(out) == PAGE_LIMIT + 1
+    assert calls == [0, PAGE_LIMIT]
     assert pd.api.types.is_datetime64_any_dtype(out["date"])
 
 
-def test_fetch_datatable_surfaces_vendor_errors():
-    def fake(url, params):
-        raise RuntimeError("Sharadar API error on SEP: account disabled")
+def test_fetch_table_surfaces_vendor_errors():
+    def fake(url, params, headers):
+        raise RuntimeError("Sharadar stocks: HTTP 403: Exceeds free tier")
 
-    with pytest.raises(RuntimeError, match="account disabled"):
-        fetch_datatable("SEP", "k", fetch_fn=fake)
+    with pytest.raises(RuntimeError, match="Exceeds free tier"):
+        fetch_table("stocks", "k", fetch_fn=fake)
 
 
 def test_fetch_prices_keeps_all_three_close_columns():
-    def fake(url, params):
-        return _page([["AAPL", "2026-01-02", 10, 11, 9, 10.5, 100, 10.4, 210.0, "x"]],
-                     SEP_COLS)
+    def fake(url, params, headers):
+        assert "data/stocks" in url
+        assert params["from"] == "2026-01-01"
+        return {"count": 1, "data": [_rec()]}
 
     out = fetch_prices(["AAPL"], "2026-01-01", "k", fetch_fn=fake)
     # split-adjusted close, fully-adjusted closeadj, as-traded closeunadj:
@@ -53,29 +50,33 @@ def test_fetch_prices_keeps_all_three_close_columns():
 
 
 def test_sp500_membership_maps_actions():
-    cols = ["date", "action", "ticker", "name"]
-    def fake(url, params):
-        return _page([["2026-08-05", "added", "FERG", "Ferguson"],
-                      ["2026-08-05", "REMOVED", "EA", "Electronic Arts"]], cols)
+    def fake(url, params, headers):
+        return {"count": 2, "data": [
+            {"date": "2026-08-05", "action": "added", "ticker": "FERG",
+             "name": "Ferguson"},
+            {"date": "2026-08-05", "action": "REMOVED", "ticker": "EA",
+             "name": "Electronic Arts"}]}
 
     out = fetch_sp500_membership("k", fetch_fn=fake)
     assert list(out["action"]) == ["added", "removed"]      # normalized
 
 
 def test_ingest_writes_separate_store_keys(tmp_path, synthetic_store):
-    def fake(url, params):
-        if "SEP.json" in url and "ticker" in params and params.get("table") is None:
-            return _page([["AAPL", "2026-01-02", 10, 11, 9, 10.5, 100, 10.4, 210.0, "x"]],
-                         SEP_COLS)
-        if "TICKERS" in url:
-            return _page([["AAPL", "Apple", "NASDAQ", "N", "Domestic", "Tech",
-                           "Hw", "1980-12-12", "2026-08-15"],
-                          ["LEH", "Lehman", "NYSE", "Y", "Domestic", "Fin",
-                           "Bank", "1994-05-02", "2008-09-17"]],
-                         ["ticker", "name", "exchange", "isdelisted", "category",
-                          "sector", "industry", "firstpricedate", "lastpricedate"])
-        return _page([["2026-08-05", "added", "FERG", "Ferguson"]],
-                     ["date", "action", "ticker", "name"])
+    def fake(url, params, headers):
+        if "data/stocks" in url:
+            return {"count": 1, "data": [_rec()]}
+        if "data/tickers" in url:
+            return {"count": 2, "data": [
+                {"ticker": "AAPL", "name": "Apple", "exchange": "NASDAQ",
+                 "isdelisted": "N", "category": "Domestic", "sector": "Tech",
+                 "industry": "Hw", "firstpricedate": "1980-12-12",
+                 "lastpricedate": "2026-08-15"},
+                {"ticker": "LEH", "name": "Lehman", "exchange": "NYSE",
+                 "isdelisted": "Y", "category": "Domestic", "sector": "Fin",
+                 "industry": "Bank", "firstpricedate": "1994-05-02",
+                 "lastpricedate": "2008-09-17"}]}
+        return {"count": 1, "data": [{"date": "2026-08-05", "action": "added",
+                                      "ticker": "FERG", "name": "Ferguson"}]}
 
     (tmp_path / ".sharadar_key").write_text("k")
     res = ingest_sharadar(synthetic_store, ["AAPL"], "2026-01-01",
