@@ -3535,5 +3535,17 @@
   "kind": "strategy_variant",
   "name": "asha_r2_c6",
   "pre_holdout_sharpe": 0.643
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "tax_hold365_eased_elite",
+  "pre_holdout_sharpe": 0.53
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "tax_harvest_eased_elite",
+  "pre_holdout_sharpe": 0.72
  }
 ]
