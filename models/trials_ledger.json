@@ -3229,5 +3229,53 @@
   "kind": "strategy_variant",
   "name": "mlp_wide_blend50",
   "pre_holdout_sharpe": 0.7001
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t20_seccap4",
+  "pre_holdout_sharpe": 0.6517
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t20_elite8_32",
+  "pre_holdout_sharpe": 0.6178
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t20_blend75",
+  "pre_holdout_sharpe": 0.7197
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t20_blend50",
+  "pre_holdout_sharpe": 0.7043
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t54_seccap4",
+  "pre_holdout_sharpe": 0.6136
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t54_elite8_32",
+  "pre_holdout_sharpe": 0.608
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t54_blend75",
+  "pre_holdout_sharpe": 0.7076
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "retune_t54_blend50",
+  "pre_holdout_sharpe": 0.6817
  }
 ]
