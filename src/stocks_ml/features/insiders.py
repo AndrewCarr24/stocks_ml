@@ -172,4 +172,10 @@ def short_features(shortint: pd.DataFrame, shares_outstanding: pd.DataFrame,
         out["f_short_ratio"] = out["short_interest"] / out["shares"].where(out["shares"] > 0)
         out["f_short_dtc"] = out["short_interest"] / out["avg_vol"].where(out["avg_vol"] > 0)
 
-    return out[["date", "ticker", "f_short_ratio", "f_short_dtc"]]
+    # Change over 8 weekly panel rows ~ four FINRA publication cycles (pending
+    # ablation). PIT is inherited from the merge_asof above: a diff of
+    # already-published figures uses only past publications.
+    out = out.sort_values(["ticker", "date"])
+    out["f_short_chg_8w"] = out.groupby("ticker")["f_short_ratio"].diff(8)
+
+    return out[["date", "ticker", "f_short_ratio", "f_short_dtc", "f_short_chg_8w"]]

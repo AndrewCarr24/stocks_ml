@@ -2437,13 +2437,13 @@
   "pre_holdout_sharpe": 0.6748
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_base",
   "pre_holdout_sharpe": 0.7331
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_invvol_seccap4",
   "pre_holdout_sharpe": 0.7239
@@ -2645,5 +2645,21 @@
   "kind": "strategy_variant",
   "name": "rffexam_book-blend_7525",
   "pre_holdout_sharpe": 0.7173
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_trend_quality",
+  "cv_metric": 0.0005857221211224873,
+  "t_stat": 0.111,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_short_chg",
+  "cv_metric": -0.0076693005904669345,
+  "t_stat": -1.592,
+  "adopted": false
  }
 ]

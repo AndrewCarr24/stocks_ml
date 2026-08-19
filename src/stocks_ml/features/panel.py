@@ -34,6 +34,11 @@ PENDING_ABLATION_FEATURES = frozenset({
     "f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm",
     # EDGAR earnings-quality bundle, recommendation #2
     "f_sue", "f_nincr", "f_net_issuance",
+    # trend-quality bundle (2026-08 feature round, importance-guided)
+    "f_mom_sharpe_12w", "f_mom_consist_12w", "f_overnight_12w", "f_intraday_12w",
+    # short-interest changes (recommendations runner-up; BJZ locate the
+    # information in changes, not levels)
+    "f_short_chg_8w",
 })
 
 
@@ -243,6 +248,25 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
     ia_valid = intraday.notna().rolling(20).sum().eq(20)
     out["f_overnight_4w"] = (on_cum / on_cum.shift(20) - 1).where(on_valid)
     out["f_intraday_4w"] = (ia_cum / ia_cum.shift(20) - 1).where(ia_valid)
+
+    # 12-week extension of the split (pending ablation): Lou-Polk-Skouras
+    # document the overnight/intraday tug-of-war persisting at monthly-to-
+    # quarterly horizons, so the 4w windows above may be too short to carry it.
+    on_valid_12 = overnight.notna().rolling(60).sum().eq(60)
+    ia_valid_12 = intraday.notna().rolling(60).sum().eq(60)
+    out["f_overnight_12w"] = (on_cum / on_cum.shift(60) - 1).where(on_valid_12)
+    out["f_intraday_12w"] = (ia_cum / ia_cum.shift(60) - 1).where(ia_valid_12)
+
+    # Trend quality (pending ablation). Only stock x stock interactions are
+    # worth engineering here: a stock x market product collapses to a sign flip
+    # once rank-normalized, because the market term is a within-week constant.
+    # f_mom_sharpe_12w scales the 12w move by its own daily vol (smooth trends
+    # over jumpy ones); f_mom_consist_12w is Da-Gurun-Warachka's continuity
+    # (share of up days), which survives value-weighting in their tests.
+    vol_60 = ret.rolling(60).std()
+    out["f_mom_sharpe_12w"] = out["f_mom_12w"].div(vol_60.where(vol_60 > 0))
+    up_days = (ret > 0).astype(float).where(ret.notna())
+    out["f_mom_consist_12w"] = up_days.rolling(60, min_periods=40).mean()
 
     # Beta / idiosyncratic vol vs SPY over a trailing 60-trading-day window.
     # Closed-form rolling cov/var (no python loops); SPY absent -> NaN throughout.
