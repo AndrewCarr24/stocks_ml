@@ -3571,5 +3571,101 @@
   "kind": "strategy_variant",
   "name": "sharadar_world_seccap4",
   "pre_holdout_sharpe": 0.5659
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_world_momentum_skip",
+  "cv_metric": -0.011110168151525731,
+  "t_stat": -2.317,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_world_sue_bundle",
+  "cv_metric": -0.0099343063431469,
+  "t_stat": -2.315,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_world_trend_quality",
+  "cv_metric": -0.007141313423157946,
+  "t_stat": -1.371,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_world_short_chg",
+  "cv_metric": -0.008098775508320506,
+  "t_stat": -1.565,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_world_resid_lags_5_8",
+  "cv_metric": -0.009776021473205889,
+  "t_stat": -1.519,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_world_feature_velocity",
+  "cv_metric": -0.006312288977457177,
+  "t_stat": -1.725,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_c4",
+  "pre_holdout_sharpe": 0.6316
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_wbook_n0",
+  "pre_holdout_sharpe": 0.605
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_wbook_n1",
+  "pre_holdout_sharpe": 0.6248
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_wbook_n2",
+  "pre_holdout_sharpe": 0.602
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_wbook_n3",
+  "pre_holdout_sharpe": 0.58
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_wbook_n4",
+  "pre_holdout_sharpe": 0.5979
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_r3_wbook_n5",
+  "pre_holdout_sharpe": 0.7096
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "world_final_neighborhood_avg",
+  "pre_holdout_sharpe": 0.6397
  }
 ]
