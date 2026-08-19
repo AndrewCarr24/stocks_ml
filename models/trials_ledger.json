@@ -2773,5 +2773,29 @@
   "kind": "model_cv",
   "name": "tail_vol-scaled_label",
   "mean_ic": 0.0018062595985953705
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "volscaled_champ_seccap4",
+  "pre_holdout_sharpe": 0.7262
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "volscaled_champ_elite8_32",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "volscaled_volscaled_seccap4",
+  "pre_holdout_sharpe": 0.5227
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "volscaled_volscaled_elite8_32",
+  "pre_holdout_sharpe": 0.456
  }
 ]
