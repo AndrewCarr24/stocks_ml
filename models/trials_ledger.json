@@ -2141,5 +2141,251 @@
   "kind": "strategy_variant",
   "name": "sweep_champion_banded_16_32",
   "pre_holdout_sharpe": 0.6405
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_20",
+  "pre_holdout_sharpe": 0.6125
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_24",
+  "pre_holdout_sharpe": 0.6374
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_28",
+  "pre_holdout_sharpe": 0.6209
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_32",
+  "pre_holdout_sharpe": 0.6405
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_36",
+  "pre_holdout_sharpe": 0.6309
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_40",
+  "pre_holdout_sharpe": 0.614
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "banded_sens_16_48",
+  "pre_holdout_sharpe": 0.6256
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_b8_24",
+  "pre_holdout_sharpe": 0.6017
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_b12_24",
+  "pre_holdout_sharpe": 0.6536
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_b12_36",
+  "pre_holdout_sharpe": 0.6335
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_b20_40",
+  "pre_holdout_sharpe": 0.6097
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_b24_48",
+  "pre_holdout_sharpe": 0.604
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_elite8_32",
+  "pre_holdout_sharpe": 0.6923
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_elite12_40",
+  "pre_holdout_sharpe": 0.6518
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_emaScore_b16_32",
+  "pre_holdout_sharpe": 0.6405
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_age_b16_32",
+  "pre_holdout_sharpe": 0.6404
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_cap52_b16_32",
+  "pre_holdout_sharpe": 0.6405
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_vel80_b16_32",
+  "pre_holdout_sharpe": 0.6405
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased_b16_32",
+  "pre_holdout_sharpe": 0.6924
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased_elite8_32",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased_b12_24",
+  "pre_holdout_sharpe": 0.71
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased_elite8_32_emaScore",
+  "pre_holdout_sharpe": 0.6713
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased0.25_elite8_32",
+  "pre_holdout_sharpe": 0.7183
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased0.5_elite8_32",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "creative_eased0.75_elite8_32",
+  "pre_holdout_sharpe": 0.7296
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_eased_elite8_32_(base)",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg15_30_cash_refuge",
+  "pre_holdout_sharpe": 0.0169
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg20_40_cash_refuge",
+  "pre_holdout_sharpe": 0.7957
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg15_30_spy_refuge",
+  "pre_holdout_sharpe": 0.6252
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_volgate1.5_cash_refuge",
+  "pre_holdout_sharpe": 0.7515
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_invvol_elite",
+  "pre_holdout_sharpe": 0.7357
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ballast20_elite",
+  "pre_holdout_sharpe": 0.7259
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_no_guard_eased_elite",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg_17_35_eased_elite",
+  "pre_holdout_sharpe": 0.0785
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg_20_35_eased_elite",
+  "pre_holdout_sharpe": 0.081
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg_20_40_eased_elite",
+  "pre_holdout_sharpe": 0.7957
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_ddg_25_45_eased_elite",
+  "pre_holdout_sharpe": 0.678
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_no guard_eased_elite",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_half_15_eased_elite",
+  "pre_holdout_sharpe": 0.6743
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_half_20_eased_elite",
+  "pre_holdout_sharpe": 0.7957
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "risk_half_25_eased_elite",
+  "pre_holdout_sharpe": 0.678
  }
 ]
