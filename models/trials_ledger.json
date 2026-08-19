@@ -3205,5 +3205,29 @@
   "kind": "model_cv",
   "name": "retune_trial59",
   "mean_ic": 0.002943182258315176
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "mlp_wide_seccap4",
+  "pre_holdout_sharpe": 0.6303
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "mlp_wide_elite8_32",
+  "pre_holdout_sharpe": 0.6344
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "mlp_wide_blend75",
+  "pre_holdout_sharpe": 0.7185
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "mlp_wide_blend50",
+  "pre_holdout_sharpe": 0.7001
  }
 ]
