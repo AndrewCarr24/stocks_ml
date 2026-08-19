@@ -205,7 +205,19 @@ scoring calendars, or all-missing folds.
 6. **Old IC numbers are not comparable across evaluation designs.** The metric
    window/folds changed (5-fold-2012+ → 4-fold-2015+). Compare only within
    the current design.
-7. **Screens do not predict the exam (2026-08 model campaign).** Three screen
+7. **The survivorship reckoning (2026-08-19, Sharadar re-grade).** On the
+   survivorship-clean world (official 500-member menus 1998+, 100% price
+   coverage incl. delisted via suffixed tickers, dividend-adjusted opens),
+   NO config beats SPY on pre-holdout Sharpe: best 0.57 (seccap4) vs SPY
+   0.60; the old world claimed 0.73. SPY reproduces exactly across worlds
+   (665 vs 666) — the build is validated; the historical edge was data
+   artifact. What survives: the family ORDERING (seccap 0.57 > eased 0.54 >
+   banded 0.45 ≥ k16 0.44 — the strategy-layer mechanics are real), and the
+   holdout-era edge (1.20-1.27 vs SPY 1.11; near-complete data in both
+   worlds). The honest thesis is now recent-era-only. Clean-world store:
+   data/sharadar_world/; walk: data/walks/sharadar_champion.parquet. All
+   pre-Sharadar absolute levels vs SPY are deprecated for decisions.
+8. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST
    the walked $100 exam by 0.08-0.21 Sharpe. Ten model challengers (lgbm,
