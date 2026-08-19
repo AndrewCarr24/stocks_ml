@@ -2821,5 +2821,29 @@
   "kind": "strategy_variant",
   "name": "lgbm_blend50",
   "pre_holdout_sharpe": 0.6958
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "catboost_seccap4",
+  "pre_holdout_sharpe": 0.5218
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "catboost_elite8_32",
+  "pre_holdout_sharpe": 0.4821
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "catboost_blend75",
+  "pre_holdout_sharpe": 0.6867
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "catboost_blend50",
+  "pre_holdout_sharpe": 0.6384
  }
 ]
