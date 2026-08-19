@@ -2661,5 +2661,21 @@
   "cv_metric": -0.0076693005904669345,
   "t_stat": -1.592,
   "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_resid_lags_5_8",
+  "cv_metric": -0.006044968481102305,
+  "t_stat": -0.931,
+  "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "ablation",
+  "name": "ablation_feature_velocity",
+  "cv_metric": -0.00393449308362701,
+  "t_stat": -0.594,
+  "adopted": false
  }
 ]

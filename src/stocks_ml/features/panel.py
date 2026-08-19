@@ -39,6 +39,10 @@ PENDING_ABLATION_FEATURES = frozenset({
     # short-interest changes (recommendations runner-up; BJZ locate the
     # information in changes, not levels)
     "f_short_chg_8w",
+    # residual-reversal lags 5-8 (owner's every-permutation audit, 2026-08)
+    "f_resid_ret_lag5w", "f_resid_ret_lag6w", "f_resid_ret_lag7w", "f_resid_ret_lag8w",
+    # feature velocity: a feature's own history is invisible to the trees
+    "f_vol_chg_12w", "f_beta_chg_12w", "f_mom_accel_4w",
 })
 
 
@@ -214,7 +218,7 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
     # forecast. lag1 is the just-completed week ending at t; lag2 ends five
     # trading days earlier, etc. Each beta estimate ends before its return
     # window starts, so no realization helps estimate its own market exposure.
-    for lag in range(1, 5):
+    for lag in range(1, 9):        # lags 5-8 are pending ablation
         end_shift = 5 * (lag - 1)
         start_shift = 5 * lag
         stock_week = close.shift(end_shift).div(close.shift(start_shift)) - 1.0
@@ -278,6 +282,15 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
     idio_var = var_i.sub(beta.pow(2).multiply(var_m, axis=0)).clip(lower=0)
     out["f_beta_60d"] = beta
     out["f_idio_vol_60d"] = np.sqrt(idio_var) * ANNUALIZER
+
+    # Feature velocity (pending ablation): the model sees only each feature's
+    # current value, and no tree combination can reconstruct a feature's own
+    # past — "vol is rising" is invisible to it. Each is current window minus
+    # the same window ending 60 trading days earlier (non-overlapping for the
+    # 4w/60d measures), so everything is trailing and point-in-time.
+    out["f_vol_chg_12w"] = out["f_vol_4w"] - out["f_vol_4w"].shift(60)
+    out["f_beta_chg_12w"] = beta - beta.shift(60)
+    out["f_mom_accel_4w"] = out["f_mom_12w"] - out["f_mom_12w"].shift(20)
 
     frames = []
     for col, wide_df in out.items():
