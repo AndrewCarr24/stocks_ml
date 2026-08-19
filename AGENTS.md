@@ -205,7 +205,16 @@ scoring calendars, or all-missing folds.
 6. **Old IC numbers are not comparable across evaluation designs.** The metric
    window/folds changed (5-fold-2012+ → 4-fold-2015+). Compare only within
    the current design.
-7. **The vol_scaled cash-lock (found 2026-08-18):** drawdown is measured vs the
+7. **Screens do not predict the exam (2026-08 model campaign).** Three screen
+   designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
+   Optuna search — each produced winners (2-3x claimed improvements) that LOST
+   the walked $100 exam by 0.08-0.21 Sharpe. Ten model challengers (lgbm,
+   catboost, enet, RFF, MLP, 4y window, label variants, retuned params), zero
+   wins; every book blend landed at 0.68-0.72 vs the champion's 0.73. Standing
+   rule: walks are cheap (~40 min) — walk everything, screens are junk-filters
+   only. The one live blend path: a neural sleeve at SR >= ~0.67 with rank corr
+   ~0.1 (MLP hit 0.63/0.11, blend 0.72 — lost by 0.01); TabM is the candidate.
+8. **The vol_scaled cash-lock (found 2026-08-18):** drawdown is measured vs the
    all-time peak, so a strategy at zero exposure freezes its NAV and its
    drawdown can never improve — the full stop was an absorbing state. It fired
    in COVID (2020-03-16, dd 32%) and vol_scaled sat in cash for the remaining
