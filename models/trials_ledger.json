@@ -2387,5 +2387,65 @@
   "kind": "strategy_variant",
   "name": "risk_half_25_eased_elite",
   "pre_holdout_sharpe": 0.678
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_base_elite8_32",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_seccap3",
+  "pre_holdout_sharpe": 0.709
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_seccap4",
+  "pre_holdout_sharpe": 0.7262
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_seccap5",
+  "pre_holdout_sharpe": 0.7216
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_wide24_e12x48",
+  "pre_holdout_sharpe": 0.684
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_wide24+cap4",
+  "pre_holdout_sharpe": 0.7053
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_vt15_spy_refuge",
+  "pre_holdout_sharpe": 0.6569
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_vt18_spy_refuge",
+  "pre_holdout_sharpe": 0.6748
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_base",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_invvol_seccap4",
+  "pre_holdout_sharpe": 0.7239
  }
 ]
