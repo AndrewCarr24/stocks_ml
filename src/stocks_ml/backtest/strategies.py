@@ -120,6 +120,14 @@ class ConfidenceTopK(Strategy):
 class VolScaledTopK(Strategy):
     name = "vol_scaled"
 
+    # The full stop (exposure 0) freezes the NAV, and drawdown is measured
+    # against the all-time peak, so from inside the cash state the drawdown
+    # can never improve: without a time limit the full stop is absorbing and
+    # the strategy would sit in cash forever. Cap it at one quarter, then
+    # resume at half exposure so the NAV can trade back to the release
+    # threshold. The cool-off budget refills only on full recovery.
+    REENTRY_WEEKS = 13
+
     def __init__(self, k: int, vol_target: float, rho: float,
                  dd_derisk: float, dd_full: float):
         if not 0.0 <= rho < 1.0:
@@ -127,13 +135,15 @@ class VolScaledTopK(Strategy):
         self.k, self.vol_target, self.rho = k, vol_target, rho
         self.dd_derisk, self.dd_full = dd_derisk, dd_full
         self._guarded = False
+        self._cash_weeks = 0
 
     def restore_guard(self, guarded: bool) -> None:
         """Warm-start the hysteresis state (live runs replay it from NAV history)."""
         self._guarded = bool(guarded)
 
     def _exposure(self, dd: float) -> float:
-        if dd >= self.dd_full:
+        if dd >= self.dd_full and self._cash_weeks < self.REENTRY_WEEKS:
+            self._cash_weeks += 1
             self._guarded = True
             return 0.0
         if dd >= self.dd_derisk:
@@ -142,6 +152,7 @@ class VolScaledTopK(Strategy):
         if self._guarded and dd >= self.dd_derisk / 2:
             return 0.5
         self._guarded = False
+        self._cash_weeks = 0
         return 1.0
 
     def propose_weights(self, preds, vols, risk):

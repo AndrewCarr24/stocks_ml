@@ -205,6 +205,14 @@ scoring calendars, or all-missing folds.
 6. **Old IC numbers are not comparable across evaluation designs.** The metric
    window/folds changed (5-fold-2012+ → 4-fold-2015+). Compare only within
    the current design.
+7. **The vol_scaled cash-lock (found 2026-08-18):** drawdown is measured vs the
+   all-time peak, so a strategy at zero exposure freezes its NAV and its
+   drawdown can never improve — the full stop was an absorbing state. It fired
+   in COVID (2020-03-16, dd 32%) and vol_scaled sat in cash for the remaining
+   6.4 years of every zoo backtest since. Fixed with a 13-week cool-off, then
+   half exposure (`VolScaledTopK.REENTRY_WEEKS`); zoo reports generated before
+   the fix understate vol_scaled. Lesson: any risk rule that can zero exposure
+   must have a non-drawdown-based way back in.
 
 ## Data source quirks
 

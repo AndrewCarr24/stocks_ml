@@ -61,6 +61,25 @@ def test_drawdown_guard_and_hysteresis():
     assert released == pytest.approx(full, rel=1e-6)
 
 
+def test_full_stop_is_not_absorbing():
+    # The cash-lock bug: at zero exposure the NAV freezes, so the drawdown
+    # (measured vs the all-time peak) never improves and the release
+    # threshold is unreachable. The guard must re-enter on its own.
+    strat = VolScaledTopK(k=3, vol_target=10.0, rho=0.3, dd_derisk=0.15, dd_full=0.25)
+    fresh = VolScaledTopK(k=3, vol_target=10.0, rho=0.3, dd_derisk=0.15, dd_full=0.25)
+    full = fresh.propose_weights(PREDS, VOLS, OK).sum()
+    stuck = RiskState(drawdown=0.30)  # frozen NAV: drawdown stays constant
+    for _ in range(VolScaledTopK.REENTRY_WEEKS):
+        assert strat.propose_weights(PREDS, VOLS, stuck).sum() == 0.0
+    # cool-off spent: resumes at half exposure despite the unchanged drawdown
+    half = strat.propose_weights(PREDS, VOLS, stuck).sum()
+    assert half == pytest.approx(full * 0.5, rel=1e-6)
+    # full recovery releases the guard and refills the cool-off budget
+    released = strat.propose_weights(PREDS, VOLS, RiskState(drawdown=0.05)).sum()
+    assert released == pytest.approx(full, rel=1e-6)
+    assert strat.propose_weights(PREDS, VOLS, stuck).sum() == 0.0
+
+
 def test_vol_scaled_rejects_invalid_rho():
     with pytest.raises(ValueError):
         VolScaledTopK(k=3, vol_target=0.15, rho=-0.9, dd_derisk=0.15, dd_full=0.25)
