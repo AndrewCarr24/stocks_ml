@@ -3277,5 +3277,29 @@
   "kind": "strategy_variant",
   "name": "retune_t54_blend50",
   "pre_holdout_sharpe": 0.6817
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "huber03_seccap4",
+  "pre_holdout_sharpe": 0.5383
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "huber03_elite8_32",
+  "pre_holdout_sharpe": 0.4956
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "huber03_blend75",
+  "pre_holdout_sharpe": 0.6933
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "huber03_blend50",
+  "pre_holdout_sharpe": 0.6511
  }
 ]
