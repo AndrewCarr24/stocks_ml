@@ -2447,5 +2447,77 @@
   "kind": "strategy_variant",
   "name": "divers_invvol_seccap4",
   "pre_holdout_sharpe": 0.7239
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_param_avg7_seccap",
+  "pre_holdout_sharpe": 0.7254
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_corrcap_th0.5",
+  "pre_holdout_sharpe": 0.7084
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_corrcap_th0.6",
+  "pre_holdout_sharpe": 0.6954
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_corrcap_th0.7",
+  "pre_holdout_sharpe": 0.7134
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_corr0.6+seccap4",
+  "pre_holdout_sharpe": 0.7072
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_preds_champion",
+  "pre_holdout_sharpe": 0.7262
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_preds_enet",
+  "pre_holdout_sharpe": 0.4755
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_preds_rank-blend_5050",
+  "pre_holdout_sharpe": 0.4478
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_book_champion_book",
+  "pre_holdout_sharpe": 0.7262
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_book_enet_book",
+  "pre_holdout_sharpe": 0.4755
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_book_book-blend_7525",
+  "pre_holdout_sharpe": 0.6872
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_book_book-blend_5050",
+  "pre_holdout_sharpe": 0.6326
  }
 ]
