@@ -3301,5 +3301,29 @@
   "kind": "strategy_variant",
   "name": "huber03_blend50",
   "pre_holdout_sharpe": 0.6511
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "ranklabel_seccap4",
+  "pre_holdout_sharpe": 0.5663
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "ranklabel_elite8_32",
+  "pre_holdout_sharpe": 0.5215
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "ranklabel_blend75",
+  "pre_holdout_sharpe": 0.7031
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "ranklabel_blend50",
+  "pre_holdout_sharpe": 0.6695
  }
 ]
