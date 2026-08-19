@@ -2677,5 +2677,35 @@
   "cv_metric": -0.00393449308362701,
   "t_stat": -0.594,
   "adopted": false
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "zoo2_xgb_champ",
+  "mean_ic": 0.006157102484010529
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "zoo2_mlp_gkx",
+  "mean_ic": 0.0004273628258669524
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "zoo2_mlp_wide",
+  "mean_ic": 0.017265452875625923
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "zoo2_naive_bayes",
+  "mean_ic": 0.0027092530745099035
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "zoo2_random_forest",
+  "mean_ic": 0.014241437074864322
  }
 ]
