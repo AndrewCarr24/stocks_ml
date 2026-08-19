@@ -2845,5 +2845,365 @@
   "kind": "strategy_variant",
   "name": "catboost_blend50",
   "pre_holdout_sharpe": 0.6384
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial0",
+  "mean_ic": 0.0010138770378832803
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial1",
+  "mean_ic": 0.0005750299144416033
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial2",
+  "mean_ic": -0.0008899210848227221
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial3",
+  "mean_ic": -0.0004240032016746135
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial4",
+  "mean_ic": 0.0010006059848388627
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial5",
+  "mean_ic": 0.0006981789837978435
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial6",
+  "mean_ic": 0.0007941973784205598
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial7",
+  "mean_ic": 0.0010657647958320692
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial8",
+  "mean_ic": 0.0012376116267679962
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial9",
+  "mean_ic": 0.000999961016169075
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial10",
+  "mean_ic": 0.0010190556119474476
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial11",
+  "mean_ic": 0.0011687115729301495
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial12",
+  "mean_ic": 0.0008321467508697912
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial13",
+  "mean_ic": 0.0023612668140016247
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial14",
+  "mean_ic": 0.0019326794828707096
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial15",
+  "mean_ic": 0.0004985527582661065
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial16",
+  "mean_ic": 0.0018296137492566642
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial17",
+  "mean_ic": 0.002745501591329343
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial18",
+  "mean_ic": 5.579858691883039e-07
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial19",
+  "mean_ic": 0.0015370833136693599
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial20",
+  "mean_ic": 0.0034562160156600425
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial21",
+  "mean_ic": 0.002454375026530851
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial22",
+  "mean_ic": 0.002184348891464073
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial23",
+  "mean_ic": 0.0019891956662974053
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial24",
+  "mean_ic": 0.0010491212762851843
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial25",
+  "mean_ic": 0.0011596312695152896
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial26",
+  "mean_ic": 0.002873616710790922
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial27",
+  "mean_ic": 0.002760460912062138
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial28",
+  "mean_ic": 0.002605978392259302
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial29",
+  "mean_ic": 0.0019771228561085274
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial30",
+  "mean_ic": 0.0021177661554461435
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial31",
+  "mean_ic": 0.0018189439588580806
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial32",
+  "mean_ic": 0.002155990477330159
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial33",
+  "mean_ic": 0.00136574028532849
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial34",
+  "mean_ic": 0.001391880273013465
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial35",
+  "mean_ic": 0.002456263949973566
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial36",
+  "mean_ic": 0.0017682940140711562
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial37",
+  "mean_ic": -0.00010694710267481711
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial38",
+  "mean_ic": 0.0011646349584095801
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial39",
+  "mean_ic": 0.001071746762684752
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial40",
+  "mean_ic": -0.00012307264378485412
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial41",
+  "mean_ic": 0.0019476926869658221
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial42",
+  "mean_ic": 0.001214430651516235
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial43",
+  "mean_ic": 0.001060308531822223
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial44",
+  "mean_ic": 0.0017546553646981215
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial45",
+  "mean_ic": 0.0012590693127312285
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial46",
+  "mean_ic": 0.0017959630168636383
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial47",
+  "mean_ic": 0.001829918003876188
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial48",
+  "mean_ic": 0.0016324941373122295
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial49",
+  "mean_ic": 0.0001443586083375215
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial50",
+  "mean_ic": 0.0030949613260932984
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial51",
+  "mean_ic": 0.0019942426899292125
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial52",
+  "mean_ic": 0.001797336414221414
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial53",
+  "mean_ic": 0.003226163527407868
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial54",
+  "mean_ic": 0.0032318470173576253
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial55",
+  "mean_ic": 0.0013683348064658222
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial56",
+  "mean_ic": 0.0013959641076235483
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial57",
+  "mean_ic": 0.002142031436525384
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial58",
+  "mean_ic": 0.0021839260536647524
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "model_cv",
+  "name": "retune_trial59",
+  "mean_ic": 0.002943182258315176
  }
 ]
