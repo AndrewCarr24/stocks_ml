@@ -234,6 +234,12 @@ scoring calendars, or all-missing folds.
   Mitigations in place: `pythonpath = ["src"]` in pyproject (pytest immune) and
   a sitecustomize shim inside `.venv` (lost if venv is recreated). If imports
   break mysteriously, this is why. Durable fix: keep `.venv` out of iCloud.
+- **iCloud also EVICTS large `data/*.parquet` contents under disk pressure**
+  (2026-08-19: prices.parquet at 0 blocks, panel.parquet half-evicted).
+  Symptom: `Parquet magic bytes not found in footer` on files that read fine
+  hours earlier. Check `stat -f blocks:%b` before assuming corruption; fix
+  with `brctl download` and verify blocks ≈ size/512. Never rebuild the store
+  over an eviction — the local "corruption" is not data loss.
 - macOS: no `timeout` command; GNU-isms differ.
 - `models/`, `reports/`, `signals/`, `ledger.json` are git-TRACKED (audit
   trail); `data/` is not (rebuilt by ingest; CI caches it).
