@@ -2185,73 +2185,73 @@
   "pre_holdout_sharpe": 0.6256
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_b8_24",
   "pre_holdout_sharpe": 0.6017
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_b12_24",
   "pre_holdout_sharpe": 0.6536
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_b12_36",
   "pre_holdout_sharpe": 0.6335
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_b20_40",
   "pre_holdout_sharpe": 0.6097
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_b24_48",
   "pre_holdout_sharpe": 0.604
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_elite8_32",
   "pre_holdout_sharpe": 0.6923
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_elite12_40",
   "pre_holdout_sharpe": 0.6518
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_emaScore_b16_32",
   "pre_holdout_sharpe": 0.6405
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_age_b16_32",
   "pre_holdout_sharpe": 0.6404
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_cap52_b16_32",
   "pre_holdout_sharpe": 0.6405
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_vel80_b16_32",
   "pre_holdout_sharpe": 0.6405
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "creative_eased_b16_32",
   "pre_holdout_sharpe": 0.6924
@@ -2389,49 +2389,49 @@
   "pre_holdout_sharpe": 0.678
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_base_elite8_32",
   "pre_holdout_sharpe": 0.7331
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_seccap3",
   "pre_holdout_sharpe": 0.709
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_seccap4",
   "pre_holdout_sharpe": 0.7262
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_seccap5",
   "pre_holdout_sharpe": 0.7216
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_wide24_e12x48",
   "pre_holdout_sharpe": 0.684
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_wide24+cap4",
   "pre_holdout_sharpe": 0.7053
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_vt15_spy_refuge",
   "pre_holdout_sharpe": 0.6569
  },
  {
-  "date": "2026-08-18",
+  "date": "2026-08-19",
   "kind": "strategy_variant",
   "name": "divers_vt18_spy_refuge",
   "pre_holdout_sharpe": 0.6748
@@ -2585,5 +2585,65 @@
   "kind": "strategy_variant",
   "name": "divers_param_avg9_iv",
   "pre_holdout_sharpe": 0.7271
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "window_champ2y_seccap4",
+  "pre_holdout_sharpe": 0.7262
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "window_champ2y_elite8_32",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "window_champ4y_seccap4",
+  "pre_holdout_sharpe": 0.6311
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "window_champ4y_elite8_32",
+  "pre_holdout_sharpe": 0.6041
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "rffexam_champ2y_seccap4",
+  "pre_holdout_sharpe": 0.7262
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "rffexam_champ2y_elite8_32",
+  "pre_holdout_sharpe": 0.7331
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "rffexam_rff_seccap4",
+  "pre_holdout_sharpe": 0.5986
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "rffexam_rff_elite8_32",
+  "pre_holdout_sharpe": 0.5237
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "rffexam_book-blend_5050",
+  "pre_holdout_sharpe": 0.6941
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "rffexam_book-blend_7525",
+  "pre_holdout_sharpe": 0.7173
  }
 ]
