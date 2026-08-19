@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
@@ -94,6 +95,139 @@ class BandedTopK(Strategy):
             keep = keep + list(select_top_k(pool, free))
         self._held = keep
         return pd.Series(1.0 / self.k, index=pd.Index(keep))
+
+
+class EliteEntryBanded(BandedTopK):
+    """BandedTopK whose entries must come from the very top of the ranking.
+
+    Slots fill only from rank <= entry_rank (entering demands conviction);
+    exits keep the wide band (rank > exit_rank). With entry_rank < k, slots
+    the elite pool cannot fill stay empty and fall through to the floor —
+    under SpyFloor the index ballast grows exactly when top-of-book
+    conviction is scarce. 2026-08 selection study: entry 8 / slots 16 /
+    exit 32 beat plain banded on every column."""
+
+    name = "elite_banded"
+
+    def __init__(self, k: int, entry_rank: int, exit_rank: int):
+        super().__init__(k, exit_rank)
+        if not 1 <= entry_rank <= exit_rank:
+            raise ValueError("entry_rank must be in [1, exit_rank]")
+        self.entry_rank = entry_rank
+
+    def propose_weights(self, preds, vols, risk):
+        preds, vols = self._clean(preds, vols)
+        ranks = preds.rank(ascending=False, method="min")
+        keep = [t for t in self._held
+                if t in ranks.index and ranks[t] <= self.exit_rank and preds[t] > 0]
+        free = self.k - len(keep)
+        if free > 0:
+            pool = preds[ranks <= self.entry_rank].drop(index=keep, errors="ignore")
+            keep = keep + list(select_top_k(pool, free))
+        self._held = keep
+        return pd.Series(1.0 / self.k, index=pd.Index(keep))
+
+
+class SectorCapElite(EliteEntryBanded):
+    """EliteEntryBanded with a per-sector cap on new entries.
+
+    A candidate is refused while `cap` held names already share its sector;
+    held names are grandfathered (exits stay rank/sign-driven), and blocked
+    slots stay unfilled -> SPY under SpyFloor. The cap converts sector
+    crowding into index ballast at exactly the moments the model wants to
+    concentrate: the 2026-08 study cut the semiconductor-slump drawdown from
+    -32% to -12% at unchanged pre-holdout Sharpe, with a plateau across
+    cap 3/4/5 (ridge, not spike). A trailing-correlation gate was tested as
+    the statistical generalization and rejected — correlations spike during
+    a bust, too late for an entry gate; sector labels carry the shared bet
+    ex ante."""
+
+    name = "seccap_banded"
+
+    def __init__(self, k: int, entry_rank: int, exit_rank: int, cap: int,
+                 sector_map: dict):
+        super().__init__(k, entry_rank, exit_rank)
+        if cap < 1:
+            raise ValueError("cap must be >= 1")
+        self.cap = cap
+        self.sector_map = dict(sector_map)
+
+    def propose_weights(self, preds, vols, risk):
+        preds, vols = self._clean(preds, vols)
+        ranks = preds.rank(ascending=False, method="min")
+        keep = [t for t in self._held
+                if t in ranks.index and ranks[t] <= self.exit_rank and preds[t] > 0]
+        counts = Counter(self.sector_map.get(t) for t in keep)
+        free = self.k - len(keep)
+        pool = preds[ranks <= self.entry_rank].drop(index=keep, errors="ignore")
+        while free > 0 and len(pool):
+            pick = select_top_k(pool, 1)   # tie guard: tied top group > 1 -> abstain
+            if len(pick) == 0:
+                break
+            t = pick[0]
+            pool = pool.drop(index=[t])
+            if counts[self.sector_map.get(t)] >= self.cap:
+                continue
+            keep.append(t)
+            counts[self.sector_map.get(t)] += 1
+            free -= 1
+        self._held = keep
+        return pd.Series(1.0 / self.k, index=pd.Index(keep))
+
+
+class EasedWeights(Strategy):
+    """Move halfway toward the inner strategy's book instead of jumping.
+
+    Each week the proposed book is lam * last week's book + (1-lam) * the
+    inner target: same average holdings, roughly half the trade sizes, so
+    costs and variance drag fall with no measured return give-up (2026-08
+    turnover study: paired weekly t vs the raw book ~0.15; flat across
+    lam 0.25-0.75). Sub-0.01% dust positions are dropped; the freed weight
+    falls through to the floor. Stateful (previous book) — fresh instance
+    per backtest, same convention as BandedTopK."""
+
+    def __init__(self, inner: Strategy, lam: float = 0.5):
+        if not 0.0 <= lam < 1.0:
+            raise ValueError(f"lam must be in [0, 1), got {lam}")
+        self.inner, self.lam = inner, lam
+        self.name = f"eased_{inner.name}"
+        self._prev = pd.Series(dtype=float)
+
+    def propose_weights(self, preds, vols, risk):
+        target = self.inner.propose_weights(preds, vols, risk)
+        allidx = target.index.union(self._prev.index)
+        w = (self.lam * self._prev.reindex(allidx).fillna(0.0)
+             + (1 - self.lam) * target.reindex(allidx).fillna(0.0))
+        w = w[w > 1e-4]
+        if w.sum() > 1.0:
+            w = w / w.sum()
+        self._prev = w
+        return w
+
+
+class BookAverage(Strategy):
+    """Equal-weight average of several strategies' proposed books.
+
+    Diversifies across our own parameter choices instead of betting on one
+    cell: where member configs agree a position is full-size, where they
+    disagree it is automatically partial. The 2026-08 nine-member average
+    matched the best single cell's Sharpe with lower costs and better
+    holdout risk — parameter selection risk removed for free. Members keep
+    their own state, so fresh instances per backtest apply to them too."""
+
+    def __init__(self, members: list):
+        if not members:
+            raise ValueError("BookAverage needs at least one member")
+        self.members = list(members)
+        self.name = f"book_avg{len(members)}"
+
+    def propose_weights(self, preds, vols, risk):
+        books = [m.propose_weights(preds, vols, risk) for m in self.members]
+        allidx = pd.Index([])
+        for b in books:
+            allidx = allidx.union(b.index)
+        w = sum(b.reindex(allidx).fillna(0.0) for b in books) / len(books)
+        return w[w > 0]
 
 
 class ConfidenceTopK(Strategy):

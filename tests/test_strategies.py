@@ -248,3 +248,70 @@ def test_banded_topk_rejects_inverted_band():
 
     with pytest.raises(ValueError):
         BandedTopK(k=16, exit_rank=8)
+
+
+def test_elite_entry_only_fills_from_top_ranks():
+    from stocks_ml.backtest.strategies import EliteEntryBanded
+
+    strat = EliteEntryBanded(k=3, entry_rank=2, exit_rank=5)
+    vols = pd.Series(0.2, index=list("ABCDEF"))
+    # only ranks 1-2 may enter: the third slot stays empty (-> floor)
+    w1 = strat.propose_weights(pd.Series({"A": .06, "B": .05, "C": .04, "D": .03,
+                                          "E": .02, "F": .01}), vols, OK)
+    assert set(w1.index) == {"A", "B"}
+    assert w1.sum() == pytest.approx(2 / 3)
+    # held names keep slots inside the exit band even when out of the entry pool
+    w2 = strat.propose_weights(pd.Series({"C": .06, "D": .05, "A": .04, "B": .03,
+                                          "E": .02, "F": .01}), vols, OK)
+    assert {"A", "B", "C"} == set(w2.index)   # A,B grandfathered (ranks 3,4), C enters
+    with pytest.raises(ValueError):
+        EliteEntryBanded(k=3, entry_rank=6, exit_rank=5)
+
+
+def test_sector_cap_blocks_crowded_entries():
+    from stocks_ml.backtest.strategies import SectorCapElite
+
+    smap = {"A": "tech", "B": "tech", "C": "tech", "D": "energy", "E": "tech"}
+    strat = SectorCapElite(k=4, entry_rank=4, exit_rank=6, cap=2, sector_map=smap)
+    vols = pd.Series(0.2, index=list("ABCDE"))
+    w = strat.propose_weights(pd.Series({"A": .06, "B": .05, "C": .04, "D": .03,
+                                         "E": .02}), vols, OK)
+    # A,B take the two tech slots; C (tech, rank 3) is refused; D (energy) enters;
+    # the fourth slot has no eligible candidate left inside entry_rank -> empty
+    assert set(w.index) == {"A", "B", "D"}
+    assert w.sum() == pytest.approx(3 / 4)
+    # grandfathering: held tech names keep slots even if the cap would refuse them now
+    w2 = strat.propose_weights(pd.Series({"E": .06, "A": .05, "B": .04, "C": .03,
+                                          "D": .02}), vols, OK)
+    assert {"A", "B", "D"}.issubset(set(w2.index))
+    assert "E" not in w2.index                # E is tech: cap already spent on A,B
+
+
+def test_eased_weights_moves_half_the_gap():
+    from stocks_ml.backtest.strategies import EasedWeights, EqualWeightTopK
+
+    strat = EasedWeights(EqualWeightTopK(k=2), lam=0.5)
+    vols = pd.Series(0.2, index=["A", "B", "C"])
+    w1 = strat.propose_weights(pd.Series({"A": .05, "B": .04, "C": .01}), vols, OK)
+    assert w1["A"] == pytest.approx(0.25)     # half of the 0.5 target, from zero
+    # target flips to B,C: A decays toward zero, entrants build up gradually
+    w2 = strat.propose_weights(pd.Series({"B": .05, "C": .04, "A": -.01}), vols, OK)
+    assert w2["A"] == pytest.approx(0.125)
+    assert w2["B"] == pytest.approx(0.375)    # 0.5*0.25 + 0.5*0.5
+    _check_invariants(w2)
+    with pytest.raises(ValueError):
+        EasedWeights(EqualWeightTopK(k=2), lam=1.0)
+
+
+def test_book_average_partial_where_members_disagree():
+    from stocks_ml.backtest.strategies import BookAverage, EqualWeightTopK
+
+    strat = BookAverage([EqualWeightTopK(k=2), EqualWeightTopK(k=4)])
+    preds = pd.Series({"A": .05, "B": .04, "C": .03, "D": .02, "E": -.01})
+    vols = pd.Series(0.2, index=preds.index)
+    w = strat.propose_weights(preds, vols, OK)
+    _check_invariants(w)
+    assert w["A"] == pytest.approx((0.5 + 0.25) / 2)   # both members hold A
+    assert w["C"] == pytest.approx(0.25 / 2)            # only the k=4 member holds C
+    with pytest.raises(ValueError):
+        BookAverage([])
