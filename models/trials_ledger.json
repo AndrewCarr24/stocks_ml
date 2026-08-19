@@ -3547,5 +3547,29 @@
   "kind": "strategy_variant",
   "name": "tax_harvest_eased_elite",
   "pre_holdout_sharpe": 0.72
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "sharadar_world_k16",
+  "pre_holdout_sharpe": 0.4442
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "sharadar_world_banded_16_32",
+  "pre_holdout_sharpe": 0.4463
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "sharadar_world_eased_elite8_32",
+  "pre_holdout_sharpe": 0.5405
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "sharadar_world_seccap4",
+  "pre_holdout_sharpe": 0.5659
  }
 ]
