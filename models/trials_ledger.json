@@ -3325,5 +3325,29 @@
   "kind": "strategy_variant",
   "name": "ranklabel_blend50",
   "pre_holdout_sharpe": 0.6695
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "tabm_seccap4",
+  "pre_holdout_sharpe": 0.6263
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "tabm_elite8_32",
+  "pre_holdout_sharpe": 0.5925
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "tabm_blend75",
+  "pre_holdout_sharpe": 0.7185
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "tabm_blend50",
+  "pre_holdout_sharpe": 0.7001
  }
 ]
