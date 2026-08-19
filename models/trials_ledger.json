@@ -2519,5 +2519,71 @@
   "kind": "strategy_variant",
   "name": "divers_book_book-blend_5050",
   "pre_holdout_sharpe": 0.6326
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "window_xgb_2y",
+  "mean_ic": 0.006157102484010529
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "window_xgb_4y",
+  "mean_ic": 0.013473020602658424
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "window_xgb_6y",
+  "mean_ic": 0.013573215557319789
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_g0.01_a100",
+  "mean_ic": 0.013005066698868235
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_g0.01_a1000",
+  "mean_ic": 0.014399234387550338
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_g0.01_a10000",
+  "mean_ic": 0.013356094368422996
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_g0.03_a100",
+  "mean_ic": 0.008472769920916688
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_g0.03_a1000",
+  "mean_ic": 0.008071211538738791
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_g0.03_a10000",
+  "mean_ic": 0.007651792511305719
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "model_cv",
+  "name": "rff_best_d4000",
+  "mean_ic": 0.01222972361654039
+ },
+ {
+  "date": "2026-08-18",
+  "kind": "strategy_variant",
+  "name": "divers_param_avg9_iv",
+  "pre_holdout_sharpe": 0.7271
  }
 ]
