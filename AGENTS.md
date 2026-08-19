@@ -217,7 +217,19 @@ scoring calendars, or all-missing folds.
    worlds). The honest thesis is now recent-era-only. Clean-world store:
    data/sharadar_world/; walk: data/walks/sharadar_champion.parquet. All
    pre-Sharadar absolute levels vs SPY are deprecated for decisions.
-8. **Screens do not predict the exam (2026-08 model campaign).** Three screen
+8. **The clean-world retrain (2026-08-19, post-reckoning).** Exam-objective
+   ASHA on the Sharadar world (24 configs incl. incumbent, rungs incl. real
+   GFC): incumbent params scored 0.391 on true 2005-2015 (not even top-8);
+   winner = config-4 region (depth 2, lr 0.003, 500 trees, reg_alpha 1.34 —
+   MORE conservative than the incumbent). Final = 7-member neighborhood-
+   averaged book: pre-holdout SR 0.640 vs SPY 0.60, +2.7%/yr paired t=1.56,
+   DSR 0.864 (N=554) — the first measured real historical edge; suggestive,
+   not proven. Holdout 1.05 vs old-params-on-clean 1.25: era tension — old
+   params look better recently, new params are real historically. Both
+   should shadow-race on the clean pipeline. Final book:
+   scratch world_final_book.parquet; neighbor walks data/walks/world_*. All
+   six pending feature families re-rejected on clean data (t -1.4 to -2.3).
+9. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST
    the walked $100 exam by 0.08-0.21 Sharpe. Ten model challengers (lgbm,
