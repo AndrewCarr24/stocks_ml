@@ -2797,5 +2797,29 @@
   "kind": "strategy_variant",
   "name": "volscaled_volscaled_elite8_32",
   "pre_holdout_sharpe": 0.456
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "lgbm_seccap4",
+  "pre_holdout_sharpe": 0.6385
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "lgbm_elite8_32",
+  "pre_holdout_sharpe": 0.527
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "lgbm_blend75",
+  "pre_holdout_sharpe": 0.7144
+ },
+ {
+  "date": "2026-08-19",
+  "kind": "strategy_variant",
+  "name": "lgbm_blend50",
+  "pre_holdout_sharpe": 0.6958
  }
 ]
