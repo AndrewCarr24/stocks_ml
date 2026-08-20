@@ -3667,5 +3667,53 @@
   "kind": "strategy_variant",
   "name": "world_final_neighborhood_avg",
   "pre_holdout_sharpe": 0.6397
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_t12",
+  "pre_holdout_sharpe": 0.6918
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_wbook_t12n0",
+  "pre_holdout_sharpe": 0.6418
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_wbook_t12n1",
+  "pre_holdout_sharpe": 0.6634
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_wbook_t12n2",
+  "pre_holdout_sharpe": 0.5963
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_wbook_t12n3",
+  "pre_holdout_sharpe": 0.6309
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_wbook_t12n4",
+  "pre_holdout_sharpe": 0.6228
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_r3_wbook_t12n5",
+  "pre_holdout_sharpe": 0.6611
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "t12_final_neighborhood_avg",
+  "pre_holdout_sharpe": 0.6527
  }
 ]
