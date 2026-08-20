@@ -139,6 +139,16 @@ IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
    fixtures only). Silence third-party noise via their own APIs, not warning filters.
 5. Money math in the simulator is guarded: weights ≥ 0, sum ≤ 1, cost-netted
    buys, no leverage. `run_backtest` raises if a strategy violates this.
+6. **Champion selection is mechanical (owner-mandated 2026-08-20).** The
+   champion is the argmax of pre-holdout exam Sharpe (DD tiebreak) among
+   registered candidates, with deflated Sharpe reported from ledger trial
+   counts. NO discretionary overrides: any concern about a winner must take
+   the form of a pre-registered falsification test (predictions written down
+   BEFORE the result, e.g. seed replication) run before promotion. Ensembling
+   over a dimension (seeds, params) is permitted only when replication has
+   MEASURED that dimension to be noise. Origin: Claude overrode the rule for
+   a "winner's curse" argument; the owner challenged; seed replication proved
+   the argmax right (history #9).
 
 ## Missing-data and feature-admission policy
 
