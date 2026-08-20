@@ -229,7 +229,18 @@ scoring calendars, or all-missing folds.
    should shadow-race on the clean pipeline. Final book:
    scratch world_final_book.parquet; neighbor walks data/walks/world_*. All
    six pending feature families re-rejected on clean data (t -1.4 to -2.3).
-9. **Screens do not predict the exam (2026-08 model campaign).** Three screen
+9. **The untuned-knobs campaign (2026-08-20, owner-directed).** Multi-objective
+   Optuna (pre-tax SR + post-tax earnings, both from walked exams — no proxies)
+   over the never-tuned XGB dimensions found a new champion region: depth-2 +
+   lossguide + dart dropout + num_parallel_tree 4 + gamma pruning — every
+   winning knob is another form of internal ensembling/skepticism. t12
+   neighborhood-avg (7 books): pre-holdout SR 0.653 ($1,098 vs SPY $674),
+   holdout 1.11 at SPY-equal 19% DD, +3.3%/yr paired t=1.79, DSR 0.882
+   (N=562) — supersedes the config-4 region (0.640/t=1.56) as research
+   champion. First config to beat SPY post-tax ($847 vs $536, t12 solo).
+   Params: scratch optuna_world_finalists.json[0]; neighbors t12_neighbors
+   .json; book t12_final_book.parquet; walks data/walks/world_t12*.
+10. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST
    the walked $100 exam by 0.08-0.21 Sharpe. Ten model challengers (lgbm,
