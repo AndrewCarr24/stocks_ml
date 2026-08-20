@@ -11887,5 +11887,23 @@
   "kind": "strategy_variant",
   "name": "floor_trendavg_IEF",
   "pre_holdout_sharpe": 0.7975
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "modelboard_t12",
+  "pre_holdout_sharpe": 0.6688
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "modelboard_t23",
+  "pre_holdout_sharpe": 0.5345
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "modelboard_blend",
+  "pre_holdout_sharpe": 0.6058
  }
 ]
