@@ -268,6 +268,20 @@ scoring calendars, or all-missing folds.
    champion. First config to beat SPY post-tax ($847 vs $536, t12 solo).
    Params: scratch optuna_world_finalists.json[0]; neighbors t12_neighbors
    .json; book t12_final_book.parquet; walks data/walks/world_t12*.
+9b. **Strategy face-off under the K-copy standard (2026-08-20).** The 21x64
+   model-strategy matrix (1,344 exam cells, all ledger-counted) showed
+   single-eval strategy leaderboards are noise (twin models agree at rank
+   corr ~0.19); family-averaged (11 twin walks) leaderboards have real
+   resolution. Its top config beat the incumbent chassis under identical
+   K=4 bootstrap-copy ensembles: CHAMPION is now t12 (4 bootstrap copies,
+   replication.py standard) x cfg15 chassis (k=10, plain entry, exit 14,
+   lam 0.54, sector cap 2, equal weight, SpyFloor): pre-holdout SR 0.669
+   ($1,159), holdout 1.35 / DD 19%, +3.6%/yr vs SPY (t=1.87), DSR 0.961 at
+   N=1,917 — first result to clear the 0.95 deflation bar (caveat: adding
+   1,344 tightly-clustered strategy cells lowers ledger cross-trial
+   variance, which flatters DSR; the paired-t is the cleaner stat).
+   cfg15-vs-incumbent margin: +0.81%/yr, t=1.61 (leaderboard rule applied).
+   Books: scratch faceoff_cfg15_book.parquet; walks world_t12boot1-4.
 10. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST
