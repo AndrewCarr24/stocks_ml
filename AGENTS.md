@@ -282,6 +282,18 @@ scoring calendars, or all-missing folds.
    variance, which flatters DSR; the paired-t is the cleaner stat).
    cfg15-vs-incumbent margin: +0.81%/yr, t=1.61 (leaderboard rule applied).
    Books: scratch faceoff_cfg15_book.parquet; walks world_t12boot1-4.
+9c. **The trend floor (2026-08-20, owner's downturn-alarm idea).** The SPY
+   floor (~80% of the champion book) now switches to IEF when SPY sits below
+   its trailing weekly MA; deliverable = average of the 30/40/52-week-window
+   books (scratch champion_trendfloor_book.parquet). Exam: pre-holdout SR
+   0.797 / DD 27% / $941 vs 0.669 / 60% / $1,159 pure-SPY floor; holdout
+   1.41 / DD 12%. 2008 DD -57% -> -27%, 2020 -34% -> -13%. Ridge across all
+   six window/refuge variants (0.755-0.802). Honest mechanics: paired return
+   vs pure floor is -2.1%/yr (t=-0.85) — the SR gain is entirely risk
+   reduction, not extra return; ~2-4 floor switches/yr; era favors trend
+   (two mega-crashes in sample; 2022-style choppy declines ~neutral).
+   Point-in-time (MA through decision date), costs included, K-copy
+   standard inherited (floor mod is deterministic on the ensemble book).
 10. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST

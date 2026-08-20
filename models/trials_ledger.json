@@ -11797,5 +11797,95 @@
   "kind": "strategy_variant",
   "name": "matrix_c9_cfg63",
   "pre_holdout_sharpe": 0.4329
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "faceoff_cfg32_k17x19_cap4_l34",
+  "pre_holdout_sharpe": 0.6561
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "faceoff_cfg28_k12e7x16_cap3_l28",
+  "pre_holdout_sharpe": 0.6502
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "faceoff_cfg47_k15e6x30_cap4_l64",
+  "pre_holdout_sharpe": 0.6464
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_champion_(pure_SPY_floor)",
+  "pre_holdout_sharpe": 0.6688
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_static_80_19_SPY_IEF",
+  "pre_holdout_sharpe": 0.6897
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_static_60_40_SPY_IEF",
+  "pre_holdout_sharpe": 0.7096
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trend30w_->_IEF",
+  "pre_holdout_sharpe": 0.7927
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trend40w_->_IEF",
+  "pre_holdout_sharpe": 0.7733
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trend52w_->_IEF",
+  "pre_holdout_sharpe": 0.8019
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_static_80_19_SPY_SHY",
+  "pre_holdout_sharpe": 0.6743
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_static_60_40_SPY_SHY",
+  "pre_holdout_sharpe": 0.677
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trend30w_->_SHY",
+  "pre_holdout_sharpe": 0.7631
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trend40w_->_SHY",
+  "pre_holdout_sharpe": 0.7549
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trend52w_->_SHY",
+  "pre_holdout_sharpe": 0.7893
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_trendavg_IEF",
+  "pre_holdout_sharpe": 0.7975
  }
 ]
