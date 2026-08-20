@@ -149,6 +149,10 @@ IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
    MEASURED that dimension to be noise. Origin: Claude overrode the rule for
    a "winner's curse" argument; the owner challenged; seed replication proved
    the argmax right (history #9).
+   The canonical K-copy procedure (K=4; random_state=c + whole-week training
+   bootstrap seeded by c; grade the equal-weight portfolio average) is
+   implemented in src/stocks_ml/models/replication.py — use it, never an
+   ad-hoc variant, so no finalist is advantaged by its ensembling.
 
 ## Missing-data and feature-admission policy
 
