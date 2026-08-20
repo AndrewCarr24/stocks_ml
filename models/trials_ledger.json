@@ -3715,5 +3715,11 @@
   "kind": "strategy_variant",
   "name": "t12_final_neighborhood_avg",
   "pre_holdout_sharpe": 0.6527
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "CHAMPION_t12_seed_ensemble",
+  "pre_holdout_sharpe": 0.6971
  }
 ]

@@ -229,7 +229,21 @@ scoring calendars, or all-missing folds.
    should shadow-race on the clean pipeline. Final book:
    scratch world_final_book.parquet; neighbor walks data/walks/world_*. All
    six pending feature families re-rejected on clean data (t -1.4 to -2.3).
-9. **The untuned-knobs campaign (2026-08-20, owner-directed).** Multi-objective
+9. **The untuned-knobs campaign + the seed-replication reversal (2026-08-20,
+   owner-directed).** Multi-objective Optuna (pre-tax SR + post-tax earnings,
+   walked exams, no proxies) over never-tuned XGB dims found t12: depth-2 +
+   lossguide + dart (rate_drop 0.29) + num_parallel_tree 4 + gamma 0.16.
+   Claude declared the 7-jitter neighborhood-avg champion on winner's-curse
+   grounds; the owner challenged; a PRE-REGISTERED seed-replication test
+   (seeds 1-3 of exact t12 params) came back 0.722/0.666/0.735 — t12's score
+   is real skill, the ±20-40% jitters genuinely degrade it (siblings mean
+   0.636). Lesson: average over MEASURED noise, select over MEASURED signal —
+   and adjudicate which is which by replication, not assumption. CHAMPION =
+   t12 4-seed ensemble: pre-holdout SR 0.697 ($1,249), holdout 1.12/19%,
+   +3.9%/yr vs SPY paired t=2.30 (first conventionally significant result;
+   caveat: computed on the selection window), DSR 0.920 (N=570, bar 0.95).
+   Book: scratch champion_t12_seed_ensemble_book.parquet; walks
+   data/walks/world_t12*. Multi-objective
    Optuna (pre-tax SR + post-tax earnings, both from walked exams — no proxies)
    over the never-tuned XGB dimensions found a new champion region: depth-2 +
    lossguide + dart dropout + num_parallel_tree 4 + gamma pruning — every
