@@ -100,6 +100,12 @@ def cmd_torture(args, cfg):
     print(f"wrote {path}")
 
 
+def cmd_leaderboard(args, cfg):
+    from stocks_ml.backtest.leaderboard import build_leaderboard
+
+    print(build_leaderboard(holdout=args.holdout))
+
+
 def cmd_signals(args, cfg):
     from stocks_ml.live.ledger import CHALLENGER_TAG, Ledger
     from stocks_ml.live.signals import generate_signals
@@ -205,6 +211,9 @@ def main():
     sub.add_parser("pipelines", help="multi-pipeline league: different targets/strategies/"
                                      "cadences, one $100 walk-forward exam")
     sub.add_parser("signals", help="generate this week's trade signals")
+    p_lb = sub.add_parser("leaderboard", help="the formal leaderboard (owner "
+                          "format: earnings-ranked 3-2-1, 2001-2024, ensembles only)")
+    p_lb.add_argument("--holdout", action="store_true")
     sub.add_parser("torture", help="survivorship torture test: empirical removal haircuts "
                                    "(requires `ingest` to have been re-run once for the "
                                    "removals dataset)")
@@ -223,6 +232,7 @@ def main():
     args = parser.parse_args()
     cfg = load_config(args.config)
     {"ingest": cmd_ingest, "train": cmd_train, "tune": cmd_tune, "backtest": cmd_backtest,
+     "leaderboard": cmd_leaderboard,
      "pipelines": cmd_pipelines, "signals": cmd_signals, "ledger": cmd_ledger,
      "torture": cmd_torture}[args.command](args, cfg)
 

@@ -139,10 +139,13 @@ IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
    fixtures only). Silence third-party noise via their own APIs, not warning filters.
 5. Money math in the simulator is guarded: weights ≥ 0, sum ≤ 1, cost-netted
    buys, no leverage. `run_backtest` raises if a strategy violates this.
-6. **Champion selection is mechanical (owner-mandated 2026-08-20).** The
-   champion is the argmax of pre-holdout exam Sharpe (DD tiebreak) among
-   registered candidates, with deflated Sharpe reported from ledger trial
-   counts. NO discretionary overrides: any concern about a winner must take
+6. **Champion selection is mechanical (owner-mandated 2026-08-20; metric
+   amended 2026-08-21).** The champion is the argmax of PRE-TAX EARNINGS
+   (terminal $ from 100) on the 2001-2024 extended pre-holdout, SR tiebreak
+   ("SR weights risk too heavily" — owner). Deflated Sharpe reported from
+   ledger counts. The formal leaderboard is `stocks-ml leaderboard`
+   (backtest/leaderboard.py; 3-2-1 across top models, ensembles only,
+   registry data/leaderboard_books/). NO discretionary overrides: any concern about a winner must take
    the form of a pre-registered falsification test (predictions written down
    BEFORE the result, e.g. seed replication) run before promotion. Ensembling
    over a dimension (seeds, params) is permitted only when replication has
