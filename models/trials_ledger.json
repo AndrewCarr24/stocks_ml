@@ -11905,5 +11905,17 @@
   "kind": "strategy_variant",
   "name": "modelboard_blend",
   "pre_holdout_sharpe": 0.6058
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "floor_learned_mix_K4",
+  "pre_holdout_sharpe": 0.4775
+ },
+ {
+  "date": "2026-08-20",
+  "kind": "strategy_variant",
+  "name": "dotcom_presample_trendfloor",
+  "pre_holdout_sharpe": 0.8045
  }
 ]

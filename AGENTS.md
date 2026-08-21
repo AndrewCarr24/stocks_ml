@@ -294,6 +294,19 @@ scoring calendars, or all-missing folds.
    (two mega-crashes in sample; 2022-style choppy declines ~neutral).
    Point-in-time (MA through decision date), costs included, K-copy
    standard inherited (floor mod is deterministic on the ensemble book).
+9d. **The pre-sample verdict (2026-08-21, dot-com extension).** The frozen
+   champion was graded on 2001-2004 — an era no selection ever touched
+   (panel data/sharadar_world2000, walks world2000_t12boot1-4). It PASSED:
+   trend-floor champion $130 / SR 0.64 / DD 19% vs SPY $100 / 0.09 / 42%
+   over the dot-com bear + recovery; pure-floor $131 / 0.44 / 38% (the
+   model's stock picks alone added ~31% over a flat market). The activation
+   gate opened out-of-sample (48-83% active weeks 2001-04, peaking in the
+   2003-04 recovery) — the recovery-confirmer mechanism generalizes to a
+   crash of a different species. Consistency check: 2005-2024 on extended
+   walks reproduces 0.80/27% exactly. Expected honest degradation: pre-
+   sample SR 0.64 < selected-era 0.80. 2001-2004 is now SPENT as a test and
+   may be folded into future training/validation; the 2024+ holdout remains
+   the only virgin era.
 10. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST
