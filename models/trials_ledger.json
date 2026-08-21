@@ -12097,5 +12097,581 @@
   "kind": "model_cv",
   "name": "ext_r1_t23",
   "mean_ic": 0.4454
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg15_pure",
+  "pre_holdout_sharpe": 0.5881
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg15_static",
+  "pre_holdout_sharpe": 0.669
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg15_trend->IEF",
+  "pre_holdout_sharpe": 0.7503
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg27_pure",
+  "pre_holdout_sharpe": 0.5843
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg27_static",
+  "pre_holdout_sharpe": 0.6857
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg27_trend->IEF",
+  "pre_holdout_sharpe": 0.7768
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg28_pure",
+  "pre_holdout_sharpe": 0.55
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg28_static",
+  "pre_holdout_sharpe": 0.6146
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg28_trend->IEF",
+  "pre_holdout_sharpe": 0.6853
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg32_pure",
+  "pre_holdout_sharpe": 0.5621
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg32_static",
+  "pre_holdout_sharpe": 0.6316
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg32_trend->IEF",
+  "pre_holdout_sharpe": 0.7081
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg37_pure",
+  "pre_holdout_sharpe": 0.5702
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg37_static",
+  "pre_holdout_sharpe": 0.634
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg37_trend->IEF",
+  "pre_holdout_sharpe": 0.7194
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg47_pure",
+  "pre_holdout_sharpe": 0.5769
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg47_static",
+  "pre_holdout_sharpe": 0.6537
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg47_trend->IEF",
+  "pre_holdout_sharpe": 0.7367
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg52_pure",
+  "pre_holdout_sharpe": 0.5518
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg52_static",
+  "pre_holdout_sharpe": 0.6063
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg52_trend->IEF",
+  "pre_holdout_sharpe": 0.6767
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg57_pure",
+  "pre_holdout_sharpe": 0.5715
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg57_static",
+  "pre_holdout_sharpe": 0.6239
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_c4_cfg57_trend->IEF",
+  "pre_holdout_sharpe": 0.6867
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg15_pure",
+  "pre_holdout_sharpe": 0.611
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg15_static",
+  "pre_holdout_sharpe": 0.6624
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg15_trend->IEF",
+  "pre_holdout_sharpe": 0.7399
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg27_pure",
+  "pre_holdout_sharpe": 0.5964
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg27_static",
+  "pre_holdout_sharpe": 0.6792
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg27_trend->IEF",
+  "pre_holdout_sharpe": 0.7551
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg28_pure",
+  "pre_holdout_sharpe": 0.5853
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg28_static",
+  "pre_holdout_sharpe": 0.6293
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg28_trend->IEF",
+  "pre_holdout_sharpe": 0.7055
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg32_pure",
+  "pre_holdout_sharpe": 0.5887
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg32_static",
+  "pre_holdout_sharpe": 0.6398
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg32_trend->IEF",
+  "pre_holdout_sharpe": 0.7064
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg37_pure",
+  "pre_holdout_sharpe": 0.5736
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg37_static",
+  "pre_holdout_sharpe": 0.6177
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg37_trend->IEF",
+  "pre_holdout_sharpe": 0.6942
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg47_pure",
+  "pre_holdout_sharpe": 0.58
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg47_static",
+  "pre_holdout_sharpe": 0.6359
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg47_trend->IEF",
+  "pre_holdout_sharpe": 0.7186
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg52_pure",
+  "pre_holdout_sharpe": 0.5952
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg52_static",
+  "pre_holdout_sharpe": 0.6453
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg52_trend->IEF",
+  "pre_holdout_sharpe": 0.7277
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg57_pure",
+  "pre_holdout_sharpe": 0.5941
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg57_static",
+  "pre_holdout_sharpe": 0.6151
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t12_cfg57_trend->IEF",
+  "pre_holdout_sharpe": 0.6827
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg15_pure",
+  "pre_holdout_sharpe": 0.6361
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg15_static",
+  "pre_holdout_sharpe": 0.6742
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg15_trend->IEF",
+  "pre_holdout_sharpe": 0.7319
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg27_pure",
+  "pre_holdout_sharpe": 0.5919
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg27_static",
+  "pre_holdout_sharpe": 0.6393
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg27_trend->IEF",
+  "pre_holdout_sharpe": 0.7106
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg28_pure",
+  "pre_holdout_sharpe": 0.6345
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg28_static",
+  "pre_holdout_sharpe": 0.6715
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg28_trend->IEF",
+  "pre_holdout_sharpe": 0.7313
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg32_pure",
+  "pre_holdout_sharpe": 0.5984
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg32_static",
+  "pre_holdout_sharpe": 0.6141
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg32_trend->IEF",
+  "pre_holdout_sharpe": 0.6487
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg37_pure",
+  "pre_holdout_sharpe": 0.627
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg37_static",
+  "pre_holdout_sharpe": 0.6507
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg37_trend->IEF",
+  "pre_holdout_sharpe": 0.6811
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg47_pure",
+  "pre_holdout_sharpe": 0.6519
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg47_static",
+  "pre_holdout_sharpe": 0.7095
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg47_trend->IEF",
+  "pre_holdout_sharpe": 0.7833
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg52_pure",
+  "pre_holdout_sharpe": 0.6344
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg52_static",
+  "pre_holdout_sharpe": 0.6776
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg52_trend->IEF",
+  "pre_holdout_sharpe": 0.741
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg57_pure",
+  "pre_holdout_sharpe": 0.6223
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg57_static",
+  "pre_holdout_sharpe": 0.6379
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t20_cfg57_trend->IEF",
+  "pre_holdout_sharpe": 0.6721
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg15_pure",
+  "pre_holdout_sharpe": 0.5059
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg15_static",
+  "pre_holdout_sharpe": 0.5273
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg15_trend->IEF",
+  "pre_holdout_sharpe": 0.5728
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg27_pure",
+  "pre_holdout_sharpe": 0.5353
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg27_static",
+  "pre_holdout_sharpe": 0.5787
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg27_trend->IEF",
+  "pre_holdout_sharpe": 0.644
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg28_pure",
+  "pre_holdout_sharpe": 0.4675
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg28_static",
+  "pre_holdout_sharpe": 0.4796
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg28_trend->IEF",
+  "pre_holdout_sharpe": 0.5272
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg32_pure",
+  "pre_holdout_sharpe": 0.4767
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg32_static",
+  "pre_holdout_sharpe": 0.4881
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg32_trend->IEF",
+  "pre_holdout_sharpe": 0.5273
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg37_pure",
+  "pre_holdout_sharpe": 0.5262
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg37_static",
+  "pre_holdout_sharpe": 0.5367
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg37_trend->IEF",
+  "pre_holdout_sharpe": 0.5796
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg47_pure",
+  "pre_holdout_sharpe": 0.5539
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg47_static",
+  "pre_holdout_sharpe": 0.5936
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg47_trend->IEF",
+  "pre_holdout_sharpe": 0.6633
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg52_pure",
+  "pre_holdout_sharpe": 0.4894
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg52_static",
+  "pre_holdout_sharpe": 0.5135
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg52_trend->IEF",
+  "pre_holdout_sharpe": 0.5732
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg57_pure",
+  "pre_holdout_sharpe": 0.4435
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg57_static",
+  "pre_holdout_sharpe": 0.4411
+ },
+ {
+  "date": "2026-08-21",
+  "kind": "strategy_variant",
+  "name": "final_t23_cfg57_trend->IEF",
+  "pre_holdout_sharpe": 0.4752
  }
 ]

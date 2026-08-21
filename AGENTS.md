@@ -310,6 +310,16 @@ scoring calendars, or all-missing folds.
    sample SR 0.64 < selected-era 0.80. 2001-2004 is now SPENT as a test and
    may be folded into future training/validation; the 2024+ holdout remains
    the only virgin era.
+9e. **The earnings-era board (2026-08-21, owner's metric).** Under pre-tax
+   earnings ranking with joint (strategy, floor) selection, the champion is
+   ext-t20 (depth-5 gbtree, npt 3 — from the extended-window search, ranked
+   mid-pack by SR and #1 by earnings) x cfg57 (k10 cap3) x trend->IEF floor:
+   $2,678 / SR 0.671 / DD 55% on 2001-2024 (4-copy standardized ensemble),
+   vs t12's best $1,443 and SPY $656. Model slots by measured ensemble
+   earnings: t20 >> t12 > c4 > t23. cfg57 won for 3 of 4 models (strategy
+   ridge is cross-model). Note: for t20 the trend floor ADDS earnings —
+   its crashes were deep enough that avoidance out-compounds whipsaw.
+   Registry: data/leaderboard_books/; `stocks-ml leaderboard` renders.
 10. **Screens do not predict the exam (2026-08 model campaign).** Three screen
    designs — mean CV IC, top-8 realized excess on CV folds, and a tail-objective
    Optuna search — each produced winners (2-3x claimed improvements) that LOST
