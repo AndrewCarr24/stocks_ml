@@ -106,6 +106,21 @@ def cmd_leaderboard(args, cfg):
     print(build_leaderboard(holdout=args.holdout))
 
 
+def cmd_select(args, cfg):
+    from stocks_ml.selection import run_select
+
+    shard = tuple(int(x) for x in args.shard.split("/")) if args.shard else (0, 1)
+    run_select(args.sel_start, args.sel_end, args.eval_start, args.eval_end,
+               name=args.name, stage=args.stage, shard=shard)
+
+
+def cmd_procedure_card(args, cfg):
+    from stocks_ml.procedure_card import CARD_PATH, write_card
+
+    write_card()
+    print(f"wrote {CARD_PATH} from models/champion_spec.json")
+
+
 def cmd_signals(args, cfg):
     from stocks_ml.live.ledger import CHALLENGER_TAG, Ledger
     from stocks_ml.live.signals import generate_signals
@@ -211,6 +226,18 @@ def main():
     sub.add_parser("pipelines", help="multi-pipeline league: different targets/strategies/"
                                      "cadences, one $100 walk-forward exam")
     sub.add_parser("signals", help="generate this week's trade signals")
+    p_sel = sub.add_parser("select", help="run the full selection procedure "
+                           "on a window (stages: grid, wsweep, holdings, cascade)")
+    p_sel.add_argument("--sel-start", required=True)
+    p_sel.add_argument("--sel-end", required=True)
+    p_sel.add_argument("--eval-start", default=None)
+    p_sel.add_argument("--eval-end", default=None)
+    p_sel.add_argument("--name", default=None)
+    p_sel.add_argument("--stage", default="all",
+                       choices=["all", "grid", "wsweep", "holdings", "cascade"])
+    p_sel.add_argument("--shard", default=None, help="i/n to split stage weeks")
+    sub.add_parser("procedure-card", help="regenerate PROCEDURE.md from "
+                   "models/champion_spec.json")
     p_lb = sub.add_parser("leaderboard", help="the formal leaderboard (owner "
                           "format: earnings-ranked 3-2-1, 2001-2024, ensembles only)")
     p_lb.add_argument("--holdout", action="store_true")
@@ -232,7 +259,8 @@ def main():
     args = parser.parse_args()
     cfg = load_config(args.config)
     {"ingest": cmd_ingest, "train": cmd_train, "tune": cmd_tune, "backtest": cmd_backtest,
-     "leaderboard": cmd_leaderboard,
+     "leaderboard": cmd_leaderboard, "procedure-card": cmd_procedure_card,
+     "select": cmd_select,
      "pipelines": cmd_pipelines, "signals": cmd_signals, "ledger": cmd_ledger,
      "torture": cmd_torture}[args.command](args, cfg)
 
