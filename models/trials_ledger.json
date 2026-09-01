@@ -2141,5 +2141,98 @@
   "kind": "strategy_variant",
   "name": "sweep_champion_banded_16_32",
   "pre_holdout_sharpe": 0.6405
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "zero",
+  "cv_metric": null,
+  "eligible": false
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "momentum",
+  "cv_metric": -0.0019778158852480116,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "xgb",
+  "cv_metric": 0.0033558969221578984,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "automl",
+  "cv_metric": 0.011744588702682038,
+  "eligible": false
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "xgb_tuned",
+  "cv_metric": 0.01112115780417835,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "lgbm_tuned",
+  "cv_metric": 0.016920785067482683,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "catboost_tuned",
+  "cv_metric": 0.012470245461419357,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "enet_tuned",
+  "cv_metric": 0.016759301390162046,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "tournament_candidate",
+  "name": "ensemble",
+  "cv_metric": 0.01650191407579343,
+  "eligible": true
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "strategy_variant",
+  "name": "lgbm_tuned+equal_topk",
+  "pre_holdout_sharpe": 0.452
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "strategy_variant",
+  "name": "lgbm_tuned+vol_scaled",
+  "pre_holdout_sharpe": 0.2041
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "strategy_variant",
+  "name": "lgbm_tuned+kelly",
+  "pre_holdout_sharpe": 0.5841
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "strategy_variant",
+  "name": "lgbm_tuned+kelly_spy",
+  "pre_holdout_sharpe": 0.612
+ },
+ {
+  "date": "2026-09-01",
+  "kind": "strategy_variant",
+  "name": "lgbm_tuned+topk_spy",
+  "pre_holdout_sharpe": 0.4497
  }
 ]
