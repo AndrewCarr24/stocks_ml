@@ -1,9 +1,13 @@
-name: Monthly retrain
+name: Monthly retrain (retired 2026-09-01; manual only)
 
+# Schedule removed 2026-09-01. This job re-tunes the legacy tournament
+# (xgb/lgbm/catboost/enet + strategy variants) and overwrites
+# models/champion.joblib on a calendar. The nested-selection test (AGENTS.md
+# 9f) showed calendar re-tuning loses to a frozen model, and the production
+# champion is now models/champion_spec.json, selected with `stocks-ml select`
+# (licensed Sharadar data + hours of compute, so it does not run here).
+# Left dispatchable for one-off legacy comparisons.
 on:
-  schedule:
-    # 06:00 UTC on the 1st of each month.
-    - cron: "0 6 1 * *"
   workflow_dispatch:
 
 permissions:
