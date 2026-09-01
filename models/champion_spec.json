@@ -1,0 +1,113 @@
+{
+  "name": "r5 monthly system \u2014 70/30 trend-ballast",
+  "selected": "2026-09-01",
+  "provenance": "Owner-declared champion after the 4-week rebuild campaign (AGENTS.md 9h and ledger r4w_*/r5pkg_* entries). Supersedes ext-t20 weekly champion (its edge was confined to 2001-2012). Pre-holdout record 2006-2024: $1,586 (stop removed, sector cap 2 added post-audit) vs SPY $563, SR 0.70 vs 0.62; 2024-07-19+ holdout deliberately unspent.",
+  "model": {
+    "family": "TimeTailEarlyStopXGB",
+    "params": {
+      "max_depth": 3,
+      "learning_rate": 0.02,
+      "n_estimators": 1500,
+      "min_child_weight": 20,
+      "subsample": 0.85,
+      "colsample_bytree": 0.8,
+      "reg_alpha": 0.5,
+      "reg_lambda": 1.0,
+      "gamma": 0.01,
+      "max_bin": 256,
+      "tree_method": "hist"
+    },
+    "fixed": {
+      "n_jobs": -1,
+      "random_state": 0,
+      "eval_fraction": 0.1,
+      "early_stopping_rounds": 75,
+      "early_stop_purge_days": 35,
+      "early_stop_metric": "weekly_spearman"
+    },
+    "summary": "simple-DT: depth-3 gbtree, untuned by design (config search measured as noise)"
+  },
+  "horizon": {
+    "label": "label_4w",
+    "purge_days": 35,
+    "rationale": "feature probe + population exams: month-ahead signal real (t>2), week-ahead dead since ~2004"
+  },
+  "training_window_years": 5,
+  "training_window_rationale": "style-cycle whipsaw protection; directionally better in both whipsaw eras, never worse; robustness pick within noise band",
+  "ensemble": {
+    "k_copies": 4,
+    "method": "WeekBootstrapEstimator: copy c = random_state c + whole-week bootstrap seeded by c; predictions averaged (replication.py)"
+  },
+  "strategy": {
+    "id": "top6-stagger",
+    "book_size": 6,
+    "sleeves": 4,
+    "hold_weeks": 4,
+    "weight": "equal, re-leveled weekly (drift-threshold in live trading)",
+    "stop_loss": null,
+    "stop_action": "none \u2014 audited 2026-09-01: stop measured mildly negative in final configuration (off $1,383 vs -25% $1,296, identical DD); removed for simplicity",
+    "sector_cap": 2,
+    "sector_cap_note": "max 2 of 6 per sector; blocked slots go to next-ranked name from another sector (adopted 2026-09-01: +0.9%/yr and better SR in every window on the champion; no DD effect)"
+  },
+  "ballast": {
+    "mix": "70% book / 30% ballast",
+    "ballast_asset": "SPY, switched to IEF per trend state",
+    "trend_rule": "one third of ballast to IEF per breached SPY trailing MA (30/40/52 weeks), evaluated weekly, point-in-time"
+  },
+  "costs_assumed_bps_oneway": 5,
+  "panel": "data/sharadar_world2000/panel_sf.parquet (price/volume + Sharadar fundamentals f_sf_* + insiders f_sfi_*)",
+  "retune_policy": {
+    "cadence": "never on a calendar (nested experiment); structural triggers only",
+    "triggers": [
+      "new data source / feature family passes the gate",
+      "pre-registered kill-criterion breached",
+      "owner directive"
+    ]
+  },
+  "holdout_start": "2024-07-19",
+  "holdout_status": "UNSPENT \u2014 single-use exam, owner-gated",
+  "honest_expectation": "edge is era-concentrated (strong 2013-2020, index-matching in whipsaw/megacap regimes); pre-holdout numbers carry design-iteration shine; deployment sizing should assume SPY-like outcomes in adverse regimes",
+  "deployed": false,
+  "selection_procedure": {
+    "note": "Mechanical cascade, run in this order on the selection window only; validated by the nested test (nested2_v1, 2026-09-01: select on 2006-2015, grade 2016-2024). Model config is NOT searched (simple-DT fixed; tuning measured as noise). Run programmatically: `stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]` (stages cached & resumable under data/experiments/).",
+    "steps": [
+      {
+        "step": "horizon",
+        "menu": "1w vs 4w",
+        "metric": "cost-adjusted compounded return of the top-6 book (full population of the selection window)"
+      },
+      {
+        "step": "training window",
+        "menu": "1/2/3/4/5 years",
+        "metric": "top-6 edge vs random basket, paired on identical sampled weeks; all windows fully formed"
+      },
+      {
+        "step": "book size",
+        "menu": "top-3 / top-6 / top-10",
+        "metric": "cost-adjusted compounded return"
+      },
+      {
+        "step": "stagger",
+        "menu": "fixed on",
+        "metric": "mechanism (removes rotation-date luck); not searched"
+      },
+      {
+        "step": "floor",
+        "menu": "none / half-gate / 80-20 / 70-30 / 60-40 trend-ballast",
+        "metric": "Sharpe ratio"
+      },
+      {
+        "step": "stop-loss",
+        "menu": "off / -25%",
+        "metric": "Sharpe ratio (adopt only if higher)"
+      },
+      {
+        "step": "sector cap",
+        "menu": "off / 2-of-book",
+        "metric": "Sharpe ratio (adopt only if higher)"
+      }
+    ],
+    "metric_convention": "engine choices (horizon, window, book) by cost-adjusted compounded return; risk layers (floor, stop, cap) by Sharpe \u2014 owner-ratified 2026-09-01, 'for now'; earlier campaigns ranked by pre-tax earnings",
+    "measured_selection_inflation": "+3.8%/yr on dollars, ~0 on Sharpe (champion vs honest-procedure config, 2016-2024)"
+  }
+}
