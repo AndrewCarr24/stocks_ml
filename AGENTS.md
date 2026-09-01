@@ -459,6 +459,17 @@ scoring calendars, or all-missing folds.
 
 ## Environment gotchas
 
+- **RESOLVED 2026-09-01 — the repo is iCloud-excluded.** It lives at
+  `~/Documents/projects/stocks_ml.nosync` (iCloud never syncs a `.nosync`
+  path); `~/Documents/projects/stocks_ml` is a symlink to it so old paths
+  work. Keep both; never move the repo back under a synced name. The entries
+  below are history: what happened while it was synced, and the cure if it
+  ever is again. Last incident (2026-09-01): iCloud had evicted 35k `.venv`
+  files and 1,081 `.git` objects; anything reading them blocked in
+  `read()`/`mmap`, so pytest and git sat at 0% CPU for 14+ minutes — it
+  looks like a hang or timeout and is neither. Diagnose with
+  `find <dir> -flags +dataless -type f | wc -l`; cure with per-file
+  `brctl download` (the directory form is a silent no-op).
 - **iCloud syncs ~/Documents and repeatedly sets a hidden flag on `.venv`
   files; Python 3.12 then skips `.pth` files and `import stocks_ml` breaks.**
   Mitigations in place: `pythonpath = ["src"]` in pyproject (pytest immune) and
