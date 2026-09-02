@@ -76,7 +76,11 @@ def rotate_sleeves(sleeves: dict, t, ranked: list[str], smap: dict) -> tuple[dic
     for k in range(N_SLEEVES):
         s = sleeves.get(str(k), {"names": [], "since": None})
         age = (t - pd.Timestamp(s["since"])).days // 7 if s.get("since") else None
-        if k == due_sleeve(t) or not s["names"] or (age is not None and age >= STALE_WEEKS):
+        if age is not None and age <= 0 and s["names"]:
+            # already rotated on this signal date: a rerun of the same
+            # Friday must not rotate it again (simulate: once per week)
+            out[str(k)] = {"names": list(s["names"]), "since": s["since"]}
+        elif k == due_sleeve(t) or not s["names"] or (age is not None and age >= STALE_WEEKS):
             names = pick_capped(list(ranked[:SPEC["top_n"]]), SPEC["cap"], SPEC["book"], smap)
             out[str(k)] = {"names": names, "since": str(t.date())}
             rotated.append(k)

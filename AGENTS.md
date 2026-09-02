@@ -155,14 +155,19 @@ symbols, AEP's 8-Ks, insider filings after 2026-03-31 (the bridge); plus 3,371
 phantom-stint rows removed. Sharadar SEP also serves some rows twice (249 in
 the research pull) — `prices_from_sep` dedupes on (ticker, date).
 
-**launchd cannot read `~/Documents` (macOS TCC):** the first kickstart died
-with exit 127 — `/bin/zsh: can't open input file: …/ops/r5_weekly.sh`
-(`ls ~/Documents` → "Operation not permitted" from any launchd agent; deep
-paths are blocked too). The agent is loaded and will keep failing that way
-until the owner either grants `/bin/zsh` Full Disk Access (System Settings →
-Privacy & Security; children of the agent inherit it) or moves the repo out
-of `~/Documents` (which also ends the iCloud problems below; then update
-`ops/` paths and re-`launchctl bootstrap`). Reload after editing the plist:
+**launchd cannot read `~/Documents` (macOS TCC) without a grant:** the first
+kickstart died with exit 127 — `/bin/zsh: can't open input file:
+…/ops/r5_weekly.sh` (`ls ~/Documents` → "Operation not permitted" from any
+launchd agent; deep paths are blocked too). Resolved 2026-09-02: the owner
+gave `/bin/zsh` Full Disk Access (System Settings → Privacy & Security; no
+CLI can do it — the TCC database is SIP-protected). Two gotchas: the plist
+must run `/bin/zsh <script>` explicitly — with the script as the program
+(shebang) zsh itself could read the repo but `uv` died with "Current
+directory does not exist", because children are attributed to the job's
+*program* for privacy checks; and a job that starts within a second of the
+grant still fails. The alternative remains moving the repo out of
+`~/Documents` (also ends the iCloud problems below; then update `ops/`
+paths and re-`launchctl bootstrap`). Reload after editing the plist:
 `launchctl bootout gui/$UID/com.stocks-ml.r5-weekly && launchctl bootstrap
 gui/$UID ~/Library/LaunchAgents/com.stocks-ml.r5-weekly.plist`; manual
 trigger `launchctl kickstart gui/$UID/com.stocks-ml.r5-weekly`.

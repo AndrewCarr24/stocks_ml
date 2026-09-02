@@ -54,10 +54,16 @@ def test_rotation_catches_up_a_stale_sleeve():
 
 
 def test_rotation_is_idempotent_on_the_same_day():
+    """A rerun of the same Friday (manual, --as-of, a second launchd kick)
+    must not rotate the due sleeve again, even if the refit ranks differently:
+    simulate rotates each sleeve once per week. Seen live 2026-09-02."""
     t = D("2026-08-28")
     s1, _ = r5.rotate_sleeves({}, t, RANKED, SMAP)
-    s2, rotated = r5.rotate_sleeves(s1, t, RANKED, SMAP)
-    assert s2 == s1 and rotated == [2]
+    s2, rotated = r5.rotate_sleeves(s1, t, list(reversed(RANKED)), SMAP)
+    assert s2 == s1 and rotated == []
+    # the following week rotates as usual
+    s3, rotated3 = r5.rotate_sleeves(s2, t + pd.Timedelta(weeks=1), list(reversed(RANKED)), SMAP)
+    assert rotated3 == [3] and s3["3"]["names"] != s1["3"]["names"]
 
 
 # ---- ballast + weights ----

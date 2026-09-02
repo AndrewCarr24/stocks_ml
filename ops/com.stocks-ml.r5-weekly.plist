@@ -6,6 +6,10 @@
   <string>com.stocks-ml.r5-weekly</string>
   <key>ProgramArguments</key>
   <array>
+    <!-- zsh explicitly, not via the shebang: launchd attributes child processes
+         (uv, python) to the job's program for macOS privacy checks, and the
+         Full Disk Access grant is on /bin/zsh -->
+    <string>/bin/zsh</string>
     <string>/Users/andrewcarr/Documents/projects/stocks_ml.nosync/ops/r5_weekly.sh</string>
   </array>
   <key>StartCalendarInterval</key>
