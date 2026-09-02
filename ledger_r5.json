@@ -1,0 +1,77 @@
+{
+  "cash": 100.0,
+  "positions": {},
+  "refs": {},
+  "sleeves": {
+    "0": {
+      "names": [
+        "LITE",
+        "MU",
+        "PLTR",
+        "ECHO",
+        "SNDK",
+        "INTC"
+      ],
+      "since": "2026-08-28"
+    },
+    "1": {
+      "names": [
+        "LITE",
+        "MU",
+        "PLTR",
+        "ECHO",
+        "SNDK",
+        "INTC"
+      ],
+      "since": "2026-08-28"
+    },
+    "2": {
+      "names": [
+        "LITE",
+        "MU",
+        "PLTR",
+        "ECHO",
+        "SNDK",
+        "INTC"
+      ],
+      "since": "2026-08-28"
+    },
+    "3": {
+      "names": [
+        "LITE",
+        "MU",
+        "PLTR",
+        "ECHO",
+        "SNDK",
+        "INTC"
+      ],
+      "since": "2026-08-28"
+    }
+  },
+  "pending": {
+    "decision_date": "2026-08-28",
+    "weights": {
+      "SPY": 0.30000000000000004,
+      "ECHO": 0.11666666666666665,
+      "INTC": 0.11666666666666665,
+      "LITE": 0.11666666666666665,
+      "MU": 0.11666666666666665,
+      "PLTR": 0.11666666666666665,
+      "SNDK": 0.11666666666666665
+    }
+  },
+  "nav_history": [
+    [
+      "2026-08-28",
+      100.0,
+      100.0
+    ]
+  ],
+  "trades": [],
+  "bench": {
+    "cash": 100.0,
+    "units": 0.0,
+    "ref": null
+  },
+  "started": "2026-08-28"
+}

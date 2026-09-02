@@ -7,6 +7,9 @@ import pandas as pd
 
 VALID_NAMES = {"prices", "membership", "fred", "edgar", "panel", "removals", "form4", "shortint", "sec8k",
     "sharadar_prices", "sharadar_tickers", "sharadar_sp500",
+    # world stores (data/world.py): Sharadar SF1/SF2 slices, the frozen SEC
+    # Form 4 file and the SF2-derived bridge that extends it
+    "fundamentals", "insiders", "form4_sec", "form4_bridge",
 }
 
 

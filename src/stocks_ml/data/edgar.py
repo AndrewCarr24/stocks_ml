@@ -52,17 +52,22 @@ def extract_facts(cf_json: dict, ticker: str, concept_map: dict) -> pd.DataFrame
 
 
 def ingest_edgar(store, tickers, concept_map, user_agent,
-                 fetch_facts_fn=None, cik_map=None) -> dict:
+                 fetch_facts_fn=None, cik_map=None,
+                 refresh_days: int = REFRESH_DAYS) -> dict:
+    """Fetch companyfacts for `tickers` whose newest stored filing is older
+    than `refresh_days` (0 = refetch every ticker). A refetched ticker's rows
+    REPLACE its stored rows: companyfacts carries the full filing history, so
+    a union would only accumulate superseded restatements."""
     fetch_facts = fetch_facts_fn or _fetch_facts
     ciks = cik_map or load_cik_map(user_agent)
     existing = store.read("edgar") if store.exists("edgar") else None
-    cutoff = pd.Timestamp.today() - pd.Timedelta(days=REFRESH_DAYS)
+    cutoff = pd.Timestamp.today() - pd.Timedelta(days=refresh_days)
     fresh = set()
-    if existing is not None and "ticker" in existing.columns:
+    if refresh_days > 0 and existing is not None and "ticker" in existing.columns:
         max_filed = existing.groupby("ticker")["filed"].max()
         fresh = set(max_filed[max_filed >= cutoff].index)
 
-    frames, failed = [], []
+    frames, failed, refetched = [], [], set()
     for t in tickers:
         if t in fresh:
             continue
@@ -72,6 +77,7 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
             continue
         try:
             frames.append(extract_facts(fetch_facts(cik, user_agent), t, concept_map))
+            refetched.add(t)
         except Exception:
             failed.append(t)
         if fetch_facts_fn is None:
@@ -80,6 +86,8 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
     nonempty = [frame for frame in frames if not frame.empty]
     new = (pd.concat(nonempty, ignore_index=True) if nonempty
            else pd.DataFrame(columns=EDGAR_COLS))
+    if existing is not None and not existing.empty and refetched:
+        existing = existing[~existing["ticker"].isin(refetched)]
     parts = [f for f in (existing, new) if f is not None and not f.empty]
     df = pd.concat(parts, ignore_index=True) if parts else new
     if not df.empty:

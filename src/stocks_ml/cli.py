@@ -204,10 +204,28 @@ def cmd_ledger(args, cfg):
             print(f"  {d}: ${n:,.2f}")
 
 
+def cmd_r5_weekly(args, cfg):
+    """The champion's weekly signal (live/r5.py): refresh the live world,
+    rank, rotate a sleeve, fill last week's orders, write signals_r5/ and
+    ledger_r5.json. Runs from launchd on the owner's Mac (ops/r5_weekly.sh)."""
+    import subprocess
+
+    from stocks_ml.live.r5 import run_weekly
+    rep = run_weekly(args.live_dir, cfg, as_of=args.as_of, refresh=not args.no_refresh,
+                     sec=not args.no_sec, dry_run=args.dry_run, capital=args.capital,
+                     out_dir=args.out_dir, ledger_path=args.ledger)
+    if args.commit and not args.dry_run:
+        t = rep["signal"]["date"]
+        subprocess.run(["git", "add", args.out_dir, args.ledger], check=True)
+        subprocess.run(["git", "commit", "-q", "-m", f"r5: signal {t}"], check=True)
+        subprocess.run(["git", "push", "-q"], check=True)
+        print(f"committed and pushed r5: signal {t}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="stocks-ml",
-        description="ML stock forecasting: ingest | train | tune | backtest | signals | ledger | torture")
+        description="ML stock forecasting: ingest | train | tune | backtest | signals | ledger | torture | r5-weekly")
     parser.add_argument("--config", default="config/config.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
     p_ingest = sub.add_parser("ingest", help="fetch data and build the panel")
@@ -256,13 +274,31 @@ def main():
     p_led.add_argument("--tag", default=None,
                        help="trades-file tag for default apply lookup (challenger: ltr)")
 
+    p_r5 = sub.add_parser("r5-weekly", help="the r5 champion's weekly signal: refresh the "
+                          "live world (Sharadar + SEC), rank, rotate a sleeve, keep the "
+                          "paper ledger (signals_r5/, ledger_r5.json)")
+    p_r5.add_argument("--live-dir", default="data/r5_live")
+    p_r5.add_argument("--as-of", default=None, help="signal date (a panel Friday); "
+                      "default: the latest panel date, which must be last Friday")
+    p_r5.add_argument("--no-refresh", action="store_true",
+                      help="rank on the stored panel without refreshing any data")
+    p_r5.add_argument("--no-sec", action="store_true",
+                      help="refresh Sharadar only (skip EDGAR/8-K/short interest/FRED)")
+    p_r5.add_argument("--dry-run", action="store_true",
+                      help="print the signal; write neither the ledger nor signals_r5/")
+    p_r5.add_argument("--capital", type=float, default=100.0, help="paper capital at first run")
+    p_r5.add_argument("--out-dir", default="signals_r5")
+    p_r5.add_argument("--ledger", default="ledger_r5.json")
+    p_r5.add_argument("--commit", action="store_true",
+                      help="git add/commit/push the signal and ledger after a real run")
+
     args = parser.parse_args()
     cfg = load_config(args.config)
     {"ingest": cmd_ingest, "train": cmd_train, "tune": cmd_tune, "backtest": cmd_backtest,
      "leaderboard": cmd_leaderboard, "procedure-card": cmd_procedure_card,
      "select": cmd_select,
      "pipelines": cmd_pipelines, "signals": cmd_signals, "ledger": cmd_ledger,
-     "torture": cmd_torture}[args.command](args, cfg)
+     "torture": cmd_torture, "r5-weekly": cmd_r5_weekly}[args.command](args, cfg)
 
 
 if __name__ == "__main__":

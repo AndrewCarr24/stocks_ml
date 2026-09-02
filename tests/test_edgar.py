@@ -123,3 +123,54 @@ def test_fallback_tag_used_when_first_tag_has_no_usable_rows():
     df = extract_facts(cf, "AAA", {"net_income": ["TagA", "TagB"]})
     assert len(df) == 1
     assert df.iloc[0]["val"] == 2.0
+
+
+def test_refetched_ticker_rows_are_replaced_not_unioned(tmp_path):
+    store = DataStore(tmp_path)
+    concept_map = {"net_income": ["NetIncomeLoss"]}
+    ingest_edgar(store, ["AAA", "BBB"], concept_map, "ua",
+                 fetch_facts_fn=lambda cik, ua: CF_JSON, cik_map={"AAA": 1, "BBB": 2})
+    assert len(store.read("edgar")) == 4
+    restated = {"facts": {"us-gaap": {"NetIncomeLoss": {"units": {"USD": [
+        {"start": "2022-01-01", "end": "2022-12-31", "filed": "2023-02-15",
+         "val": 101.0, "form": "10-K/A"}]}}}}}
+    s = ingest_edgar(store, ["AAA"], concept_map, "ua", refresh_days=0,
+                     fetch_facts_fn=lambda cik, ua: restated, cik_map={"AAA": 1})
+    assert s["failed_tickers"] == []
+    df = store.read("edgar")
+    aaa = df[df.ticker == "AAA"]
+    assert len(aaa) == 1 and aaa.iloc[0]["val"] == 101.0      # superseded rows gone
+    assert len(df[df.ticker == "BBB"]) == 2                    # untouched ticker kept
+
+
+def test_refresh_days_zero_refetches_fresh_tickers(tmp_path):
+    store = DataStore(tmp_path)
+    concept_map = {"net_income": ["NetIncomeLoss"]}
+    calls = []
+
+    def fetch(cik, ua):
+        calls.append(cik)
+        return _cf_json_filed(1)
+
+    ingest_edgar(store, ["AAA"], concept_map, "ua", fetch_facts_fn=fetch, cik_map={"AAA": 1})
+    ingest_edgar(store, ["AAA"], concept_map, "ua", fetch_facts_fn=fetch, cik_map={"AAA": 1})
+    assert calls == [1]                                        # fresh: skipped by default
+    ingest_edgar(store, ["AAA"], concept_map, "ua", fetch_facts_fn=fetch, cik_map={"AAA": 1},
+                 refresh_days=0)
+    assert calls == [1, 1]
+    assert len(store.read("edgar")) == 1
+
+
+def test_failed_refetch_keeps_the_stored_rows(tmp_path):
+    store = DataStore(tmp_path)
+    concept_map = {"net_income": ["NetIncomeLoss"]}
+    ingest_edgar(store, ["AAA"], concept_map, "ua",
+                 fetch_facts_fn=lambda cik, ua: CF_JSON, cik_map={"AAA": 1})
+
+    def failing(cik, ua):
+        raise RuntimeError("503")
+
+    s = ingest_edgar(store, ["AAA"], concept_map, "ua", refresh_days=0,
+                     fetch_facts_fn=failing, cik_map={"AAA": 1})
+    assert s["failed_tickers"] == ["AAA"]
+    assert len(store.read("edgar")) == 2

@@ -23,7 +23,7 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   every Saturday since 2026-08-08 — a Wikipedia table-format change, then a
   ledger fill-sizing bug that ignores trading cost. The production champion
   is `models/champion_spec.json`; its weekly job runs locally (see
-  "r5 weekly job" below once built). The legacy live strategy was `topk_spy` (config `live_strategy`): the model's
+  "r5 weekly job" below). The legacy live strategy was `topk_spy` (config `live_strategy`): the model's
   top-k equal-weighted, unfilled slots held in SPY. k-sweep 2026-08-12
   (pre-holdout-selected, protocol declared before results): champion k=16
   (pre-holdout Sharpe 0.63 vs 0.52 at the old k=8; its now-admissible holdout
@@ -58,7 +58,7 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
 
 ```bash
 uv sync                      # install (Python 3.12; automl_tool needs <3.13)
-uv run pytest                # 255 tests; MUST stay green with 0 warnings
+uv run pytest                # 340 tests; MUST stay green with 0 warnings
 uv run stocks-ml ingest      # fetch all data + rebuild panel (idempotent)
 uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
 uv run stocks-ml train       # champion tournament -> models/selection.md
@@ -69,7 +69,103 @@ uv run stocks-ml ledger init|apply|mark|show
 uv run stocks-ml torture     # survivorship stress test
 uv run stocks-ml select --sel-start A --sel-end B  # full selection procedure
                              # (grid/wsweep/holdings/cascade; see PROCEDURE.md)
+uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
+                             # the champion's weekly signal (local only; below)
 ```
+
+## r5 weekly job (2026-09-01)
+
+The production champion (`models/champion_spec.json`, PROCEDURE.md) gets its
+signal from `stocks-ml r5-weekly` (src/stocks_ml/live/r5.py), run by launchd
+on the owner's Mac every Saturday 09:00 (`ops/r5_weekly.sh`,
+`ops/com.stocks-ml.r5-weekly.plist`; logs in git-ignored `logs/`). It cannot
+run on Actions: it needs the Sharadar key; ~20 min, nearly all data refresh
+(the K=4 ensemble fits in seconds). Outputs are
+tracked: `signals_r5/<friday>.md` (+ `.json`) and `ledger_r5.json`; the
+job does not commit unless run with `--commit`.
+
+What it does, in order:
+1. `data/world.py` refreshes the live world store `data/r5_live/`
+   (bootstrapped once from the frozen research world
+   `data/sharadar_world2000/`, which stays untouched): sp500 → membership;
+   SEP/SFP → prices, incremental by `lastupdated` and upserted by
+   (ticker, date) — Sharadar bumps `lastupdated` on a ticker's whole history
+   when a dividend re-adjusts it, so the upsert is exact; SF1 ARQ/ART →
+   fundamentals (full refetch, refuses to shrink >2%); SF2 → insiders and a
+   Form 4 *bridge* (SF2 non-derivative P/S rows in the SEC Form 4 schema,
+   filed after the frozen SEC file's 2026-03-31 — the SEC quarterly zips lag
+   and the job never fetches them). Then the legacy ingesters: EDGAR
+   companyfacts for every current member (replace semantics — a refetched
+   ticker's rows replace its stored rows, `refresh_days=0`), 8-K, FINRA short
+   interest, FRED. Direct API limits: ≤30 tickers and ≤200 chars per
+   `ticker` filter (`_chunks`). **Symbol renames rewrite history**: when
+   Sharadar renames a company (EQR → VMRK, 2026-09-01: same `permaticker`
+   197624, `relatedtickers="EQR"`, EQR gone from sp500/tickers/SEP), the old
+   symbol would look like a departed member and its history would be dropped
+   as an orphan while the new symbol refetched from scratch. `detect_renames`
+   (permaticker unchanged, old symbol gone, new symbol unheld, unambiguous)
+   rewrites the old symbol in every stored table first, so membership stints,
+   fundamentals and insider history carry over. EDGAR CIKs for a renamed
+   symbol resolve through `relatedtickers`.
+2. `build_world_panel` reruns the research recipe (build_panel with the
+   world's backtest_start, then the Sharadar fundamental/insider features and
+   rank_normalize). Two fidelity rules, each learned from a failed bit-for-bit
+   check: **IEF must not be in the panel's price frame** (f_mkt_dispersion is
+   a cross-section over every price series; the research panel was built
+   before IEF was appended for ballast pricing — `_PanelStore` drops it), and
+   **membership stints are rebuilt with the pre-snapshot fix**: Sharadar's
+   sp500 events start 1998-01-09, before its first `historical` snapshot
+   (1998-03-31); the research builder opened a second, never-closed stint for
+   the five tickers added in between, so LEHMQ/BIGGQ/SUB1/MTL1 stayed
+   "members" forever with all-neutral features and NaN labels (508 open
+   stints vs 503 current). Closing them changes no other panel row.
+3. `selection.ensemble_preds` ranks the Friday's members exactly as the
+   research did (K=4 week-bootstrap copies, label_4w, 5-year window, purge
+   35 d). A name must have a close in the last 7 days to be rankable (≥100
+   required, else the job fails loudly rather than trade a thin universe).
+4. Sleeve schedule: four 6-name sleeves (sector cap 2 from the top-15), one
+   rotates per week — `((t − 2001-01-05) // 7 days) mod 4` — mirroring
+   `simulate`'s `i % 4 == c`; empty sleeves fill at once (simulate's first
+   week); a sleeve ≥5 weeks old (the job skipped its week) rotates too.
+   Ballast: per 30/40/52-week third, IEF when SPY's weekly close is below the
+   trailing mean, else SPY. Weights: 0.7 × 1/24 per sleeve slot, 0.3 split
+   across the thirds.
+5. Paper ledger (`R5Ledger`): fills LAST week's pending weights at the first
+   open after the decision date (Monday), sells first, buys sized net of a
+   5 bp fee (never overdrawn; rebalances under 0.5% of NAV skipped, full
+   exits always run; a name that stopped trading closes at its last print),
+   then marks NAV at Friday's close against SPY buy-and-hold from the same
+   $100. Units are on the closeadj (total-return) basis, so each mark stores
+   a reference close per position and the next run rescales units by
+   old/new reference close before anything else (value-preserving, tested).
+   Orders decided on the signal date wait for the next run.
+
+Fails loudly (no signal written) when the panel's last date is not the last
+Friday (prices not refreshed), when the ensemble returns nothing, or when the
+rankable universe is thin. `--as-of` reruns an older Friday; `--no-refresh`
+ranks the stored panel; `--dry-run` writes nothing.
+
+First run 2026-09-01 (signal 2026-08-28, all four sleeves filled at once as in
+`simulate`'s first week): the live rebuild reproduced the research `panel_sf`
+on its 657,195 common rows — p99 |Δ| ≤ 0.02 on every feature (rank drift from
+the vendor's dividend re-adjustments and the cross-section fixes below);
+material diffs (>0.2) in 0.5% of rows, all data the research world lacked:
+EDGAR facts for T/MCK/BRK.B/BF.B, SF1 for VMRK(EQR)/PAS/ECO1 and 15 other
+symbols, AEP's 8-Ks, insider filings after 2026-03-31 (the bridge); plus 3,371
+phantom-stint rows removed. Sharadar SEP also serves some rows twice (249 in
+the research pull) — `prices_from_sep` dedupes on (ticker, date).
+
+**launchd cannot read `~/Documents` (macOS TCC):** the first kickstart died
+with exit 127 — `/bin/zsh: can't open input file: …/ops/r5_weekly.sh`
+(`ls ~/Documents` → "Operation not permitted" from any launchd agent; deep
+paths are blocked too). The agent is loaded and will keep failing that way
+until the owner either grants `/bin/zsh` Full Disk Access (System Settings →
+Privacy & Security; children of the agent inherit it) or moves the repo out
+of `~/Documents` (which also ends the iCloud problems below; then update
+`ops/` paths and re-`launchctl bootstrap`). Reload after editing the plist:
+`launchctl bootout gui/$UID/com.stocks-ml.r5-weekly && launchctl bootstrap
+gui/$UID ~/Library/LaunchAgents/com.stocks-ml.r5-weekly.plist`; manual
+trigger `launchctl kickstart gui/$UID/com.stocks-ml.r5-weekly`.
 
 **Pipeline league (2026-08-11, owner's design):** pipelines may differ in
 training objective, strategy, and cadence, but are all judged by one $100
@@ -96,7 +192,9 @@ src/stocks_ml/
   data/       store.py (parquet DataStore + manifest), prices.py (yfinance,
               corrupt-series filter), membership.py (point-in-time S&P 500 from
               Wikipedia), fred.py (macro; only audited T10Y2Y/FEDFUNDS admitted), edgar.py
-              (fundamentals, filing-dated), insiders.py (Form 4), shortint.py (FINRA)
+              (fundamentals, filing-dated), insiders.py (Form 4), shortint.py (FINRA),
+              sharadar.py / sharadar_bulk.py (Direct API + bulk files),
+              world.py (live world store: refresh + panel rebuild for r5)
   features/   panel.py (build_panel = the one place features/labels are made),
               fundamentals.py, events.py, insiders.py, ranking.py
   models/     cv.py (purged walk-forward CV, weekly rank IC), candidates.py
@@ -106,7 +204,7 @@ src/stocks_ml/
               (equal_topk / vol_scaled / kelly + SpyFloor variants kelly_spy /
               topk_spy; select_top_k tie guard), metrics.py, report.py,
               survivorship.py
-  live/       signals.py, ledger.py
+  live/       signals.py, ledger.py (legacy), r5.py (champion job + R5Ledger)
   cli.py
 ```
 
@@ -454,7 +552,18 @@ scoring calendars, or all-missing folds.
 - **Wikipedia** membership: changes-table columns are a MultiIndex with
   "Effective Date"; parser matches by containment.
 - **EDGAR:** 10 req/s, User-Agent required. Fundamentals sparse pre-2010.
-  Insider Form 4 via quarterly bulk zips (2006+). 90-day staleness refresh.
+  Insider Form 4 via quarterly bulk zips (2006+). 90-day staleness refresh
+  (the r5 job uses `refresh_days=0`: replace every current member). SEC
+  ticker format is BRK-B; Sharadar's is BRK.B — map through
+  `normalize_symbol` (`world.sharadar_cik_map`).
+- **Sharadar Direct:** `ticker` filter ≤30 tickers / ≤200 chars per call;
+  `lastupdated.gte` on SEP/SFP returns only re-adjusted or new rows; SF1
+  `lastupdated` is bumped for a ticker's entire history (incremental ≈ full,
+  so refetch); SF2 `from`/`to` filter on the filing date; `tickers` with a
+  ticker list returns one row per table (sicsector consistent per ticker);
+  the `table=` filter combined with a ticker list returns nothing; a
+  renamed company keeps its `permaticker` and lists the old symbol in
+  `relatedtickers` (see "r5 weekly job").
 - **FINRA short interest:** free unauthenticated Query API, history ~2018+,
   publication lag = settlement + 14 days.
 - Tiingo probed as backfill for missing delisted tickers: covers 114/202 but
