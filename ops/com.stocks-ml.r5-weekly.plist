@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Retired 2026-09-02: the champion's Saturday cycle runs on GitHub Actions
+     (.github/workflows/champion.yml). Kept as the fallback schedule: copy to
+     ~/Library/LaunchAgents/ and `launchctl bootstrap gui/$UID <plist>`. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>

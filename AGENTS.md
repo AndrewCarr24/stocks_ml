@@ -15,15 +15,17 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   2-calendar-year window (`cv_train_years: 2`) with a 10-day purge; exact dates
   are in `reports/rolling_cv.md`. The last 2 years
   (2024-07 → now) are a **holdout** never used for tuning or selection.
-- **Live (legacy, retired 2026-09-01):** both GitHub Actions jobs are now
-  `workflow_dispatch` only. The monthly retrain re-tuned the legacy
-  tournament on a calendar, which 9f showed loses to a frozen model
-  (`models/champion.joblib` is frozen at the 2026-09-01 fit). The weekly
-  shadow cycle (signals + paper ledger for that legacy champion) had failed
-  every Saturday since 2026-08-08 — a Wikipedia table-format change, then a
-  ledger fill-sizing bug that ignores trading cost. The production champion
-  is `models/champion_spec.json`; its weekly job runs locally (see
-  "r5 weekly job" below). The legacy live strategy was `topk_spy` (config `live_strategy`): the model's
+- **Live:** the only GitHub Actions workflow is the champion's
+  (`.github/workflows/champion.yml`; see "r5 weekly job" below). The legacy
+  jobs were retired 2026-09-01 and deleted 2026-09-02: the monthly retrain
+  re-tuned the legacy tournament on a calendar, which 9f showed loses to a
+  frozen model (`models/champion.joblib` is frozen at the 2026-09-01 fit);
+  the weekly shadow cycle (signals + paper ledger for that legacy champion)
+  had failed every Saturday since 2026-08-08 — a Wikipedia table-format
+  change, then a ledger fill-sizing bug that ignores trading cost. Its
+  `signals/`, `ledger.json` and `ledger_ltr.json` are frozen history. The
+  production champion is `models/champion_spec.json`. The legacy live
+  strategy was `topk_spy` (config `live_strategy`): the model's
   top-k equal-weighted, unfilled slots held in SPY. k-sweep 2026-08-12
   (pre-holdout-selected, protocol declared before results): champion k=16
   (pre-holdout Sharpe 0.63 vs 0.52 at the old k=8; its now-admissible holdout
@@ -58,7 +60,7 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
 
 ```bash
 uv sync                      # install (Python 3.12; automl_tool needs <3.13)
-uv run pytest                # 340 tests; MUST stay green with 0 warnings
+uv run pytest                # 341 tests; MUST stay green with 0 warnings
 uv run stocks-ml ingest      # fetch all data + rebuild panel (idempotent)
 uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
 uv run stocks-ml train       # champion tournament -> models/selection.md
@@ -70,19 +72,44 @@ uv run stocks-ml torture     # survivorship stress test
 uv run stocks-ml select --sel-start A --sel-end B  # full selection procedure
                              # (grid/wsweep/holdings/cascade; see PROCEDURE.md)
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
-                             # the champion's weekly signal (local only; below)
+                             # the champion's weekly signal (Actions runs it; below)
+ops/r5_seed.sh               # re-seed the Actions cache with the Mac's live world
 ```
 
 ## r5 weekly job (2026-09-01)
 
 The production champion (`models/champion_spec.json`, PROCEDURE.md) gets its
-signal from `stocks-ml r5-weekly` (src/stocks_ml/live/r5.py), run by launchd
-on the owner's Mac every Saturday 09:00 (`ops/r5_weekly.sh`,
-`ops/com.stocks-ml.r5-weekly.plist`; logs in git-ignored `logs/`). It cannot
-run on Actions: it needs the Sharadar key; ~20 min, nearly all data refresh
-(the K=4 ensemble fits in seconds). Outputs are
-tracked: `signals_r5/<friday>.md` (+ `.json`) and `ledger_r5.json`; the
-job does not commit unless run with `--commit`.
+signal from `stocks-ml r5-weekly` (src/stocks_ml/live/r5.py), run by the
+GitHub Actions workflow `.github/workflows/champion.yml` every Saturday
+13:00 UTC with `--commit` (dispatchable by hand with `as_of` / `dry_run`;
+~25 min, nearly all data refresh — the K=4 ensemble fits in seconds). Outputs
+are tracked and committed by the job as "r5: signal <friday>":
+`signals_r5/<friday>.md` (+ `.json`) and `ledger_r5.json`; the signal also
+lands in the run's summary page. A run fails loudly (GitHub emails the
+owner) rather than signal on stale data.
+
+**Licensed data never enters the public repo.** The Sharadar key is the
+`SHARADAR_API_KEY` repo secret. The live world (`data/r5_live/`, ~0.5 GB)
+travels between runs as an AES-256 tarball in the Actions cache
+(`r5-live-<run_id>`, restored by prefix), encrypted with the `R5_STORE_KEY`
+secret — the same key is in git-ignored `data/.r5_store_key` on the Mac. A
+snapshot is saved only after a successful cycle, so a failed run retries from
+the previous one. When the cache is empty (first run, or evicted: GitHub
+drops caches idle for 7 days or beyond 10 GB per repo — the Wednesday
+`keepalive` job restores it midweek so Saturday-to-Saturday never counts as
+idle) the run seeds itself from the *draft* release "r5 seed" that
+`ops/r5_seed.sh` uploads from the Mac (drafts are invisible to the public;
+the run deletes it once the snapshot is in the cache). If a run fails with
+"no live world in the Actions cache and no seed release", run
+`ops/r5_seed.sh` and re-dispatch. Draft-release download and the secrets
+API need the `contents: write` token the workflow already has.
+
+`ops/r5_weekly.sh` runs the same cycle on the Mac by hand (it does not
+commit; logs in git-ignored `logs/`). Its launchd schedule was retired on
+2026-09-02 when the job moved to Actions — two champions refreshing and
+rotating independently would only race each other; the plist stays in
+`ops/` in case Actions ever has to be replaced (copy it to
+`~/Library/LaunchAgents/` and `launchctl bootstrap`).
 
 What it does, in order:
 1. `data/world.py` refreshes the live world store `data/r5_live/`
@@ -155,8 +182,8 @@ symbols, AEP's 8-Ks, insider filings after 2026-03-31 (the bridge); plus 3,371
 phantom-stint rows removed. Sharadar SEP also serves some rows twice (249 in
 the research pull) — `prices_from_sep` dedupes on (ticker, date).
 
-**launchd cannot read `~/Documents` (macOS TCC) without a grant:** the first
-kickstart died with exit 127 — `/bin/zsh: can't open input file:
+**launchd (the retired local schedule) cannot read `~/Documents` (macOS
+TCC) without a grant:** the first kickstart died with exit 127 — `/bin/zsh: can't open input file:
 …/ops/r5_weekly.sh` (`ls ~/Documents` → "Operation not permitted" from any
 launchd agent; deep paths are blocked too). Resolved 2026-09-02: the owner
 gave `/bin/zsh` Full Disk Access (System Settings → Privacy & Security; no
@@ -184,8 +211,9 @@ consumers must purge past the label span); P(top-quintile) classifier
 league grows the Sharpe-deflation trial count; the shadow ledger stays the
 final judge.
 
-CI commits artifacts (signals/, ledger.json, models/, reports/) on its own
-schedule, so the repository may need to be synchronized before local work.
+The champion workflow commits `signals_r5/` and `ledger_r5.json` every
+Saturday ("r5: signal <friday>"), so the repository may need to be
+synchronized before local work.
 However, do not run `git` commands unless the owner explicitly requests them;
 when synchronization cannot be confirmed, work from the current checkout and
 state that limitation in the final summary.
@@ -211,6 +239,9 @@ src/stocks_ml/
               survivorship.py
   live/       signals.py, ledger.py (legacy), r5.py (champion job + R5Ledger)
   cli.py
+.github/workflows/champion.yml   the champion's Saturday cycle (the only workflow)
+ops/          r5_seed.sh (seed the Actions cache from the Mac), r5_weekly.sh +
+              com.stocks-ml.r5-weekly.plist (manual / retired local schedule)
 ```
 
 Label: forward 5-trading-day return, open-to-open, minus the cross-sectional

@@ -1,7 +1,10 @@
 #!/bin/zsh
-# The r5 champion's weekly signal, run by launchd (com.stocks-ml.r5-weekly)
-# every Saturday 09:00 from the owner's Mac. Needs data/.sharadar_key.
-# Logs to logs/ (git-ignored). Not for Actions: needs the key; ~20 min (data refresh).
+# The r5 champion's weekly cycle on the owner's Mac, by hand:
+#   ops/r5_weekly.sh [--dry-run] [--as-of F] ...
+# The scheduled run is GitHub Actions (.github/workflows/champion.yml); the
+# launchd schedule for this script (com.stocks-ml.r5-weekly.plist) was
+# retired 2026-09-02 so two champions never race. Needs data/.sharadar_key.
+# Logs to logs/ (git-ignored); ~20 min (data refresh).
 set -euo pipefail
 REPO="/Users/andrewcarr/Documents/projects/stocks_ml.nosync"
 UV="/opt/homebrew/Caskroom/miniconda/base/bin/uv"
