@@ -1,0 +1,144 @@
+name: Champion weekly signal (r5)
+
+# The champion (models/champion_spec.json, PROCEDURE.md) runs here every
+# Saturday: refresh the live world (Sharadar + SEC), rank, rotate the due
+# sleeve, fill last week's orders, commit signals_r5/ and ledger_r5.json.
+# Fails loudly (GitHub emails the owner) rather than signalling on stale data.
+#
+# Licensed data never enters the repo: the live world (data/r5_live) travels
+# between runs as an AES-256 tarball in the Actions cache, keyed by the
+# R5_STORE_KEY secret; the Sharadar key is the SHARADAR_API_KEY secret. When
+# the cache is empty (first run, or GitHub evicted it) the run seeds itself
+# from the draft release that ops/r5_seed.sh uploads from the owner's Mac,
+# then deletes that release. The Wednesday job only restores the cache so
+# GitHub's 7-day idle eviction never fires between Saturdays.
+on:
+  schedule:
+    - cron: "0 13 * * 6"   # Saturday 13:00 UTC (09:00 New York, daylight time)
+    - cron: "0 13 * * 3"   # Wednesday: cache keepalive only
+  workflow_dispatch:
+    inputs:
+      as_of:
+        description: "Signal date (a panel Friday); default: the latest, which must be last Friday"
+        default: ""
+        type: string
+      dry_run:
+        description: "Print the signal; write neither the ledger nor signals_r5/"
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: r5-champion
+  cancel-in-progress: false
+
+env:
+  SNAPSHOT: r5_live.tar.enc
+
+jobs:
+  signal:
+    if: github.event_name != 'schedule' || github.event.schedule == '0 13 * * 6'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the push can rebase (repo is 25 MB)
+
+      - uses: astral-sh/setup-uv@v5
+        # uv reads .python-version and provisions Python 3.12.
+
+      - run: uv sync
+
+      - name: Restore the live world (last run's encrypted snapshot)
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SNAPSHOT }}
+          key: r5-live-${{ github.run_id }}
+          # No exact match on a fresh run_id, so this falls through to the
+          # newest previous snapshot.
+          restore-keys: |
+            r5-live-
+
+      - name: Seed from the Mac's snapshot (cache empty)
+        id: seed
+        if: steps.restore.outputs.cache-matched-key == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rel=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+                --jq '[.[] | select(.draft and .name == "r5 seed")] | first')
+          if [ -z "$rel" ] || [ "$rel" = "null" ]; then
+            echo "::error::no live world in the Actions cache and no seed release." \
+                 "On the Mac: ops/r5_seed.sh, then re-run this workflow."
+            exit 1
+          fi
+          asset=$(echo "$rel" | jq -r '.assets[] | select(.name == "r5_live.tar.enc") | .id')
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+               -o "$SNAPSHOT" "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$asset"
+          echo "release_id=$(echo "$rel" | jq -r .id)" >> "$GITHUB_OUTPUT"
+          ls -l "$SNAPSHOT"
+
+      - name: Decrypt
+        env:
+          R5_STORE_KEY: ${{ secrets.R5_STORE_KEY }}
+        run: |
+          mkdir -p data
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass env:R5_STORE_KEY \
+                  -in "$SNAPSHOT" | tar -C data -xf -
+          ls -l data/r5_live
+
+      - name: Weekly cycle
+        env:
+          SHARADAR_API_KEY: ${{ secrets.SHARADAR_API_KEY }}
+          AS_OF: ${{ inputs.as_of }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          args=(--commit)
+          [ -n "$AS_OF" ] && args+=(--as-of "$AS_OF")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          uv run stocks-ml r5-weekly "${args[@]}"
+
+      - name: Signal → run summary
+        run: |
+          latest=$(ls signals_r5/*.md | sort | tail -n1)
+          cat "$latest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Encrypt the refreshed world
+        env:
+          R5_STORE_KEY: ${{ secrets.R5_STORE_KEY }}
+        run: |
+          rm -f "$SNAPSHOT"
+          tar -C data -cf - r5_live | openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
+                  -pass env:R5_STORE_KEY -out "$SNAPSHOT"
+          ls -l "$SNAPSHOT"
+
+      - name: Save the snapshot for next week
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SNAPSHOT }}
+          key: r5-live-${{ github.run_id }}
+
+      - name: Retire the seed release (its snapshot now lives in the cache)
+        if: steps.seed.outputs.release_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/${{ steps.seed.outputs.release_id }}"
+
+  keepalive:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 13 * * 3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Touch the snapshot so it is not evicted as idle
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SNAPSHOT }}
+          key: r5-live-keepalive-${{ github.run_id }}
+          restore-keys: |
+            r5-live-

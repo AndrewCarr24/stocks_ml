@@ -207,19 +207,32 @@ def cmd_ledger(args, cfg):
 def cmd_r5_weekly(args, cfg):
     """The champion's weekly signal (live/r5.py): refresh the live world,
     rank, rotate a sleeve, fill last week's orders, write signals_r5/ and
-    ledger_r5.json. Runs from launchd on the owner's Mac (ops/r5_weekly.sh)."""
-    import subprocess
-
+    ledger_r5.json. Runs on GitHub Actions (.github/workflows/champion.yml);
+    ops/r5_weekly.sh runs the same cycle on the owner's Mac."""
     from stocks_ml.live.r5 import run_weekly
     rep = run_weekly(args.live_dir, cfg, as_of=args.as_of, refresh=not args.no_refresh,
                      sec=not args.no_sec, dry_run=args.dry_run, capital=args.capital,
                      out_dir=args.out_dir, ledger_path=args.ledger)
     if args.commit and not args.dry_run:
-        t = rep["signal"]["date"]
-        subprocess.run(["git", "add", args.out_dir, args.ledger], check=True)
-        subprocess.run(["git", "commit", "-q", "-m", f"r5: signal {t}"], check=True)
-        subprocess.run(["git", "push", "-q"], check=True)
-        print(f"committed and pushed r5: signal {t}")
+        commit_outputs(rep["signal"]["date"], [args.out_dir, args.ledger])
+
+
+def commit_outputs(t: str, paths: list[str], run=None) -> bool:
+    """git add/commit/push the champion's outputs. A rerun on the same
+    Friday regenerates identical files: nothing staged, nothing committed.
+    Rebases onto origin before pushing so a commit that landed during the
+    ~20-minute cycle does not reject the push."""
+    import subprocess
+    run = run or (lambda cmd, **kw: subprocess.run(cmd, **kw))
+    run(["git", "add", *paths], check=True)
+    if run(["git", "diff", "--cached", "--quiet"]).returncode == 0:
+        print(f"r5: signal {t} unchanged; nothing to commit")
+        return False
+    run(["git", "commit", "-q", "-m", f"r5: signal {t}"], check=True)
+    run(["git", "pull", "-q", "--rebase"], check=True)
+    run(["git", "push", "-q"], check=True)
+    print(f"committed and pushed r5: signal {t}")
+    return True
 
 
 def main():

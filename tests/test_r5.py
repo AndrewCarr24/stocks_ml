@@ -226,3 +226,29 @@ def test_render_markdown_lists_book_and_fills():
     assert "| SPY | ballast |  | 20.00% |" in md
     assert "| 2026-08-24 | A1 | +1.5000 | $10.00 | $0.0075 |" in md
     assert "A1 ×0.500000" in md and "Top-1 of 480" in md
+
+
+def test_commit_outputs_skips_when_nothing_changed():
+    """A rerun on the same Friday regenerates identical files: no empty
+    commit, no push; a real change is committed, rebased and pushed."""
+    from types import SimpleNamespace
+
+    from stocks_ml.cli import commit_outputs
+
+    def fake_run(staged_changes):
+        calls = []
+
+        def run(cmd, **kw):
+            calls.append(cmd[:2])
+            rc = 1 if (cmd[:2] == ["git", "diff"] and staged_changes) else 0
+            return SimpleNamespace(returncode=rc)
+        return run, calls
+
+    run, calls = fake_run(staged_changes=False)
+    assert commit_outputs("2026-08-28", ["signals_r5", "ledger_r5.json"], run=run) is False
+    assert calls == [["git", "add"], ["git", "diff"]]
+
+    run, calls = fake_run(staged_changes=True)
+    assert commit_outputs("2026-08-28", ["signals_r5", "ledger_r5.json"], run=run) is True
+    assert calls == [["git", "add"], ["git", "diff"], ["git", "commit"], ["git", "pull"],
+                     ["git", "push"]]
