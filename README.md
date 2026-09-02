@@ -1,348 +1,193 @@
 # stocks_ml
 
-`stocks_ml` is an availability-dated historical-reconstruction and
-machine-learning system that ranks S&P 500 stocks by expected weekly excess
-return, evaluates long-only strategies, and runs a $100 live paper portfolio.
-It uses only free data and has no broker integration.
+`stocks_ml` ranks S&P 500 stocks on a one-month horizon with a small gradient-
+boosted model, wraps the ranking in a rules-based long-only book with an
+index/Treasury ballast, and runs that system every week as a $100 paper
+portfolio. Its selection procedure is mechanical and pre-registered, its data
+is point-in-time, and the last two years are a sealed holdout.
 
-The model predicts each stock's next five-trading-day open-to-open return minus
-that week's cross-sectional median return. This is a stock-ranking problem, not
-a market-direction forecast. The primary metric is mean weekly Spearman rank
-information coefficient (IC).
+There is no broker integration. The weekly job proposes a book; a human
+places the orders.
 
-## Current checked-in state
+## The champion
 
-- **Champion:** Optuna-tuned XGBoost, mean weekly rank IC **0.0198**.
-- **Runner-up:** Optuna-tuned ElasticNet, mean IC **0.0190**.
-- Both models have positive IC in all four validation folds and rankable
-  predictions for all **488/488** evaluation weeks.
-- The most recent two calendar years are an untouched holdout: tuning and
-  champion selection cannot inspect them.
-- The production panel currently contains 48 features. Optional feature gaps
-  are retained and handled conservatively rather than deleting stocks or weeks.
-- The checked-in live strategy is `vol_scaled`.
-- The test suite contains 231 tests and is expected to pass with zero warnings.
+The production system is `r5` — declared 2026-09-01 after a month-horizon
+rebuild, specified in [models/champion_spec.json](models/champion_spec.json)
+and summarized in [PROCEDURE.md](PROCEDURE.md).
 
-For exact model results see [models/selection.md](models/selection.md). For the
-latest strategy results see [reports/backtest.md](reports/backtest.md). The
-source-timing audit is in
-[reports/source_point_in_time_audit.md](reports/source_point_in_time_audit.md).
+| Component | Spec |
+|---|---|
+| Model | depth-3 XGBoost, untuned by design (hyperparameter search measured as noise) |
+| Target | the stock's 4-week open-to-open return minus that week's median member's; 35-day purge |
+| Training | weekly refit on the trailing 5 years; early stopping on a purged, time-ordered tail's weekly rank correlation |
+| Ensemble | K=4 copies (seed + whole-week bootstrap), predictions averaged |
+| Book | top-6, equal weight, four staggered sleeves — one rotates each week, so every name is held four weeks; max 2 per sector |
+| Ballast | 70% book / 30% ballast; ballast in SPY, shifted to IEF one third per breached SPY trailing mean (30/40/52 weeks) |
+| Costs | 5 bp one-way, fills at Monday's open |
+
+**Record, 2006 → 2024-06 (selection window, costs included):** $100 →
+**$1,586**, +16.8%/yr, Sharpe 0.74, max drawdown 58% — vs SPY $563,
++10.2%/yr, Sharpe 0.62, drawdown 54%. Read this with the spec's own caveat:
+the edge is era-concentrated (strong 2013–2020, index-like in whipsaw and
+mega-cap regimes), every number from the selection window carries
+design-iteration shine (measured at about +3.8%/yr on dollars, ~0 on Sharpe),
+and sizing should assume SPY-like outcomes in adverse regimes. The holdout
+(2024-07-19 onward) has not been graded; it is a single-use exam.
+[reports/r5_package_2006_2024.png](reports/r5_package_2006_2024.png) shows two
+of the package's ballast variants against SPY over the same window.
+
+### How it was chosen
+
+The procedure is a fixed cascade run on the selection window only, one
+decision per layer, each by a metric declared in advance:
+
+| step | menu | decided by |
+|---|---|---|
+| horizon | 1w vs 4w | cost-adjusted compounded return of the top-6 book |
+| training window | 1–5 years | top-6 edge vs a random basket on identical weeks |
+| book size | top-3 / 6 / 10 | cost-adjusted compounded return |
+| stagger | always on | mechanism, not searched |
+| ballast | none / half-gate / 80-20 / 70-30 / 60-40 | Sharpe |
+| stop-loss | off / −25% | Sharpe (adopt only if higher) — off |
+| sector cap | off / 2-of-book | Sharpe (adopt only if higher) — on |
+
+`stocks-ml select` runs it end to end. The cascade was validated by a nested
+test ([reports/nested_selection_protocol.md](reports/nested_selection_protocol.md)):
+run on 2006–2015 alone it chose a near-champion configuration, whose frozen
+grade on 2016 → 2024-07 was $497 (+21.4%/yr, Sharpe 1.00, drawdown 36%) vs
+SPY $295 (+14.0%/yr, 0.85, 32%) — the same span selected in-window gives
+$643, which is where the +3.8%/yr inflation estimate comes from.
+Every configuration ever evaluated is in
+[models/trials_ledger.json](models/trials_ledger.json). The champion is never
+re-tuned on a calendar: nested experiments showed calendar re-selection at any
+cadence adds drawdown without reliable return. Re-selection happens only on a
+structural trigger (a new data source passes its gate, a pre-registered kill
+criterion fires, or the owner directs it).
+
+## The weekly job
+
+[`.github/workflows/champion.yml`](.github/workflows/champion.yml) is the only
+workflow. Every Saturday 13:00 UTC it runs `stocks-ml r5-weekly --commit`
+([src/stocks_ml/live/r5.py](src/stocks_ml/live/r5.py)):
+
+1. **Refresh the live world** ([data/world.py](src/stocks_ml/data/world.py)):
+   Sharadar S&P 500 membership, prices (incremental by `lastupdated`, upserted
+   by ticker and date), fundamentals (full refetch, refuses to shrink), insider
+   filings; then SEC EDGAR company facts and 8-Ks, FINRA short interest and
+   FRED. Symbol renames are detected by permanent ticker id and rewritten in
+   every stored table so history carries over.
+2. **Rebuild the panel** with the research recipe, then fit the K=4 ensemble
+   on the trailing five years and rank every current member.
+3. **Rotate the due sleeve** (the schedule is anchored so a rerun on the same
+   Friday is a no-op), set the ballast state from SPY's trailing means, and
+   write target weights.
+4. **Keep the paper ledger** ([ledger_r5.json](ledger_r5.json)): fill last
+   week's targets at Monday's open, sells before buys, 5 bp each way, never
+   overdrawn, rebalances under 0.5% of NAV skipped; then mark NAV at Friday's
+   close against SPY buy-and-hold from the same $100.
+5. **Commit** `signals_r5/<friday>.md` (the book with per-name deltas, the
+   sleeves, the top-15 candidates, data freshness) and the ledger, as
+   `r5: signal <friday>`. The report is also on the run's summary page.
+
+A run fails loudly — the panel must end on the most recent Friday — rather
+than signal on stale data. Manual runs (`workflow_dispatch`) accept `as_of`
+and `dry_run`.
+
+**Licensed data never enters this public repository.** The Sharadar key is the
+`SHARADAR_API_KEY` repository secret. The live data store (about 0.5 GB)
+travels between runs as an AES-256 tarball in the Actions cache, encrypted
+with the `R5_STORE_KEY` secret; a snapshot is saved only after a successful
+run, and a Wednesday keepalive job stops GitHub's 7-day idle eviction. When
+the cache is empty, the run seeds itself from a draft release uploaded by
+[ops/r5_seed.sh](ops/r5_seed.sh) (drafts are invisible to the public) and
+deletes it afterwards. [ops/r5_weekly.sh](ops/r5_weekly.sh) runs the same
+cycle on a Mac by hand.
+
+## Data
+
+- **Sharadar** (Nasdaq Data Link, licensed; key required): S&P 500
+  constituents with join/leave dates from 1998, daily prices for every
+  historical member including delisted ones (dividend-adjusted opens and
+  closes), quarterly fundamentals dated by filing, and insider transactions.
+  This is what makes the universe survivorship-clean; the earlier free-data
+  world was missing about 200 delisted constituents, and the edge it showed
+  turned out to be a data artifact.
+- **SEC EDGAR** company facts and 8-K filings, **SEC Form 4** insider filings
+  (the Sharadar insider table bridges the gap after the last quarterly SEC
+  file), **FINRA** short interest, **FRED** macro series (only the ALFRED-
+  audited `T10Y2Y` and `FEDFUNDS` families are admitted as features).
+
+Point-in-time rules: membership is effective-dated; filings become usable the
+next calendar day; FINRA and macro observations carry their publication lags;
+features are rank-normalized within each week; the label starts at the next
+open and records when it becomes observable; training, early stopping and
+validation are separated by purge gaps sized to the label horizon. The
+no-lookahead tests corrupt future inputs and require past outputs to stay
+unchanged — if they fail, fix the implementation, not the tests.
 
 ## Installation
 
-Python 3.12 is recommended. `automl_tool`, one of the benchmark candidates,
-requires Python earlier than 3.13.
+Python 3.12 (`automl_tool`, a legacy benchmark candidate, needs < 3.13).
 
 ```bash
 uv sync
-uv run pytest
+uv run pytest        # 341 tests; must stay green with zero warnings
 ```
 
-All commands read [config/config.yaml](config/config.yaml). Important settings
-include the forecast horizon, purge gap, CV dates, transaction costs, strategy
-risk limits, FRED availability lags, and `live_strategy`.
-
-## Full research pipeline
-
-Run the current end-to-end pipeline with:
+Running the champion locally needs `data/.sharadar_key` (or
+`SHARADAR_API_KEY`) and a live store under `data/r5_live/`; `data/` is
+git-ignored in full.
 
 ```bash
-uv run stocks-ml ingest
-uv run stocks-ml train
-uv run stocks-ml backtest
+uv run stocks-ml r5-weekly [--as-of FRIDAY] [--no-refresh] [--no-sec] [--dry-run] [--commit]
+uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]
+uv run stocks-ml procedure-card      # regenerate PROCEDURE.md from the champion spec
+uv run stocks-ml leaderboard         # render the earnings-ranked board of evaluated books
 ```
 
-These are deliberately separate commands. Data can be refreshed without model
-selection, and a frozen champion recipe can be backtested without retuning it.
+All commands read [config/config.yaml](config/config.yaml).
 
-### 1. `stocks-ml ingest`
+## The legacy pipeline
 
-Ingestion updates the source datasets and then rebuilds the complete weekly
-modeling panel. The stages run in this order:
+The repository began as a one-week-horizon system on free data (yfinance
+prices, Wikipedia membership) with its own tuning tournament, backtester,
+strategy zoo and paper ledger. It is retired but still runs, and its history
+is why the champion looks the way it does:
 
-1. **S&P 500 membership** — downloads Wikipedia's current constituent table and
-   effective-dated additions/removals. Historical membership is reconstructed
-   backward from the change log, while the current table's `Date added` anchors
-   active membership stints.
-2. **Adjusted prices** — downloads adjusted daily open, high, low, close, and
-   volume from yfinance for every historical member and SPY. Requests are
-   batched and retried; individual ticker failures are recorded rather than
-   aborting the entire run. Histories with repeated split-sized jumps are
-   rejected as likely corrupt.
-3. **Macro data** — downloads configured FRED series and applies explicit
-   calendar-day publication lags. Only the ALFRED-audited `T10Y2Y` and
-   `FEDFUNDS` families enter the production model. Revision-prone series remain
-   stored for diagnostics or reporting but are excluded from model features.
-4. **Fundamentals** — downloads SEC EDGAR Company Facts for current members and
-   maps configured XBRL concepts such as revenue, income, assets, equity, cash
-   flow, and shares.
-5. **Corporate events** — downloads effective-dated SEC 8-K submission data for
-   the historical universe.
-6. **Insider activity** — ingests SEC Form 4 filings.
-7. **Short interest** — ingests FINRA short-interest history with its
-   publication delay.
-8. **Panel construction** — creates the point-in-time weekly member grid,
-   features, labels, coverage statistics, and the persisted model panel.
-
-Parquet datasets are written under `data/`; source status, failures, and feature
-coverage are summarized in [data/manifest.json](data/manifest.json). Incremental
-price ingestion updates known histories and fetches full history for new
-tickers. It does not repair arbitrary old gaps within an existing ticker. Use
-`uv run stocks-ml ingest --full` to delete all persisted Parquet datasets and
-refetch complete price histories. This option retains `data/manifest.json`;
-manifest-driven completion markers, notably older Form 4 quarters, are not
-reset by `--full`.
-
-#### Panel, features, and labels
-
-The panel is sampled at the last trading day on or before each Friday. Its base
-grid is the point-in-time index membership universe, and optional data is
-left-joined so a missing fundamental, filing, short-interest observation, or
-price-derived feature cannot silently remove a member.
-
-Feature families include:
-
-- momentum, reversal, volatility, beta, and residual-return signals;
-- liquidity, volume, overnight, and intraday measures;
-- filing-dated fundamentals and 8-K event indicators;
-- Form 4 insider and FINRA short-interest features;
-- audited market and macro features.
-
-Ordinary stock-level features are ranked cross-sectionally to $(-1, 1]$ each
-week. Optional missing values are neutral-filled with zero only after ranking.
-Time-only and binary event/market/macro features are rank-exempt. Current GICS
-sectors from Wikipedia are not effective-dated, so sector-derived features are
-excluded from production matrices.
-
-The label starts at the next trading-day open and ends five trading days later.
-It is centered using only that week's point-in-time members, and
-`label_end_date` records when it becomes observable. Price calculations do not
-implicitly fill missing observations into zero returns.
-
-### Optional: tune model families
-
-Hyperparameter tuning is not part of every `train` run. Existing tuned recipes
-under `models/` are reusable inputs to the champion tournament. To refresh one
-family with Optuna:
+- Week-ahead ranking skill existed around 2001–2004 and has been
+  indistinguishable from noise since; month-scale structure is real and
+  concentrated in a handful of features, and Sharadar fundamentals add to it
+  at that horizon (all pre-registered tests).
+- No in-sample screen — CV rank IC, realized top-k excess, Optuna objectives
+  — predicted out-of-sample dollars; walked exams are the only evidence
+  accepted.
+- Re-tuning on a calendar was destructive at every cadence tested.
 
 ```bash
-uv run stocks-ml tune --family xgb --optuna
-uv run stocks-ml tune --family enet --optuna
+uv run stocks-ml ingest [--full]          # free-data world + panel
+uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
+uv run stocks-ml train                    # champion tournament -> models/selection.md
+uv run stocks-ml backtest                 # -> reports/backtest.md
+uv run stocks-ml pipelines                # multi-pipeline league -> reports/pipelines.md
+uv run stocks-ml signals                  # legacy weekly signal
+uv run stocks-ml ledger init|apply|mark|show
+uv run stocks-ml torture                  # survivorship stress test
 ```
 
-Supported families are `xgb`, `lgbm`, `catboost`, and `enet`; omit `--optuna`
-to use the random-search tuner. Both methods optimize only pre-holdout purged
-walk-forward CV rank IC. Optuna writes the selected recipe, a Markdown report,
-and complete trial diagnostics under `models/`.
+Its artifacts (`models/champion.joblib`, `signals/`, `ledger.json`,
+`ledger_ltr.json`, `reports/backtest.md`) are frozen history. The free-data
+limitations documented in [AGENTS.md](AGENTS.md) — missing delisted tickers,
+unofficial price sources, non-effective-dated sectors — apply to that world,
+not to the Sharadar world the champion runs on.
 
-Optuna-tuned XGBoost uses a 5,000-tree safety ceiling with early stopping on a
-separate, time-ordered, purged tail of each training set. Its stopping metric is
-mean weekly Spearman IC—not row-level RMSE. The untuned and random-search XGBoost
-candidates use lower tree ceilings.
+## Where to look
 
-### 2. `stocks-ml train`
-
-Training runs the champion tournament. It loads the panel and available tuned
-recipes, then compares model candidates, an ensemble when applicable, and zero
-and momentum baselines on the same calendar:
-
-- four contiguous validation folds beginning in March 2015;
-- one frozen model per fold;
-- the immediately preceding two calendar years for each fold's training data;
-- a ten-calendar-day purge between training and validation;
-- no labels whose return horizon reaches the protected holdout;
-- no holdout covariates in tuning, selection, or rankability checks.
-
-A candidate is eligible only if every fold has finite IC and every expected
-week has finite, non-constant, rankable predictions. Missing weeks cannot be
-silently dropped to improve a score. An ML candidate must also beat the
-baselines; otherwise selection falls back to momentum.
-
-The command writes:
-
-- `models/selection.md` — candidate scores, fold ICs, and coverage;
-- `models/champion.json` — champion identity and selection metadata;
-- `models/champion.joblib` — the frozen estimator **recipe**.
-
-The serialized champion is intentionally a recipe, not permanently fitted
-weights. Backtests and live signals clone and refit it using only the training
-history available at each decision date.
-
-### 3. `stocks-ml backtest`
-
-The backtest walks chronologically through weekly signal dates. At each
-four-week retraining point it clones the champion recipe and fits it on the
-preceding two calendar years, ending ten calendar days before the signal. It
-predicts the current reconstructed universe, asks the strategy for target
-weights, and trades at the first following trading-day open.
-
-The simulator enforces long-only weights, total exposure no greater than 100%,
-cost-netted purchases, and no leverage. It charges the configured one-way
-transaction cost (currently 5 bps) and marks NAV daily at closes. The first
-capital observation is retained so initial costs and the first execution-day
-return are not erased by normalization.
-
-All three strategies use only positive model forecasts:
-
-- **`equal_topk`** — equal slots for up to the top eight names;
-- **`vol_scaled`** — inverse-volatility top-eight weights, a 15% annualized
-  portfolio-volatility cap, and drawdown hysteresis that halves exposure at 15%
-  drawdown and moves to cash at 25%;
-- **`kelly`** — capped quarter-Kelly sizing with no short positions or leverage.
-
-The report adds SPY buy-and-hold and Treasury-bill cash benchmarks, regime and
-stress-period slices, and a separately labeled view of the untouched holdout.
-It writes [reports/backtest.md](reports/backtest.md) and `reports/equity.png`.
-The holdout may be reported here only after all model and strategy choices are
-frozen; it is never fed back into tuning or champion selection.
-
-## Weekly live paper cycle
-
-Initialize the ledger once:
-
-```bash
-uv run stocks-ml ledger init --cash 100
-```
-
-After the Friday close, the manual shadow cycle is:
-
-```bash
-uv run stocks-ml ingest
-uv run stocks-ml signals
-uv run stocks-ml ledger apply
-uv run stocks-ml ledger mark
-```
-
-What happens during that cycle:
-
-1. **Refresh data and rebuild the panel.** The same ingestion and feature code
-   used by research runs, preventing a separate live feature implementation
-   from drifting away from training.
-2. **Refit the frozen champion recipe.** `signals` clones the selected recipe
-   and fits it on labeled observations from the trailing two calendar years,
-   stopping ten calendar days before the latest panel date.
-3. **Score the latest universe.** The model predicts every eligible member
-   represented on the latest persisted panel date. The configured
-   `live_strategy` converts positive forecasts and trailing volatility into
-   long-only target weights.
-4. **Restore risk state.** The volatility-scaled strategy replays ledger NAV
-   history to restore its drawdown-guard hysteresis before sizing positions.
-5. **Create an order proposal.** Current paper NAV and the latest available
-   closes are used to convert target weights to fractional target shares and
-   share deltas. The command writes `signals/YYYY-MM-DD.md` and
-   `signals/YYYY-MM-DD-trades.json`.
-6. **Apply the paper trades.** `ledger apply` sells before buying, charges the
-   configured one-way costs, prevents a cash overdraft, and skips an already
-   recorded trade file by default. `--force` deliberately overrides that
-   duplicate-file protection.
-7. **Mark the account.** `ledger mark` values cash and positions at the latest
-   available closes and appends the result to NAV history.
-
-`ledger.json` stores cash, fractional positions, trades, applied signal files,
-and NAV marks. Use `uv run stocks-ml ledger show` to inspect it.
-
-### Important execution limitation
-
-Signal reports state that orders should execute at the next market open, but
-the automated paper workflow currently writes and applies each trade using the
-latest-close reference price embedded in the generated JSON. It does not wait
-for or retrieve actual next-open fills. This makes the ledger a shadow signal
-tracker, not a realistic execution simulator. For manual paper accounting,
-replace the JSON prices with actual fills before applying the file.
-
-No broker credentials or order-routing code exist in this repository.
-
-## GitHub Actions
-
-Two scheduled workflows share one concurrency group so they cannot modify
-tracked artifacts simultaneously:
-
-- **Weekly:** `.github/workflows/weekly.yml` runs Saturdays at 13:00 UTC. It
-  restores cached data, runs `ingest → signals → ledger apply → ledger mark`,
-  saves the refreshed cache, commits `signals/` and `ledger.json`, and opens a
-  tracking issue containing the signal report.
-- **Monthly:** `.github/workflows/retrain.yml` runs at 06:00 UTC on the first of
-  each month. It restores cached data, runs `ingest → train → backtest`, saves
-  the cache, and commits `models/` and `reports/`. It reuses existing tuned
-  hyperparameters; it does **not** launch Optuna.
-
-Both workflows support manual `workflow_dispatch` runs. Because CI commits the
-audit artifacts, synchronize the repository before a local weekly cycle or
-retrain to avoid diverging histories.
-
-Partial yfinance failures are logged and summarized in the manifest. A failed
-ticker does not necessarily fail the whole job; workflow-level failures appear
-in the Actions tab.
-
-## Point-in-time safeguards
-
-- Historical index membership is reconstructed into effective-dated stints.
-- Date-only EDGAR and Form 4 records become usable on the next calendar day.
-- FINRA and macro observations receive explicit publication lags.
-- Only ALFRED-audited macro families enter production features.
-- Revision-prone macro and non-effective-dated sector features are excluded.
-- Labels begin after the signal date and carry their own observability date.
-- Outer CV and model-internal validation use time-ordered purge gaps.
-- Optional feature gaps do not delete rows or weeks.
-- Every candidate must cover the identical dynamically derived evaluation
-  calendar.
-- Strategy weights are validated as long-only and unlevered.
-
-The no-lookahead tests deliberately corrupt future inputs and require past
-outputs to remain unchanged. If those tests fail, fix the implementation—not
-the tests.
-
-## Known limitations
-
-- yfinance is an unofficial source and can be rate-limited or return malformed
-  adjusted histories.
-- Membership, adjusted price histories, and FRED data are reconstructed from
-   current source snapshots rather than a complete archive of every historical
-   source vintage. Unknown membership starts fall back to the configured 1996
-   floor. The admitted macro series were compared with available ALFRED
-   vintages, but `T10Y2Y` vintage coverage begins in 2014. These limitations are
-   more relevant to the 2005+ backtest than to the March 2015+ selection window.
-- Free data is unavailable for roughly 200 historical/delisted constituents,
-  including important bankruptcies. The resulting residual survivorship bias
-  cannot be eliminated with the current sources. Run
-  `uv run stocks-ml torture` and see
-  [reports/survivorship_torture.md](reports/survivorship_torture.md) for the
-  quantified stress tests.
-- The backtest forward-fills its daily open/close matrices for valuation and
-  execution. Stale terminal prices for delisted securities are therefore a
-  remaining realism risk; removal-haircut torture tests provide a conservative
-  sensitivity analysis.
-- Wikipedia's current sectors are not historically effective-dated, so sector
-  features are intentionally unavailable.
-- Fundamentals are sparse in early history, short interest begins around 2018,
-  and data-source outages remain possible. Neutral filling protects calendar
-  comparability but cannot create missing information.
-- Backtest fills and the automated live paper fills are simplified. Results do
-  not establish that the same returns are achievable with real orders.
-- `data/manifest.json` writes are not atomic. If it is interrupted and becomes
-  invalid, remove it and rerun ingestion. Ledger writes are atomic.
-
-## Command reference
-
-```bash
-uv run stocks-ml ingest
-uv run stocks-ml ingest --full
-uv run stocks-ml tune --family xgb --optuna  # family: xgb, lgbm, catboost, or enet
-uv run stocks-ml tune --family xgb           # random search when --optuna is omitted
-uv run stocks-ml train
-uv run stocks-ml backtest
-uv run stocks-ml signals
-uv run stocks-ml ledger init --cash 100
-uv run stocks-ml ledger apply
-uv run stocks-ml ledger apply --file path/to/trades.json
-uv run stocks-ml ledger apply --file path/to/trades.json --force
-uv run stocks-ml ledger mark
-uv run stocks-ml ledger show
-uv run stocks-ml torture
-uv run pytest
-```
-
-The original design is documented in
-[docs/superpowers/specs/2026-07-07-stocks-ml-design.md](docs/superpowers/specs/2026-07-07-stocks-ml-design.md),
-with implementation history in
-[docs/run-notes-2026-07-11.md](docs/run-notes-2026-07-11.md).
+- [AGENTS.md](AGENTS.md) — the full project context: every campaign, verdict
+  and rule, in order.
+- [PROCEDURE.md](PROCEDURE.md) — the champion's procedure card (generated
+  from the spec).
+- [models/trials_ledger.json](models/trials_ledger.json) — every evaluated
+  configuration.
+- [reports/](reports/) — backtests, ablations, the nested-selection protocol
+  and the survivorship torture tests.
+- [docs/research/](docs/research/) — notes on the papers the design leans on.
