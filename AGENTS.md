@@ -15,12 +15,15 @@ The owner's goal: turn $100 into more, without ever blowing up the account.
   2-calendar-year window (`cv_train_years: 2`) with a 10-day purge; exact dates
   are in `reports/rolling_cv.md`. The last 2 years
   (2024-07 → now) are a **holdout** never used for tuning or selection.
-- **Live:** GitHub Actions runs the weekly cycle every Saturday 13:00 UTC
-  (signals + paper ledger, committed back to the repo). The monthly retrain
-  was retired 2026-09-01 (schedule removed, `workflow_dispatch` only): it
-  re-tuned the legacy tournament on a calendar, which 9f showed loses to a
-  frozen model; `models/champion.joblib` is frozen at the 2026-09-01 fit and
-  the production champion is `models/champion_spec.json`. Live strategy is `topk_spy` (config `live_strategy`): the model's
+- **Live (legacy, retired 2026-09-01):** both GitHub Actions jobs are now
+  `workflow_dispatch` only. The monthly retrain re-tuned the legacy
+  tournament on a calendar, which 9f showed loses to a frozen model
+  (`models/champion.joblib` is frozen at the 2026-09-01 fit). The weekly
+  shadow cycle (signals + paper ledger for that legacy champion) had failed
+  every Saturday since 2026-08-08 — a Wikipedia table-format change, then a
+  ledger fill-sizing bug that ignores trading cost. The production champion
+  is `models/champion_spec.json`; its weekly job runs locally (see
+  "r5 weekly job" below once built). The legacy live strategy was `topk_spy` (config `live_strategy`): the model's
   top-k equal-weighted, unfilled slots held in SPY. k-sweep 2026-08-12
   (pre-holdout-selected, protocol declared before results): champion k=16
   (pre-holdout Sharpe 0.63 vs 0.52 at the old k=8; its now-admissible holdout

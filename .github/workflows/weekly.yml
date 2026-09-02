@@ -1,9 +1,13 @@
-name: Weekly shadow-deployment cycle
+name: Weekly shadow-deployment cycle (retired 2026-09-01; manual only)
 
+# Schedule removed 2026-09-01. This cycle paper-traded the legacy champion
+# (models/champion.joblib, topk_spy) and opened a weekly issue. It had failed
+# every Saturday since 2026-08-08 (a Wikipedia table-format change, then a
+# ledger fill-sizing bug that ignores trading cost: "trade would overdraw
+# cash"). The production champion is now models/champion_spec.json; its
+# weekly signal job runs on the owner's Mac (needs the Sharadar key and hours
+# of compute). Left dispatchable so the legacy ledger can be closed out by hand.
 on:
-  schedule:
-    # Saturday 13:00 UTC — after Friday close.
-    - cron: "0 13 * * 6"
   workflow_dispatch:
 
 permissions:
