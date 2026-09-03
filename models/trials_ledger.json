@@ -19930,5 +19930,20 @@
   "kind": "strategy_variant",
   "name": "lgbm_tuned+topk_spy",
   "pre_holdout_sharpe": 0.4497
+ },
+ {
+  "date": "2026-09-02",
+  "kind": "nested_procedure",
+  "name": "nested2_verdict_amended",
+  "notes": "Amends nested2_verdict (as-graded $497 vs SPY $295, +21.4 vs +14.0, SR 1.00 vs 0.85) after the rank-date alignment fix (commit dccca9a): 13 Thursday-dated picks in the OOS window (Friday holidays) were paid for the week that had already ended and the following week was dropped from both rows. Corrected frozen grade 2016 -> 2024-06-21 (443 weeks), same 4w/5y/top10/60-40/no stop/cap 2 config: $464 (+19.7%/yr, SR 0.94, DD 36%) vs SPY $307 (+14.1, 0.85, 32%). Honest transferable edge ~+5.6%/yr, not +7.4. Champion headline ($1,586 vs $563) and the selection-inflation figure were graded on the old join and are not yet re-run.",
+  "terminal_100": 464.2,
+  "spy_terminal_100": 307.0,
+  "cagr_pct": 19.75,
+  "spy_cagr_pct": 14.07,
+  "sharpe": 0.942,
+  "spy_sharpe": 0.851,
+  "max_dd": 0.359,
+  "spy_max_dd": 0.318,
+  "n_weeks": 443
  }
 ]

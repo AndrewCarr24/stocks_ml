@@ -31,6 +31,10 @@ their original file references on purpose.
   $100 → $1,586 (+16.8%/yr, Sharpe 0.74, DD 58%) vs SPY $563 (+10.2%/yr,
   0.62, 54%), read with the spec's caveats (era-concentrated edge, ~+3.8%/yr
   of design-iteration shine on dollars, size for SPY-like adverse regimes).
+  Those figures were graded before the rank-date fix (commit dccca9a:
+  Thursday-dated picks were paid for the week that had already ended) and
+  are not yet re-run; the nested OOS grade re-run on the fixed join is
+  $464 vs SPY $307 (ledger `nested2_verdict_amended`), not $497 vs $295.
 - **Selection is mechanical** (`stocks-ml select`, selection.py): a fixed
   cascade — horizon, training window, book size, ballast, stop-loss, sector
   cap — one decision per layer by a metric declared in advance, run on the
