@@ -148,28 +148,12 @@ uv run stocks-ml procedure-card      # regenerate PROCEDURE.md from the champion
 
 All commands read [config/config.yaml](config/config.yaml).
 
-## The legacy pipeline
+## History
 
-The repository began as a one-week-horizon system on free data (yfinance
-prices, Wikipedia membership) with its own tuning tournament, backtester,
-strategy zoo and paper ledger. It was retired on 2026-09-01 and removed from
-the tree on 2026-09-02; everything — code, tuned recipes, leaderboards,
-reports, signals and ledgers — is one checkout away at the tag
-`legacy-final` (`git show legacy-final:<path>`, or
-`git worktree add ../legacy legacy-final`). Its history is why the champion
-looks the way it does:
-
-- Week-ahead ranking skill existed around 2001–2004 and has been
-  indistinguishable from noise since; month-scale structure is real and
-  concentrated in a handful of features, and Sharadar fundamentals add to it
-  at that horizon (all pre-registered tests).
-- No in-sample screen — CV rank IC, realized top-k excess, Optuna objectives
-  — predicted out-of-sample dollars; walked exams are the only evidence
-  accepted.
-- Re-tuning on a calendar was destructive at every cadence tested.
-- The free-data world was missing about 200 delisted constituents, and the
-  edge it showed turned out to be a data artifact — the reason the champion
-  runs on Sharadar.
+The repository began as a one-week-horizon system on free data; that
+pipeline was retired on 2026-09-01 and removed from the tree on 2026-09-02.
+Its code, reports and paper ledgers are at the tag `legacy-final`, and the
+reasons it lost are recorded in [AGENTS.md](AGENTS.md).
 
 ## Where to look
 
