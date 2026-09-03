@@ -394,8 +394,10 @@ def render_markdown(sig: dict, smap: dict) -> str:
              "| ticker | sector | sleeves | weight | target $ | held $ | Δ $ |",
              "|---|---|---|---|---|---|---|"]
     held = sig["held_value"]
+    # ties (equal-weight names) break on the ticker: a rerun must reproduce
+    # the file byte for byte, and set order varies with the hash seed
     for tk in sorted(set(sig["weights"]) | set(held),
-                     key=lambda x: -sig["weights"].get(x, 0.0)):
+                     key=lambda x: (-sig["weights"].get(x, 0.0), x)):
         w = sig["weights"].get(tk, 0.0)
         cur = held.get(tk, 0.0)
         sector = "ballast" if tk in FUNDS else smap.get(tk, "?")

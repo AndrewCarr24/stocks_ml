@@ -228,6 +228,23 @@ def test_render_markdown_lists_book_and_fills():
     assert "A1 ×0.500000" in md and "Top-1 of 480" in md
 
 
+def test_render_markdown_orders_equal_weights_by_ticker():
+    """Rerun-is-a-no-op depends on a byte-identical report; set iteration
+    order is hash-seeded, so equal-weight rows need a deterministic tie-break."""
+    names = ["C1", "A1", "B1", "A2", "B2", "C2"]
+    sig = {"date": "2026-08-28", "sleeve_due": 0, "rotated": [0],
+           "sleeves": {"0": {"names": names, "since": "2026-08-28"}},
+           "ballast": {"30": "SPY", "40": "SPY", "52": "SPY"},
+           "weights": {**{n: 0.7 / 6 for n in names}, "SPY": 0.3},
+           "nav": 100.0, "spy_nav": 100.0, "cash": 100.0, "held_value": {},
+           "fills": [], "rebase_factors": {}, "top": [], "n_ranked": 6,
+           "positions": {}, "freshness": {"panel": "2026-08-28"}, "elapsed_s": 1}
+    md = r5.render_markdown(sig, SMAP)
+    rows = [ln.split(" | ")[0].strip("| ") for ln in md.splitlines()
+            if ln.startswith("| ") and ln.split(" | ")[0].strip("| ") in {*names, "SPY"}]
+    assert rows == ["SPY", "A1", "A2", "B1", "B2", "C1", "C2"]
+
+
 def test_commit_outputs_skips_when_nothing_changed():
     """A rerun on the same Friday regenerates identical files: no empty
     commit, no push; a real change is committed, rebased and pushed."""

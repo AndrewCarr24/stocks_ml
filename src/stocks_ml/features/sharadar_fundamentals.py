@@ -3,7 +3,7 @@
 Point-in-time discipline (mirrors features/fundamentals.py for EDGAR):
 every fact becomes usable at its SEC filing date `date` plus one day (an
 after-close filing must not enter same-close signals). AR* dimensions only —
-guaranteed at ingest (data/sharadar_bulk.py).
+guaranteed at ingest (data/world.py keeps ARQ and ART only).
 
 Namespaces: f_sf_* (fundamentals), f_sfi_* (insiders) — deliberately distinct
 from the free-EDGAR f_earnings_yield family so ablations can compare sources.

@@ -1,7 +1,8 @@
 """The standardized K-copy ensembling protocol (iron rule 6 annex).
 
-Any finalist on a leaderboard is promoted only in its replicated-ensemble
-form, produced by exactly this procedure (owner-approved 2026-08-20):
+Every configuration the selection procedure grades — and the champion the
+weekly job runs — is the replicated-ensemble form produced by exactly this
+procedure (owner-approved 2026-08-20):
 
   * K = 4 copies, identical for every finalist and every model class.
   * Copy c (c = 1..K) re-rolls two dice, both seeded by c:
@@ -10,8 +11,8 @@ form, produced by exactly this procedure (owner-approved 2026-08-20):
       - a week-level bootstrap of every training window (same-size resample
         of whole weeks, with replacement) — the dice that deterministic
         models are sensitive to.
-  * The deployable/graded object is the equal-weight average of the K
-    copies' portfolios. Its exam score is what enters the leader leaderboard.
+  * The deployable/graded object averages the K copies' predictions
+    (selection.ensemble_preds) before the book is formed.
 
 The procedure is config-preserving by design: it never alters a
 hyperparameter (the t12 jitter study proved even small config changes can
@@ -24,8 +25,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin, clone
-
-K_COPIES = 4
 
 
 class WeekBootstrapEstimator(BaseEstimator, RegressorMixin):
@@ -63,35 +62,3 @@ class WeekBootstrapEstimator(BaseEstimator, RegressorMixin):
 
     def predict(self, X):
         return self.model_.predict(X)
-
-
-def average_books(books: list[pd.DataFrame]) -> pd.DataFrame:
-    """Equal-weight average of portfolio books on the union of their columns."""
-    if not books:
-        raise ValueError("average_books needs at least one book")
-    cols = sorted(set().union(*[b.columns for b in books]))
-    idx = books[0].index
-    return sum(b.reindex(index=idx, columns=cols).fillna(0.0) for b in books) / len(books)
-
-
-def replicated_ensemble(panel, prices, base_estimator, cfg, strategy_factory,
-                        start, k: int = K_COPIES, cache_prefix: str | None = None,
-                        walk_kwargs: dict | None = None):
-    """Run the full protocol for one finalist: K bootstrapped walks -> K books
-    -> one averaged ensemble book.
-
-    ``strategy_factory`` must return a FRESH strategy instance per call
-    (stateful strategies carry holdings memory). Returns (ensemble_book,
-    per_copy_books). Scoring is the caller's job, via the standard exam."""
-    from stocks_ml.backtest.simulator import run_backtest, walk_forward_predictions
-
-    books = []
-    for c in range(1, k + 1):
-        est = WeekBootstrapEstimator(base_estimator, bootstrap_seed=c)
-        cache = f"{cache_prefix}_copy{c}.parquet" if cache_prefix else None
-        wf = walk_forward_predictions(panel, est, cfg, start=start,
-                                     cache_path=cache, **(walk_kwargs or {}))
-        r = run_backtest(panel, prices, strategy_factory(), est, cfg,
-                         start=start, predictions=wf)
-        books.append(r.weights)
-    return average_books(books), books

@@ -1,31 +1,16 @@
+# Panel recipe and walk defaults. The champion's own settings (horizon 4w,
+# purge 35 days, 5-year window, K=4, book/ballast rules) live in
+# models/champion_spec.json and selection.py; the live job overrides
+# data_dir and backtest_start for the world it runs on (data/world.py).
 data_dir: data
 user_agent: "stocks_ml research carr.andrewjohn@gmail.com"
-horizon_days: 5            # forecast horizon in trading days
-purge_days: 10             # calendar-day gap between train data and prediction date
+horizon_days: 5            # base label horizon in trading days; label_4w = 4x
+purge_days: 10             # default calendar-day gap between train data and prediction date
 rebalance_weekday: 4       # 0=Mon ... 4=Fri; rebalance = last trading day <= each Friday
-retrain_weeks: 4
+retrain_weeks: 4           # members kept by a multi-date walk (models/walk.py)
 backtest_start: "2005-01-03"
-eval_start: "2015-03-01"   # CV TEST folds start here (drops the 2012-15 fold where sparse
-                           # feature data caused degenerate fits); each fold TRAINS on the
-                           # trailing cv_train_years window, not expanding-from-2005
-holdout_years: 2           # most recent years excluded from champion selection folds
-n_cv_folds: 4
-cv_train_years: 2           # fixed trailing calendar years used to fit each CV fold
+cv_train_years: 2          # default trailing training window; selection passes its own
 train_sample_rows: null    # optional cap on training rows (most recent kept); null = all
-top_k: 16               # k-sweep 2026-08-12: pre-holdout Sharpe peak (0.63 vs 0.52 at k=8)
-challenger_top_k: 12    # LTR challenger's own pre-holdout-selected k
-vol_target: 0.15           # annualized portfolio vol cap (VolScaledTopK)
-avg_correlation: 0.3       # assumed pairwise correlation for portfolio vol estimate
-dd_derisk: 0.15            # drawdown to halve exposure
-dd_full: 0.25              # drawdown to go fully to cash
-kelly_fraction: 0.25
-kelly_cap: 0.20
-cost_bps: 5.0              # one-way slippage/spread, basis points of traded value
-live_strategy: topk_spy    # strategy used by `stocks-ml signals`: the model's top 8
-                           # equal-weighted, SPY for slots the ranking can't fill.
-                           # Beats equal_topk on every tested holdout path; its edge
-                           # over plain SPY is path-dependent (see reports/backtest.md)
-membership_floor: "1996-01-01"   # earliest membership start when unknown
 fred_series:               # series_id: publication lag in calendar days
   VIXCLS: 1
   T10Y2Y: 1

@@ -9,7 +9,9 @@ _WEEK_ANCHOR = {0: "W-MON", 1: "W-TUE", 2: "W-WED", 3: "W-THU", 4: "W-FRI"}
 
 # Generated and retained for research/coverage diagnostics, but excluded from
 # production model matrices after the identical-calendar ablation documented in
-# reports/feature_ablation.md.  SEC 8-K features were admitted; these were not.
+# reports/feature_ablation.md at tag legacy-final (the legacy ablation tooling
+# and its reports were removed 2026-09-02).  SEC 8-K features were admitted;
+# these were not.
 REJECTED_MODEL_FEATURES = frozenset({
     "f_rev_resid_mkt_1w",
     "f_amihud_4w",
@@ -27,8 +29,10 @@ REJECTED_MODEL_FEATURES = frozenset({
 POINT_IN_TIME_MACRO_SERIES = frozenset({"T10Y2Y", "FEDFUNDS"})
 
 # Generated but NOT yet admitted to production matrices: candidate families
-# awaiting their paired-ΔIC ablation (models/ablation.py, adopt at t >= 3).
-# Remove from this set only with an ablation report showing t >= 3.
+# awaiting a paired-ΔIC ablation (adopt at t >= 3; the legacy harness is
+# models/ablation.py at tag legacy-final). Remove from this set only with an
+# ablation report showing t >= 3 — for the champion that is a structural
+# re-selection trigger (AGENTS.md), not an edit.
 PENDING_ABLATION_FEATURES = frozenset({
     # momentum block, docs/research recommendation #1
     "f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm",

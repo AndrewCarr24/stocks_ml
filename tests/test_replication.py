@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from stocks_ml.models.replication import WeekBootstrapEstimator, average_books
+from stocks_ml.models.replication import WeekBootstrapEstimator
 
 
 class RecordingEstimator(BaseEstimator, RegressorMixin):
@@ -57,13 +57,3 @@ def test_bootstrap_refuses_undated_frames():
     with pytest.raises(ValueError):
         WeekBootstrapEstimator(RecordingEstimator(), 1).fit(X, pd.Series([1.0, 2.0]))
 
-
-def test_average_books_union_and_scale():
-    idx = pd.to_datetime(["2020-01-03", "2020-01-10"])
-    b1 = pd.DataFrame({"A": [0.5, 0.5], "B": [0.5, 0.0]}, index=idx)
-    b2 = pd.DataFrame({"A": [0.5, 0.0], "C": [0.5, 0.5]}, index=idx)
-    avg = average_books([b1, b2])
-    assert set(avg.columns) == {"A", "B", "C"}
-    assert avg.loc[idx[0], "A"] == pytest.approx(0.5)
-    assert avg.loc[idx[0], "B"] == pytest.approx(0.25)
-    assert (avg.sum(axis=1) <= 1 + 1e-9).all()

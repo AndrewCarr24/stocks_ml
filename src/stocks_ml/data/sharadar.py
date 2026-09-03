@@ -1,19 +1,12 @@
-"""Sharadar (Nasdaq Data Link) data source: survivorship-free prices + PIT S&P membership.
+"""Sharadar Direct (api.sharadar.com): the licensed source behind the world store.
 
-Why this source (see AGENTS.md open items): it closes the project's four
-measured data holes — delisted price histories (the yfinance ratchet),
-unadjusted prices with split factors (the $5-floor traps), licensed S&P 500
-membership history since 1957 (replacing the Wikipedia scraper), and a plain
-REST API usable from CI.
-
-v1 scope (free-tier plumbing, owner-sequenced before subscribing): fetchers
-with cursor pagination, schema mapping to project conventions, and store
-writers under NEW keys (sharadar_prices / sharadar_tickers / sharadar_sp500).
-Production ingestion does NOT switch automatically — promotion to the main
-prices/membership keys happens only after the paid-tier coverage audit passes.
+It closes the free-data holes the legacy pipeline measured — delisted price
+histories, unadjusted prices, licensed S&P 500 membership since 1957 — and
+is a plain REST API usable from Actions. data/world.py does the table
+mapping; this module is the transport: key handling and cursor pagination.
 
 Key handling: SHARADAR_API_KEY env var, else data/.sharadar_key (untracked).
-The key must never be committed; CI gets it as an Actions secret.
+The key must never be committed; Actions gets it as a repository secret.
 """
 from __future__ import annotations
 
@@ -77,66 +70,3 @@ def fetch_table(table_name: str, key: str, fetch_fn=None, max_pages: int = 500,
         if c in out.columns:
             out[c] = pd.to_datetime(out[c], errors="coerce")
     return out
-
-
-def fetch_prices(tickers: list[str], start, key: str, fetch_fn=None) -> pd.DataFrame:
-    """Daily bars for tickers since `start`, in the project's prices schema
-    plus Sharadar's adjustment columns.
-
-    SEP semantics (documented, load-bearing): open/high/low/close are
-    SPLIT-adjusted only; closeadj is split+dividend adjusted; closeunadj is
-    as-traded. We surface all three closes so contemporaneous-price analyses
-    (the $5 floor) and total-return analyses stop sharing one ambiguous column."""
-    raw = fetch_table("stocks", key, fetch_fn=fetch_fn,
-                      ticker=",".join(tickers),
-                      **{"from": pd.Timestamp(start).date().isoformat()})
-    if raw.empty:
-        return pd.DataFrame(columns=["date", "ticker", "open", "high", "low",
-                                     "close", "volume", "closeadj", "closeunadj"])
-    out = raw[["date", "ticker", "open", "high", "low", "close", "volume",
-               "closeadj", "closeunadj"]].copy()
-    return out.sort_values(["ticker", "date"]).reset_index(drop=True)
-
-
-def fetch_tickers_meta(key: str, fetch_fn=None) -> pd.DataFrame:
-    """Ticker metadata (tickers table): includes
-    isdelisted — the coverage-audit column the free source can't provide."""
-    raw = fetch_table("tickers", key, fetch_fn=fetch_fn)
-    keep = [c for c in ("ticker", "name", "exchange", "isdelisted", "category",
-                        "sector", "industry", "firstpricedate", "lastpricedate")
-            if c in raw.columns]
-    return raw[keep].copy()
-
-
-def fetch_sp500_membership(key: str, fetch_fn=None) -> pd.DataFrame:
-    """S&P 500 membership events (sp500 table): rows of action
-    ('added'/'removed'/'current') with dates — the licensed replacement for
-    the Wikipedia changes table, mapped to the membership builder's schema."""
-    raw = fetch_table("sp500", key, fetch_fn=fetch_fn)
-    if raw.empty:
-        return pd.DataFrame(columns=["date", "action", "ticker", "name"])
-    keep = [c for c in ("date", "action", "ticker", "name") if c in raw.columns]
-    out = raw[keep].copy()
-    out["action"] = out["action"].str.lower()
-    return out.sort_values("date").reset_index(drop=True)
-
-
-def ingest_sharadar(store, tickers: list[str], start, data_dir="data",
-                    fetch_fn=None) -> dict:
-    """Fetch and persist all three datasets under sharadar_* store keys.
-
-    Deliberately separate from the production prices/membership keys: the
-    swap happens after the paid-tier audit, not silently."""
-    key = api_key(data_dir)
-    prices = fetch_prices(tickers, start, key, fetch_fn=fetch_fn)
-    store.write("sharadar_prices", prices)
-    meta = fetch_tickers_meta(key, fetch_fn=fetch_fn)
-    store.write("sharadar_tickers", meta)
-    sp500 = fetch_sp500_membership(key, fetch_fn=fetch_fn)
-    store.write("sharadar_sp500", sp500)
-    return {"prices_rows": len(prices),
-            "prices_tickers": int(prices["ticker"].nunique()) if len(prices) else 0,
-            "tickers_meta": len(meta),
-            "delisted_in_meta": int((meta.get("isdelisted") == "Y").sum())
-            if "isdelisted" in meta else 0,
-            "sp500_events": len(sp500)}

@@ -10,7 +10,8 @@ runs, in order, with per-stage caching under data/experiments/<name>/:
   4. cascade   the documented decisions (PROCEDURE.md "Selection procedure")
   5. grade     frozen config on the eval window (if given) vs sp500
 
-Model config is fixed (simple-DT) per the procedure card — never searched.
+Model config is fixed (MODEL_PARAMS, depth-3 XGBoost) per the procedure card
+— never searched.
 Every stage appends to models/trials_ledger.json. Stages resume from cache;
 `--shard i/n` lets several processes split a stage's weeks.
 """
@@ -82,8 +83,8 @@ class Ctx:
 
 
 def ensemble_preds(ctx, t, horizon, train_years):
-    from stocks_ml.backtest.simulator import walk_forward_predictions
-    from stocks_ml.models.candidates import TimeTailEarlyStopXGB
+    from stocks_ml.models.walk import walk_forward_predictions
+    from stocks_ml.models.xgb import TimeTailEarlyStopXGB
     from stocks_ml.models.replication import WeekBootstrapEstimator
     h = HORIZONS[horizon]
     cfg2 = ctx.world_cfg(train_years)

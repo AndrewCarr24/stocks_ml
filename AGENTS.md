@@ -1,80 +1,81 @@
 # stocks_ml — agent context
 
-ML system that forecasts S&P 500 stock returns weekly, backtests investment
-strategies, and runs a live paper-trading account. Built entirely on free data.
+ML system that ranks S&P 500 stocks on a one-month horizon, wraps the ranking
+in a rules-based long-only book with an index/Treasury ballast, and runs that
+system every week as a $100 paper portfolio. Point-in-time Sharadar data; a
+mechanical, pre-registered selection procedure; a sealed two-year holdout.
 The owner's goal: turn $100 into more, without ever blowing up the account.
 
-## Current state (2026-07-21)
+**Pruned 2026-09-02.** The repository now holds only the champion and its
+three workflows (weekly job, selection procedure, procedure card). The legacy
+one-week pipeline — ingest/tune/train/backtest/pipelines/signals/ledger/
+torture, the model zoo, tuned recipes, its reports, ledgers and signals — was
+deleted, not rewritten; every file this document mentions that is no longer
+in the tree is at the annotated tag `legacy-final` (commit d04d0d6, the last
+commit before the prune): `git show legacy-final:<path>` or
+`git worktree add ../legacy legacy-final`. The history sections below keep
+their original file references on purpose.
 
-- **Champion model:** Optuna-tuned XGBoost (`models/champion.json`, mean weekly
-  rank IC 0.0198 across 4 CV folds, all positive, full 488-week coverage).
-  Optuna-tuned ElasticNet is second at 0.0190, also positive in all folds.
-- **Evaluation design (owner-specified, do not change casually):** 4 walk-forward
-  CV folds testing 2015-03 → 2024-07 (`eval_start: 2015-03-01`, `n_cv_folds: 4`
-  in config). Each fold fits one frozen model on the immediately preceding
-  2-calendar-year window (`cv_train_years: 2`) with a 10-day purge; exact dates
-  are in `reports/rolling_cv.md`. The last 2 years
-  (2024-07 → now) are a **holdout** never used for tuning or selection.
-- **Live:** the only GitHub Actions workflow is the champion's
-  (`.github/workflows/champion.yml`; see "r5 weekly job" below). The legacy
-  jobs were retired 2026-09-01 and deleted 2026-09-02: the monthly retrain
-  re-tuned the legacy tournament on a calendar, which 9f showed loses to a
-  frozen model (`models/champion.joblib` is frozen at the 2026-09-01 fit);
-  the weekly shadow cycle (signals + paper ledger for that legacy champion)
-  had failed every Saturday since 2026-08-08 — a Wikipedia table-format
-  change, then a ledger fill-sizing bug that ignores trading cost. Its
-  `signals/`, `ledger.json` and `ledger_ltr.json` are frozen history. The
-  production champion is `models/champion_spec.json`. The legacy live
-  strategy was `topk_spy` (config `live_strategy`): the model's
-  top-k equal-weighted, unfilled slots held in SPY. k-sweep 2026-08-12
-  (pre-holdout-selected, protocol declared before results): champion k=16
-  (pre-holdout Sharpe 0.63 vs 0.52 at the old k=8; its now-admissible holdout
-  row: \$206 / Sharpe 1.17 / DD 27% — first champion config to beat SPY's 1.05
-  holdout Sharpe). LTR challenger runs its own `challenger_top_k: 12`.
-  Magnitude-proportional weighting and score-cutoff dynamic-k both LOST to
-  equal weights pre-holdout (LTR scores are not scale-comparable across
-  refits — never use absolute score cutoffs across weeks).
-- **Shadow race (2026-08-11):** the Saturday cycle also runs an LTR challenger
-  (WeekGroupedXGBRanker, models/ltr_optuna.json — selected by NDCG@8 on CV
-  folds, never mean IC: mean-IC selection demonstrably degrades a top-k
-  ranker) on its own paper ledger `ledger_ltr.json` with the same topk_spy
-  strategy and the same $100 start. Files: signals/<date>-ltr.md,
-  <date>-ltr-trades.json. The race verdict — champion vs challenger on truly
-  unseen weeks — is the ONLY evidence that may change `live_strategy` or the
-  champion; further holdout grading of league variants is frozen (winner's
-  curse: ~7 configs have already been graded on it).
-- **Tie guard (2026-08-11):** `select_top_k` in strategies.py fills the top-k
-  with whole equal-value prediction groups only; a group larger than the
-  remaining slots is refused (unfilled slots → cash, or SPY under SpyFloor).
-  Degenerate refits — early stopping keeping ~no trees when its recent
-  validation tail shows no signal — previously collapsed `nlargest` into
-  buying the first 8 tickers alphabetically. Never reintroduce order-dependent
-  tie-breaking. Guarded holdout results are strongly refit-anchor sensitive:
-  the official 2005-anchored run (reports/backtest.md) gives topk_spy $139 ≈
-  spy_hold $139, equal_topk $127, while a 2024-07-anchored rerun gave topk_spy
-  $252, equal_topk $222. The spread is timing luck of concentrated top-8 bets
-  (e.g. a healthy June-2026 refit bet semiconductors into a sector crash, week
-  −15.8%), not a bug — treat single-path holdout numbers with humility.
+## Current state (2026-09-02)
+
+- **Champion: r5** (`models/champion_spec.json`, rendered to PROCEDURE.md by
+  `stocks-ml procedure-card`), declared 2026-09-01 after the month-horizon
+  rebuild on the Sharadar world: depth-3 XGBoost (MODEL_PARAMS in
+  selection.py, untuned by design), 4-week open-to-open label minus the
+  week's member median, 35-day purge, weekly refit on the trailing 5 years
+  with a purged time-tail early stop, K=4 week-bootstrap copies averaged;
+  top-6 equal weight in four staggered sleeves (one rotates per week, every
+  name held four weeks), sector cap 2; 70% book / 30% ballast, the ballast
+  SPY shifting to IEF one third per breached SPY trailing mean (30/40/52
+  weeks); 5 bp one-way, Monday-open fills. Selection window 2006 → 2024-06:
+  $100 → $1,586 (+16.8%/yr, Sharpe 0.74, DD 58%) vs SPY $563 (+10.2%/yr,
+  0.62, 54%), read with the spec's caveats (era-concentrated edge, ~+3.8%/yr
+  of design-iteration shine on dollars, size for SPY-like adverse regimes).
+- **Selection is mechanical** (`stocks-ml select`, selection.py): a fixed
+  cascade — horizon, training window, book size, ballast, stop-loss, sector
+  cap — one decision per layer by a metric declared in advance, run on the
+  selection window only; every evaluated configuration is a row in
+  `models/trials_ledger.json` (legacy rows stay as history). Validated by the
+  nested test in `reports/nested_selection_protocol.md`. Re-selection only
+  on a structural trigger (new data source passes its gate, a pre-registered
+  kill criterion fires, or the owner directs it) — never on a calendar.
+- **The holdout (2024-07-19 onward) is a single-use exam.** It has not been
+  graded for r5 and nothing may touch it without the owner's explicit go.
+- **Live:** `.github/workflows/champion.yml` is the only workflow; it runs
+  `stocks-ml r5-weekly --commit` every Saturday (see "r5 weekly job"). The
+  paper record is `ledger_r5.json` + `signals_r5/<friday>.{md,json}`. The
+  legacy shadow race (`signals/`, `ledger.json`, `ledger_ltr.json`) ended
+  2026-09-01 and its files live at the tag.
+- **Why the legacy pipeline was retired** (its verdicts still bind): week-
+  ahead ranking skill existed around 2001–2004 and has been noise since;
+  month-scale structure is real, concentrated in a handful of features, and
+  Sharadar fundamentals add to it at that horizon; no in-sample screen (CV
+  rank IC, realized top-k excess, Optuna objectives) predicted out-of-sample
+  dollars — walked exams are the only evidence accepted; re-tuning on a
+  calendar was destructive at every cadence tested; the free-data world was
+  missing ~200 delisted constituents and the edge it showed was a data
+  artifact.
 
 ## Commands
 
 ```bash
-uv sync                      # install (Python 3.12; automl_tool needs <3.13)
-uv run pytest                # 341 tests; MUST stay green with 0 warnings
-uv run stocks-ml ingest      # fetch all data + rebuild panel (idempotent)
-uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
-uv run stocks-ml train       # champion tournament -> models/selection.md
-uv run stocks-ml backtest    # -> reports/backtest.md
-uv run stocks-ml pipelines   # multi-pipeline league -> reports/pipelines.md
-uv run stocks-ml signals     # weekly live signal
-uv run stocks-ml ledger init|apply|mark|show
-uv run stocks-ml torture     # survivorship stress test
-uv run stocks-ml select --sel-start A --sel-end B  # full selection procedure
-                             # (grid/wsweep/holdings/cascade; see PROCEDURE.md)
+uv sync                      # install (Python 3.12 — what the champion is locked and run on)
+uv run pytest                # 154 tests; MUST stay green with 0 warnings
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
                              # the champion's weekly signal (Actions runs it; below)
+uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]
+                             # the full selection procedure on a window
+                             # (stages grid/wsweep/holdings/cascade; PROCEDURE.md)
+uv run stocks-ml procedure-card   # regenerate PROCEDURE.md from models/champion_spec.json
 ops/r5_seed.sh               # re-seed the Actions cache with the Mac's live world
+ops/r5_weekly.sh             # the weekly cycle by hand on the Mac (no commit)
 ```
+
+`select` needs the frozen research world `data/sharadar_world2000/` (built
+once from Sharadar; git-ignored, never refreshed); `r5-weekly` needs
+`data/r5_live/` and a Sharadar key (`data/.sharadar_key` or
+`SHARADAR_API_KEY`). Sample first: cheap sampled runs by default, full-
+population runs only on the owner's explicit go.
 
 ## r5 weekly job (2026-09-01)
 
@@ -121,7 +122,7 @@ What it does, in order:
    fundamentals (full refetch, refuses to shrink >2%); SF2 → insiders and a
    Form 4 *bridge* (SF2 non-derivative P/S rows in the SEC Form 4 schema,
    filed after the frozen SEC file's 2026-03-31 — the SEC quarterly zips lag
-   and the job never fetches them). Then the legacy ingesters: EDGAR
+   and the job never fetches them). Then the free-data ingesters: EDGAR
    companyfacts for every current member (replace semantics — a refetched
    ticker's rows replace its stored rows, `refresh_days=0`), 8-K, FINRA short
    interest, FRED. Direct API limits: ≤30 tickers and ≤200 chars per
@@ -199,9 +200,9 @@ paths and re-`launchctl bootstrap`). Reload after editing the plist:
 gui/$UID ~/Library/LaunchAgents/com.stocks-ml.r5-weekly.plist`; manual
 trigger `launchctl kickstart gui/$UID/com.stocks-ml.r5-weekly`.
 
-**Pipeline league (2026-08-11, owner's design):** pipelines may differ in
-training objective, strategy, and cadence, but are all judged by one $100
-cost-aware walk-forward exam (backtest/pipelines.py). Wave 1: incumbent
+**Pipeline league (2026-08-11, owner's design; legacy, at the tag):**
+pipelines may differ in training objective, strategy, and cadence, but are
+all judged by one $100 cost-aware walk-forward exam (backtest/pipelines.py). Wave 1: incumbent
 regression; weekly learning-to-rank (WeekGroupedXGBRanker, rank:ndcg with
 week query groups, per-week quintile relevance grades); monthly-cadence
 regression on the panel's `label_4w` (4-week horizon; purge 42 days —
@@ -222,72 +223,83 @@ state that limitation in the final summary.
 
 ```
 src/stocks_ml/
-  data/       store.py (parquet DataStore + manifest), prices.py (yfinance,
-              corrupt-series filter), membership.py (point-in-time S&P 500 from
-              Wikipedia), fred.py (macro; only audited T10Y2Y/FEDFUNDS admitted), edgar.py
-              (fundamentals, filing-dated), insiders.py (Form 4), shortint.py (FINRA),
-              sharadar.py / sharadar_bulk.py (Direct API + bulk files),
-              world.py (live world store: refresh + panel rebuild for r5)
-  features/   panel.py (build_panel = the one place features/labels are made),
-              fundamentals.py, events.py, insiders.py, ranking.py
-  models/     cv.py (purged walk-forward CV, weekly rank IC), candidates.py
-              (model zoo + wrappers), tuning.py (random search),
-              optuna_tuning.py (TPE, CV-selected), champion.py (tournament)
-  backtest/   simulator.py (no-lookahead walk-forward), strategies.py
-              (equal_topk / vol_scaled / kelly + SpyFloor variants kelly_spy /
-              topk_spy; select_top_k tie guard), metrics.py, report.py,
-              survivorship.py
-  live/       signals.py, ledger.py (legacy), r5.py (champion job + R5Ledger)
-  cli.py
+  data/       store.py (parquet DataStore + manifest), world.py (the live world:
+              Sharadar refresh, rename detection, panel rebuild for r5),
+              sharadar.py (Direct API transport: key + paginated fetch_table),
+              membership.py (normalize_symbol, members_asof), prices.py
+              (corrupt-series filter), edgar.py (companyfacts, filing-dated),
+              sec8k.py, shortint.py (FINRA), fred.py (macro; only audited
+              T10Y2Y/FEDFUNDS admitted)
+  features/   panel.py (build_panel = the one place features/labels are made;
+              REJECTED/PENDING feature sets), fundamentals.py, events.py,
+              insiders.py, sharadar_fundamentals.py, ranking.py
+  models/     xgb.py (TimeTailEarlyStopXGB + dated_features), walk.py
+              (walk_forward_predictions: staggered no-lookahead walk),
+              replication.py (WeekBootstrapEstimator, the K-copy protocol),
+              trials.py (models/trials_ledger.json)
+  selection.py     the selection procedure; ensemble_preds is the champion's
+                   model call (also what r5 ranks with); simulate/pick_capped
+  procedure_card.py  PROCEDURE.md from models/champion_spec.json
+  live/r5.py       the weekly job: sleeves, ballast, R5Ledger, report
+  cli.py           r5-weekly | select | procedure-card
 .github/workflows/champion.yml   the champion's Saturday cycle (the only workflow)
 ops/          r5_seed.sh (seed the Actions cache from the Mac), r5_weekly.sh +
               com.stocks-ml.r5-weekly.plist (manual / retired local schedule)
+models/       champion_spec.json, trials_ledger.json      (tracked)
+reports/      nested_selection_protocol.md, source_point_in_time_audit.md,
+              the two champion-vs-SPY charts                 (tracked)
+signals_r5/, ledger_r5.json                                  (tracked, job-written)
 ```
 
-Label: forward 5-trading-day return, open-to-open, minus the cross-sectional
-median that week (so the task is *ranking* stocks, not predicting the market).
+Labels: `label` = forward 5-trading-day return, open-to-open, minus the
+cross-sectional member median that week (so the task is *ranking* stocks, not
+predicting the market); `label_4w` = the 4-week analogue, the champion's
+target (consumers must purge past its span: 35 days).
 Features are rank-normalized to (-1,1] per week; prefixes: `f_` = model feature,
 `aux_` = raw helper (never ranked), `f_evt_`/`f_mkt_`/`f_macro_`/`f_sec_` =
 rank-exempt (time-only or binary). Only ALFRED-audited `T10Y2Y` and `FEDFUNDS`
 macro features are admitted; revision-prone macro series and all sector-derived
-features are excluded because Wikipedia sectors are not effective-dated. See
-`reports/source_point_in_time_audit.md`. Metric: mean weekly Spearman rank
-IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
+features are excluded (the free-data world's Wikipedia sectors were not
+effective-dated; the sector cap uses Sharadar's sector only to cap, never as a
+feature). See `reports/source_point_in_time_audit.md`. Diagnostic metric: mean
+weekly Spearman rank IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+
+means suspect a bug — but selection is by walked dollars, never by IC.
 
 ## Iron rules (breaking these silently corrupts everything)
 
-0. **Strategy evaluation leads with the HOLDOUT section/chart** (backtest.md's
-   holdout table + reports/equity_holdout.png), never the since-2005 headline —
-   the full-history window overlaps model selection. Owner-mandated.
+0. **Strategy evaluation leads with the HOLDOUT section/chart**, never the
+   full-history headline — the selection window overlaps model selection.
+   Owner-mandated. (For r5 the holdout is not yet graded; until the owner
+   opens it, the nested-selection frozen grade is the honest number.)
 
 1. **No lookahead.** Every feature at week t uses only data knowable at t's
   close: date-only EDGAR/Form 4 records become available the next calendar day;
   revision-prone FRED and non-effective-dated sector features are model-excluded;
-   labels start the next trading day, CV has a 10-day purge gap, early stopping
-   uses a time-ordered tail (never a random split). `tests/test_no_lookahead.py`
+   labels start the next trading day, training is purged past the label's
+   span (10 days for `label`, 35 for `label_4w`), early stopping uses a
+   time-ordered tail (never a random split). `tests/test_no_lookahead.py`
    proves this by corrupting future data and asserting past outputs unchanged —
    if it fails, fix the code, NEVER the test.
-2. **The holdout (last 2 years) is untouchable.** No tuning or selection may see
-  it. Optuna and random search select exclusively on the pre-holdout purged CV
-  folds. Holdout results may be reported only after all choices are frozen.
-3. **Champion eligibility:** a candidate needs a valid (non-NaN) IC in *every*
-  folds, and the tournament falls back to the momentum baseline if no ML model
-  beats the baselines. Watch the "test weeks" column in `models/selection.md`:
-  healthy means every week in the dynamically derived evaluation calendar
-  (488 in the current artifact). Less means the model produced constant
-  (unrankable) predictions in some weeks — a degeneracy, not a virtue (see
-  history #4).
+2. **The holdout (2024-07-19 onward) is untouchable.** No tuning or selection
+  may see it; `select` runs on the selection window only. Holdout results may
+  be reported only after all choices are frozen, and only on the owner's go.
+3. **Every week must be rankable.** Constant (unrankable) predictions in a
+  week are a degeneracy, not a virtue (history #4: the legacy tournament's
+  "test weeks" column caught it). r5 refuses to signal on fewer than
+  MIN_UNIVERSE (100) rankable names or an empty ensemble; a member that
+  early-stops to ~no trees only adds a near-constant offset to the K-copy
+  mean (walk.py docstring).
 4. **Tests green, zero warnings**, no network in tests (fetchers are injectable;
    fixtures only). Silence third-party noise via their own APIs, not warning filters.
-5. Money math in the simulator is guarded: weights ≥ 0, sum ≤ 1, cost-netted
-   buys, no leverage. `run_backtest` raises if a strategy violates this.
+5. Money math is guarded: weights ≥ 0, sum ≤ 1, cost-netted buys, sells
+   before buys, never overdrawn, no leverage — `selection.simulate` for the
+   research exam, `R5Ledger` for the paper account (tests/test_r5.py).
 6. **Champion selection is mechanical (owner-mandated 2026-08-20; metric
    amended 2026-08-21).** The champion is the argmax of PRE-TAX EARNINGS
    (terminal $ from 100) on the 2001-2024 extended pre-holdout, SR tiebreak
    ("SR weights risk too heavily" — owner). Deflated Sharpe reported from
-   ledger counts. The formal leaderboard is `stocks-ml leaderboard`
-   (backtest/leaderboard.py; 3-2-1 across top models, ensembles only,
-   registry data/leaderboard_books/). NO discretionary overrides: any concern about a winner must take
+   ledger counts. (The legacy leaderboard tool, `stocks-ml leaderboard`,
+   is at the tag.) NO discretionary overrides: any concern about a winner must take
    the form of a pre-registered falsification test (predictions written down
    BEFORE the result, e.g. seed replication) run before promotion. Ensembling
    over a dimension (seeds, params) is permitted only when replication has
@@ -295,9 +307,10 @@ IC ("IC"). For scale: 0.01 is real, 0.02 is good, 0.05+ means suspect a bug.
    a "winner's curse" argument; the owner challenged; seed replication proved
    the argmax right (history #9).
    The canonical K-copy procedure (K=4; random_state=c + whole-week training
-   bootstrap seeded by c; grade the equal-weight portfolio average) is
-   implemented in src/stocks_ml/models/replication.py — use it, never an
-   ad-hoc variant, so no finalist is advantaged by its ensembling.
+   bootstrap seeded by c; average the copies' predictions) is
+   `selection.ensemble_preds` over `models/replication.WeekBootstrapEstimator`
+   — use it, never an ad-hoc variant, so no finalist is advantaged by its
+   ensembling.
 
 ## Missing-data and feature-admission policy
 
@@ -334,6 +347,9 @@ scattered company-level gaps, but it cannot justify missing weeks, unequal
 scoring calendars, or all-missing folds.
 
 ## Hard-won history (why things are the way they are)
+
+File references in this section are as of tag `legacy-final`; the verdicts
+are current.
 
 1. **automl_tool** (owner's package) selects by MAE, and the label's median is 0
    by construction — so it picks constant-predictors. Structurally excluded by
@@ -583,10 +599,11 @@ scoring calendars, or all-missing folds.
 
 ## Data source quirks
 
-- **yfinance:** unofficial; batches of 100, retries, per-ticker failures
-  recorded in manifest (never fatal). Stooq fallback is DEAD (JS anti-bot wall).
-- **Wikipedia** membership: changes-table columns are a MultiIndex with
-  "Effective Date"; parser matches by containment.
+- **yfinance / Wikipedia (legacy free-data world; ingesters at the tag):**
+  yfinance is unofficial (batches of 100, per-ticker failures never fatal;
+  Stooq fallback DEAD behind a JS anti-bot wall); Wikipedia's changes table
+  is a MultiIndex with "Effective Date" and its format changed under the
+  legacy job in 2026-08. The champion never touches either.
 - **EDGAR:** 10 req/s, User-Agent required. Fundamentals sparse pre-2010.
   Insider Form 4 via quarterly bulk zips (2006+). 90-day staleness refresh
   (the r5 job uses `refresh_days=0`: replace every current member). SEC
@@ -649,68 +666,41 @@ scoring calendars, or all-missing folds.
   join for fundamentals: `date` (filing date) <= decision Friday, ARQ/ART
   dimensions only (MR* rows are restated backward -> lookahead).
 - macOS: no `timeout` command; GNU-isms differ.
-- `models/`, `reports/`, `signals/`, `ledger.json` are git-TRACKED (audit
-  trail); `data/` is not (rebuilt by ingest; CI caches it).
+- `models/`, `reports/`, `signals_r5/`, `ledger_r5.json` are git-TRACKED
+  (audit trail; the job writes the last two); `data/` is not — the live world
+  travels encrypted in the Actions cache, the research world stays on the Mac.
 
 ## Open items / likely next steps
 
-- **Better data for survivorship (owner-requested 2026-08-12):** the monthly
-  pipeline's outsized crisis-recovery returns (Apr-2009 picks: AIG/C/FITB/HBAN
-  at $1.86-$23) lean on the distressed-rebound trade, exactly where the ~200
-  missing delisted tickers flatter results most. A delisted-inclusive price
-  source (Tiingo key exists — rotate it, was exposed in chat — or similar)
-  is the fix. PROBED 2026-08-12 (reports/monthly_probes.md): a $5 price
-  floor on picks collapses monthly_reg to SPY ($913 vs $930, Sharpe 0.65 =
-  SPY) — the entire excess came from sub-$5 distressed survivors. Treat the
-  monthly pipeline as unproven pending delisted-inclusive data.
-- **Research-backed roadmap in docs/research/ (owner-supplied papers, 2026-08):**
-  ranked actions in recommendations-2026-08.md — (1) momentum block past 12
-  weeks, skip-adjusted (f_mom_26w, f_mom_52w_skip4w, f_mom_interm); (2) EDGAR
-  bundle: f_sue, f_net_issuance, f_nincr (+R&D/mktcap), ablate on label_4w
-  where fundamentals should shine; (3) trials ledger + paired-ΔIC t≥3
-  adoption hurdle + DSR with cross-trial variance (metrics.py currently uses
-  single-path variance — known deviation from Bailey-López de Prado). Also:
-  IC≈0.02 is the published large-cap ceiling (GKX/GHZ/HXZ) — calibrate
-  expectations; don't expand liquidity/idio-vol as alpha (HXZ veto);
-  RankBlend(xgb,enet) and trimmed staggered ensemble are the two principled
-  combination candidates (Timmermann).
-- **Reviewer triage (2026-08-12, second-agent review of docs/research):**
-  built now — trials ledger + cross-trial DSR + MinTRL (+ ENet shrinkage audit:
-  the selected config is already max-viable-shrinkage — no action).
-  **Ablations RUN 2026-08-12, all three families REJECTED at t>=3**
-  (reports/ablation_*.md): momentum skip/interm ΔIC −0.005 (t=−0.94), EDGAR
-  sue/nincr/issuance weekly −0.008 (t=−1.47), EDGAR on label_4w +0.0008
-  (t=0.18 — Novy-Marx's horizon prediction shows the right SIGN but is noise).
-  The six candidates stay in PENDING_ABLATION_FEATURES permanently unless
-  re-tested with new evidence; plain 26w/52w momentum already in the panel
-  likely spans the skip-adjusted variants. Still queued: rank-blend xgb+enet
-  precheck; decile-spread diagnostic. Deferred pending owner design call:
-  train-window-length candidates; selection-stage IC deflation column.
-- **Banded top-k (2026-08-18, pre-registered, cached-walk study):** BandedTopK
-  in strategies.py (enter top-k, hold until rank decays past exit band —
-  hysteresis against noise churn). banded(16,32) beats plain k16 on EVERY
-  column, same panel vintage: pre-holdout $1,848/SR 0.64/DD 64% vs
-  $1,194/0.57/66%; holdout $233/SR 1.28/DD 33% vs $198/1.05/36%; costs
-  $222 vs $228. Recommended live_strategy change AT THE NEXT SCHEDULED
-  REVIEW (DEPLOYMENT.md rule 4 — not mid-race, owner decision); both
-  configs are ledger trials.
-- **DEPLOYMENT.md (2026-08-18):** pre-registered sizing/kill/promotion/
-  change-budget contract; weekly signals now append a shadow-race
-  scoreboard (race_status in ledger.py). Membership ingest hardened:
-  falls back to stored data on fetch failure or implausible swings
-  (>15 tickers/week), hard-fails after 3 consecutive fallback weeks.
-- Let the shadow ledger accumulate (Saturday cycle) before real money — this
-  was always the plan; backtest numbers lean on friendly fill assumptions.
-- Possible research: honest Optuna re-run on the current 4-fold design;
-  multi-horizon models (monthly would suit fundamentals/insider data);
-  EDGAR filing-text features ("Lazy Prices"); VIX-scaled transaction costs.
-- CatBoost fold-collapse could be fixed or the family dropped.
+- **Let the paper ledger accumulate** before real money — the plan since day
+  one; backtest fills are friendlier than a real Monday open. The pre-
+  registered sizing/kill/promotion contract for the legacy champion
+  (DEPLOYMENT.md at the tag) needs an r5 equivalent before any real order.
+- **The holdout exam (2024-07-19 →)** is graded once, on the owner's go, with
+  the champion frozen as specified; the result never feeds re-selection.
+- **PENDING_ABLATION_FEATURES** (features/panel.py) stay out of the model
+  matrix; all three candidate families were rejected at t≥3 on the legacy
+  weekly label (reports/ablation_*.md at the tag). Re-admission is a
+  structural re-selection trigger, not an edit.
+- **Structural triggers for re-selection** (the only ones): a new data
+  source passing its gate, a pre-registered kill criterion firing, or the
+  owner's direction. Calendar re-tuning is forbidden by evidence (history).
+- Known weak spot to keep in mind when sizing: the edge is era-concentrated
+  (index-like in whipsaw and mega-cap regimes); the spec's own caveat.
 
 ## Where to look
 
-- `docs/superpowers/specs/…-design.md` — original system spec
-- `docs/superpowers/plans/…` — the 19-task build plan
-- `docs/run-notes-2026-07-11.md` — first real-data run + invalidated results
-- `models/selection.md`, `models/tuning_*.md` — current leaderboards
-- `reports/backtest.md` — dollar-terms results; `reports/survivorship_torture.md`
+- `PROCEDURE.md` — the champion's procedure card (generated from
+  `models/champion_spec.json`; edit the spec, not the card).
+- `models/trials_ledger.json` — every evaluated configuration.
+- `reports/nested_selection_protocol.md` — the pre-registered nested test of
+  the selection procedure; `reports/source_point_in_time_audit.md` — the
+  ALFRED/PIT audit; the two `reports/*.png` charts — champion vs SPY.
+- `signals_r5/`, `ledger_r5.json` — the paper record, written by the job.
+- `docs/research/` — notes on the papers the design leans on.
+- Tag `legacy-final` — the legacy pipeline, its leaderboards
+  (`models/selection.md`, `models/tuning_*.md`), reports (`reports/backtest.md`,
+  `reports/survivorship_torture.md`, ablations, probes), DEPLOYMENT.md, the
+  original design spec and build plan (`docs/superpowers/`) and
+  `docs/run-notes-2026-07-11.md`.
 - `.superpowers/sdd/progress.md` — full build/decision ledger (gitignored, local)

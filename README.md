@@ -127,11 +127,13 @@ unchanged — if they fail, fix the implementation, not the tests.
 
 ## Installation
 
-Python 3.12 (`automl_tool`, a legacy benchmark candidate, needs < 3.13).
+Python 3.12 — what the champion is locked, graded and run on. Eight runtime
+dependencies (pandas, numpy, pyarrow, pyyaml, requests, scikit-learn, xgboost,
+scipy).
 
 ```bash
 uv sync
-uv run pytest        # 341 tests; must stay green with zero warnings
+uv run pytest        # 154 tests; must stay green with zero warnings
 ```
 
 Running the champion locally needs `data/.sharadar_key` (or
@@ -142,7 +144,6 @@ git-ignored in full.
 uv run stocks-ml r5-weekly [--as-of FRIDAY] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]
 uv run stocks-ml procedure-card      # regenerate PROCEDURE.md from the champion spec
-uv run stocks-ml leaderboard         # render the earnings-ranked board of evaluated books
 ```
 
 All commands read [config/config.yaml](config/config.yaml).
@@ -151,8 +152,12 @@ All commands read [config/config.yaml](config/config.yaml).
 
 The repository began as a one-week-horizon system on free data (yfinance
 prices, Wikipedia membership) with its own tuning tournament, backtester,
-strategy zoo and paper ledger. It is retired but still runs, and its history
-is why the champion looks the way it does:
+strategy zoo and paper ledger. It was retired on 2026-09-01 and removed from
+the tree on 2026-09-02; everything — code, tuned recipes, leaderboards,
+reports, signals and ledgers — is one checkout away at the tag
+`legacy-final` (`git show legacy-final:<path>`, or
+`git worktree add ../legacy legacy-final`). Its history is why the champion
+looks the way it does:
 
 - Week-ahead ranking skill existed around 2001–2004 and has been
   indistinguishable from noise since; month-scale structure is real and
@@ -162,23 +167,9 @@ is why the champion looks the way it does:
   — predicted out-of-sample dollars; walked exams are the only evidence
   accepted.
 - Re-tuning on a calendar was destructive at every cadence tested.
-
-```bash
-uv run stocks-ml ingest [--full]          # free-data world + panel
-uv run stocks-ml tune --family xgb|lgbm|catboost|enet [--optuna]
-uv run stocks-ml train                    # champion tournament -> models/selection.md
-uv run stocks-ml backtest                 # -> reports/backtest.md
-uv run stocks-ml pipelines                # multi-pipeline league -> reports/pipelines.md
-uv run stocks-ml signals                  # legacy weekly signal
-uv run stocks-ml ledger init|apply|mark|show
-uv run stocks-ml torture                  # survivorship stress test
-```
-
-Its artifacts (`models/champion.joblib`, `signals/`, `ledger.json`,
-`ledger_ltr.json`, `reports/backtest.md`) are frozen history. The free-data
-limitations documented in [AGENTS.md](AGENTS.md) — missing delisted tickers,
-unofficial price sources, non-effective-dated sectors — apply to that world,
-not to the Sharadar world the champion runs on.
+- The free-data world was missing about 200 delisted constituents, and the
+  edge it showed turned out to be a data artifact — the reason the champion
+  runs on Sharadar.
 
 ## Where to look
 
@@ -188,6 +179,6 @@ not to the Sharadar world the champion runs on.
   from the spec).
 - [models/trials_ledger.json](models/trials_ledger.json) — every evaluated
   configuration.
-- [reports/](reports/) — backtests, ablations, the nested-selection protocol
-  and the survivorship torture tests.
+- [reports/](reports/) — the nested-selection protocol, the point-in-time
+  source audit and the champion-vs-SPY charts.
 - [docs/research/](docs/research/) — notes on the papers the design leans on.

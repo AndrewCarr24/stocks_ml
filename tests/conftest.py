@@ -110,11 +110,7 @@ def tiny_cfg(tmp_path):
     return Config(
         data_dir=tmp_path / "data", user_agent="test", horizon_days=5, purge_days=10,
         rebalance_weekday=4, retrain_weeks=4, backtest_start=pd.Timestamp("2021-01-04"),
-        eval_start=pd.Timestamp("2021-01-04"),
-        holdout_years=0, n_cv_folds=3, cv_train_years=2, train_sample_rows=None,
-        top_k=2, vol_target=0.15,
-        avg_correlation=0.3, dd_derisk=0.15, dd_full=0.25, kelly_fraction=0.25,
-        kelly_cap=0.20, cost_bps=5.0, live_strategy="vol_scaled", membership_floor=pd.Timestamp("2015-01-01"),
+        cv_train_years=2, train_sample_rows=None,
         fred_series={"VIXCLS": 1, "DTB3": 1},
         edgar_concepts={},
     )

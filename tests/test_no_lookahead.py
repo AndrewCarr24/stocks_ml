@@ -1,11 +1,10 @@
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, RegressorMixin
 
-from stocks_ml.backtest.simulator import run_backtest
-from stocks_ml.backtest.strategies import EqualWeightTopK
 from stocks_ml.data.store import DataStore
 from stocks_ml.features.panel import all_feature_cols, build_panel
-from stocks_ml.models.candidates import MomentumRank
+from stocks_ml.models.walk import walk_forward_predictions
 
 CUTOFF = pd.Timestamp("2022-06-30")
 
@@ -34,17 +33,32 @@ def test_features_before_cutoff_unaffected_by_future(synthetic_store, tiny_cfg, 
     pd.testing.assert_frame_equal(a, b, check_exact=False, rtol=1e-10)
 
 
-def test_weights_before_cutoff_unaffected_by_future(synthetic_store, tiny_cfg, tmp_path):
-    def weights_through_cutoff(store):
-        panel = build_panel(store, tiny_cfg)
-        prices = store.read("prices")
-        res = run_backtest(panel, prices, EqualWeightTopK(k=2), MomentumRank(), tiny_cfg)
-        # exec happens the day after the rebalance; a margin of 7 days keeps us clear
-        return res.weights[res.weights.index <= CUTOFF - pd.Timedelta(days=7)]
+class TrainedMean(BaseEstimator, RegressorMixin):
+    """Predicts each row's momentum plus the mean training label: sensitive to
+    both the features it scores and every label it was trained on, so a
+    leak through either channel shows up in the predictions."""
 
-    w_a = weights_through_cutoff(synthetic_store)
-    w_b = weights_through_cutoff(_corrupt_store(synthetic_store, tmp_path))
-    pd.testing.assert_frame_equal(w_a, w_b, check_exact=False, rtol=1e-10)
+    def fit(self, X, y):
+        self.offset_ = float(np.nanmean(y))
+        return self
+
+    def predict(self, X):
+        return X["f_mom_26w"].to_numpy() + self.offset_
+
+
+def test_predictions_before_cutoff_unaffected_by_future(synthetic_store, tiny_cfg, tmp_path):
+    def preds_through_cutoff(store):
+        wf = walk_forward_predictions(build_panel(store, tiny_cfg), TrainedMean(), tiny_cfg)
+        # the label looks a week ahead plus the purge; a margin of 7 days on top
+        # of the purge keeps every training label clear of the corruption
+        last = CUTOFF - pd.Timedelta(days=tiny_cfg.purge_days + 7)
+        return {t: p for t, p in wf.preds.items() if t <= last}
+
+    p_a = preds_through_cutoff(synthetic_store)
+    p_b = preds_through_cutoff(_corrupt_store(synthetic_store, tmp_path))
+    assert len(p_a) >= 10 and sorted(p_a) == sorted(p_b)
+    for t in p_a:
+        pd.testing.assert_series_equal(p_a[t], p_b[t], check_exact=False, rtol=1e-10)
 
 
 def test_labels_use_strictly_future_prices(synthetic_store, tiny_cfg, tmp_path):

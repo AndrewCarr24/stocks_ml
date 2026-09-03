@@ -12,7 +12,7 @@ on its own copy (`bootstrap_live_store`) and brings it up to date each week:
                     SF1 ARQ/ART -> fundamentals (full refetch: cheap, exact)
                     SF2 -> insiders + form4_bridge (window-replace by filing date)
   SEC/FINRA/FRED    edgar (companyfacts, every current member), sec8k,
-                    shortint, fred — the legacy ingesters unchanged.
+                    shortint, fred — the free-data ingesters unchanged.
 
 Then `build_world_panel` reruns the research recipe: build_panel with the
 world's backtest_start, then the Sharadar fundamental/insider features and
@@ -36,9 +36,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stocks_ml.data.insiders import FORM4_COLS
 from stocks_ml.data.sharadar import fetch_table
-from stocks_ml.data.sharadar_bulk import FUND_COLS, INSIDER_COLS
 from stocks_ml.data.store import DataStore
 
 UNIVERSE_START = "1998-01-01"        # SEP history pulled from here (research choice)
@@ -51,6 +49,22 @@ SEP_COLS = ["ticker", "date", "open", "high", "low", "close", "volume",
 RESEARCH_TABLES = ("prices", "membership", "fundamentals", "insiders", "edgar",
                    "sec8k", "shortint", "fred")
 REQUEST_PAUSE_S = 0.2
+# Table schemas, as the research world was built (Sharadar bulk CSVs filtered
+# to the universe). fundamentals: AR* dimensions only — ARQ (as-reported
+# quarterly) and ART (trailing twelve months); MR* rows are restated backward
+# in time -> lookahead, never ingested. `date` is the SEC filing date, the
+# point-in-time key downstream. insiders: open-market Form 3/4/5 rows keyed
+# by filing date. form4: the SEC Form 4 schema features/insiders.py consumes.
+FUND_COLS = [
+    "ticker", "dimension", "calendardate", "date", "reportperiod",
+    "revenue", "netinc", "gp", "assets", "equity", "debt", "ebitda", "ebit",
+    "fcf", "ncfo", "capex", "currentratio", "de", "sharesbas", "shareswa",
+    "bvps", "eps", "epsusd", "marketcap", "liabilities", "cashneq",
+    "divyield", "dps", "grossmargin", "ebitdamargin", "netmargin", "roe",
+]
+INSIDER_COLS = ["ticker", "date", "transactiondate", "transactioncode",
+                "transactionshares", "transactionvalue", "ownername"]
+FORM4_COLS = ["ticker", "filed", "trans_date", "code", "shares", "value"]
 
 
 def _log(msg):
@@ -146,7 +160,7 @@ def upsert(old: pd.DataFrame | None, new: pd.DataFrame, keys: list[str]) -> pd.D
 
 
 def fundamentals_from_sf1(raw: pd.DataFrame, universe: set[str]) -> pd.DataFrame:
-    """SF1 rows -> the world's fundamentals slice (sharadar_bulk semantics)."""
+    """SF1 rows -> the world's fundamentals slice (FUND_COLS semantics)."""
     if raw.empty:
         return pd.DataFrame(columns=FUND_COLS)
     df = raw[raw["ticker"].isin(universe) & raw["dimension"].isin(["ARQ", "ART"])]
@@ -172,7 +186,7 @@ def _sf2_clean(raw: pd.DataFrame, universe: set[str]) -> pd.DataFrame:
 
 
 def insiders_from_sf2(raw: pd.DataFrame, universe: set[str]) -> pd.DataFrame:
-    """SF2 rows -> the world's insiders slice (sharadar_bulk semantics)."""
+    """SF2 rows -> the world's insiders slice (INSIDER_COLS semantics)."""
     cols = INSIDER_COLS + ["signed_value"]
     if raw.empty:
         return pd.DataFrame(columns=cols)
@@ -184,8 +198,8 @@ def insiders_from_sf2(raw: pd.DataFrame, universe: set[str]) -> pd.DataFrame:
 
 def form4_from_sf2(raw: pd.DataFrame, universe: set[str]) -> pd.DataFrame:
     """SF2 non-derivative open-market rows in the SEC Form 4 schema the panel
-    consumes (data/insiders.py). Verified equal to the SEC quarterly data for
-    2026Q1 on ten tickers (SF2 slightly richer on two)."""
+    consumes (features/insiders.py). Verified equal to the SEC quarterly data
+    for 2026Q1 on ten tickers (SF2 slightly richer on two)."""
     if raw.empty:
         return pd.DataFrame(columns=FORM4_COLS)
     df = _sf2_clean(raw, universe)
@@ -453,7 +467,7 @@ def sharadar_cik_map(tickers, user_agent, related=None, cik_map=None) -> dict:
 
 def refresh_sec(store: DataStore, cfg, current: list[str], log=_log) -> dict:
     """EDGAR companyfacts (every current member, replaced), 8-K metadata,
-    FINRA short interest and FRED — the legacy ingesters."""
+    FINRA short interest and FRED — the free-data ingesters."""
     from stocks_ml.data.edgar import ingest_edgar
     from stocks_ml.data.fred import ingest_fred
     from stocks_ml.data.sec8k import ingest_sec8k
