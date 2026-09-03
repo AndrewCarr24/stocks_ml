@@ -9,7 +9,7 @@ def test_normalize_symbol():
     assert normalize_symbol(" brk.b ") == "BRK-B"
 
 
-def test_normalize_symbol_strips_wiki_formatting_junk():
+def test_normalize_symbol_strips_formatting_junk():
     assert normalize_symbol("ITT |") == "ITT"
     assert normalize_symbol(" BRK.B ") == "BRK-B"
     assert normalize_symbol("JCP |") == "JCP"

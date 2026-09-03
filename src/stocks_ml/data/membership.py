@@ -12,7 +12,7 @@ import pandas as pd
 
 
 def normalize_symbol(s: str) -> str:
-    """SEC/Wikipedia-style symbol (BRK.B, 'ITT |') -> the project's BRK-B form."""
+    """Vendor/SEC-style symbol (BRK.B, 'ITT |') -> the project's BRK-B form."""
     cleaned = re.sub(r"[^A-Za-z0-9.\-]", "", str(s).strip().split()[0] if str(s).strip() else "")
     return cleaned.upper().replace(".", "-")
 

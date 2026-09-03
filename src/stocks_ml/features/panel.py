@@ -3,15 +3,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS_PER_WEEK = 5
 ANNUALIZER = np.sqrt(252)
 _WEEK_ANCHOR = {0: "W-MON", 1: "W-TUE", 2: "W-WED", 3: "W-THU", 4: "W-FRI"}
 
-# Generated and retained for research/coverage diagnostics, but excluded from
-# production model matrices after the identical-calendar ablation documented in
-# reports/feature_ablation.md at tag legacy-final (the legacy ablation tooling
-# and its reports were removed 2026-09-02).  SEC 8-K features were admitted;
-# these were not.
+# Computed (the panel recipe is part of the champion) but excluded from model
+# matrices: an identical-calendar ablation rejected them (reports/feature_ablation.md
+# at tag legacy-final; that tooling was removed 2026-09-02). SEC 8-K features
+# passed the same ablation; these did not.
 REJECTED_MODEL_FEATURES = frozenset({
     "f_rev_resid_mkt_1w",
     "f_amihud_4w",
@@ -28,11 +26,10 @@ REJECTED_MODEL_FEATURES = frozenset({
 # the conservative 35-day observation-date lag configured in config.yaml.
 POINT_IN_TIME_MACRO_SERIES = frozenset({"T10Y2Y", "FEDFUNDS"})
 
-# Generated but NOT yet admitted to production matrices: candidate families
-# awaiting a paired-ΔIC ablation (adopt at t >= 3; the legacy harness is
-# models/ablation.py at tag legacy-final). Remove from this set only with an
-# ablation report showing t >= 3 — for the champion that is a structural
-# re-selection trigger (AGENTS.md), not an edit.
+# Computed but NOT admitted to model matrices: families that never got the
+# paired-ΔIC ablation (adopt at t >= 3) the admitted features passed. Admitting
+# any of them changes the champion's inputs — a structural re-selection
+# trigger (AGENTS.md), not an edit.
 PENDING_ABLATION_FEATURES = frozenset({
     # momentum block, docs/research recommendation #1
     "f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm",
@@ -76,8 +73,8 @@ def feature_cols(df: pd.DataFrame) -> list[str]:
     return [c for c in all_feature_cols(df)
             if c not in REJECTED_MODEL_FEATURES
             and c not in PENDING_ABLATION_FEATURES
-            # Only explicitly audited FRED series are admitted. Current
-            # Wikipedia sectors are not effective-dated and remain excluded.
+            # Only the point-in-time-audited FRED series are admitted.
+            # Sectors are current-snapshot, not effective-dated: excluded.
             and (not c.startswith("f_macro_") or _admitted_macro_feature(c))
             and not c.startswith("f_sec_")
             and not c.endswith("_sect")]
@@ -348,11 +345,6 @@ def calendar_features(dates: pd.DatetimeIndex) -> pd.DataFrame:
                          "f_woq": week_of_quarter.astype(float)})
 
 
-# The 4-week label spans ~29 calendar days of future prices; anything training
-# or splitting on label_4w must purge at least this many calendar days.
-LABEL_4W_PURGE_DAYS = 42
-
-
 def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int) -> pd.DataFrame:
     open_ = _wide(prices, "open")
     cal = open_.index
@@ -437,9 +429,9 @@ def build_panel(store, cfg) -> pd.DataFrame:
     volume_wide = _wide(prices, "volume")
     dollar_wide = (_wide(prices, "close") * volume_wide).rolling(20).mean()
     panel = panel.merge(insider_features(form4, dates, dollar_wide), on=["date", "ticker"], how="left")
-    # Short-interest features (FINRA data begins 2017-12) are included because a
-    # controlled A/B test found ~+0.002 IC. Structural pre-source absence is measured
-    # in feature_coverage and neutral-filled after ranking; it must not alter folds.
+    # Short-interest features (FINRA data begins 2017-12): absence before the
+    # source exists is structural (measured in feature_coverage), neutral-filled
+    # after ranking, and must not alter folds.
     shares_out = shares_outstanding_asof(edgar, panel)
     panel = panel.merge(short_features(shortint, shares_out, volume_wide), on=["date", "ticker"], how="left")
 
@@ -453,9 +445,10 @@ def build_panel(store, cfg) -> pd.DataFrame:
     member_median = panel.groupby("date")["fwd_ret"].transform("median")
     panel["label"] = panel["fwd_ret"] - member_median
 
-    # Four-week label for the monthly-cadence pipeline: identical open-to-open
-    # construction at 4x the horizon, recentered on members like the weekly one.
-    # Consumers must purge >= its ~4-week calendar span (see pipelines.py).
+    # The champion's target: identical open-to-open construction at 4x the
+    # horizon, recentered on members like the 1-week label. It spans ~29
+    # calendar days of future prices, so anything training or splitting on
+    # label_4w purges at least that (selection.HORIZONS: 35 days).
     labels_4w = make_labels(prices, dates, cfg.horizon_days * 4).rename(columns={
         "fwd_ret": "fwd_ret_4w", "label": "label_4w",
         "label_end_date": "label_end_date_4w"})

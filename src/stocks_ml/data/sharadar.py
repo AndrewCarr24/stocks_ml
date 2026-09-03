@@ -1,8 +1,8 @@
 """Sharadar Direct (api.sharadar.com): the licensed source behind the world store.
 
-It closes the free-data holes the legacy pipeline measured — delisted price
-histories, unadjusted prices, licensed S&P 500 membership since 1957 — and
-is a plain REST API usable from Actions. data/world.py does the table
+It closes the holes free data has — delisted price histories, unadjusted
+prices, licensed S&P 500 membership since 1957 — and is a plain REST API
+usable from Actions. data/world.py does the table
 mapping; this module is the transport: key handling and cursor pagination.
 
 Key handling: SHARADAR_API_KEY env var, else data/.sharadar_key (untracked).

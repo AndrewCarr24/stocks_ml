@@ -4,9 +4,8 @@ Every configuration the selection procedure evaluates lands here (one row per
 trial, upserted by name), so the count N of everything ever tried — the
 input a deflated Sharpe or a t >= 3 adoption hurdle needs — is a census, not
 a guess. Rows record pre-holdout evidence only; holdout results never enter
-the ledger. Rows from the retired legacy pipeline (tuning trials, the
-champion tournament, the pipeline league, the strategy zoo, ablations) stay
-in the file as history.
+the ledger. Rows written by tooling removed on 2026-09-02 (tag legacy-final)
+stay in the file: they count toward N like any other trial.
 """
 from __future__ import annotations
 

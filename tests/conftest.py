@@ -68,7 +68,7 @@ def make_form4():
     # before-cutoff equality checks see the same all-zero "no activity"
     # defaults from both the real and future-corrupted stores (that helper
     # doesn't forward form4/shortint, so pre-cutoff parity depends on no real
-    # transaction being visible that early -- see task-24-report.md).
+    # transaction being visible that early).
     rows = [
         ("AAA", "2022-08-05", "2022-08-03", "P", 1000.0, 25000.0),
         ("AAA", "2022-08-19", "2022-08-17", "P", 500.0, 13000.0),

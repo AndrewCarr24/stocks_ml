@@ -4,6 +4,13 @@ One-page notes on what each paper implies for stocks_ml specifically (features,
 labels, CV, evaluation). PDFs live in `papers/`. Ranked action list:
 `recommendations-2026-08.md`.
 
+Written in August 2026 against the weekly pipeline retired on 2026-09-01, so
+the code they cite (`backtest/metrics.py`, `pipelines.py`, `models/candidates.py`,
+`reports/backtest.md`, `ledger.json`) resolves at tag `legacy-final`, not on
+main. What came of them still stands: recommendation #3 is the trials ledger
+(`models/trials_ledger.json`); the #1 and #2 feature families are computed but
+sit in `PENDING_ABLATION_FEATURES` (`features/panel.py`), never admitted.
+
 | Note | Paper | Main implication for us |
 |---|---|---|
 | [note-gu-kelly-xiu-2020.md](note-gu-kelly-xiu-2020.md) | Gu, Kelly & Xiu 2020 | IC ~0.02 is the right ceiling for large caps; price-trend features dominate; test longer training windows |
