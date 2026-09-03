@@ -105,9 +105,19 @@ def ensemble_preds(ctx, t, horizon, train_years):
     return p if p.nunique() >= 20 else None
 
 
+def week_slot(index, t):
+    """W-FRI label of the week a rank date t belongs to (first label >= t),
+    or None past the grid. Rank dates are the week's last trading day, so a
+    Thursday before a Friday holiday still maps to its own week; `asof`
+    would snap it to the previous Friday and pay the pick for a week that
+    had already happened."""
+    i = int(index.searchsorted(t))
+    return index[i] if i < len(index) else None
+
+
 def slice_row(ctx, t, horizon, preds):
-    wk = ctx.fwd[horizon].index.asof(t)
-    if pd.isna(wk):
+    wk = week_slot(ctx.fwd[horizon].index, t)
+    if wk is None:
         return None
     r = ctx.fwd[horizon].loc[wk]
     uni = [x for x in ctx.members[t] if x in r.index and not pd.isna(r[x])]
@@ -248,12 +258,22 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor):
     ncoh = period
     cohorts = {c: {"names": [], "entry": {}} for c in range(max(ncoh, 1))}
     rets, exp_prev = {}, 1.0
+    grid = ctx.wret.index
     for i, t in enumerate(weeks):
-        wk = ctx.wret.index.asof(t)
-        loc = ctx.wret.index.get_loc(wk)
-        if loc + 1 >= len(ctx.wret.index):
+        wk = week_slot(grid, t)
+        if wk is None:
             break
-        nxt = ctx.wret.index[loc + 1]
+        loc = grid.get_loc(wk)
+        if loc + 1 >= len(grid):
+            break
+        # the book decided at t is held until the next pick's week: a week
+        # with no pick keeps the previous book and still counts
+        if i + 1 < len(weeks):
+            nxt_slot = week_slot(grid, weeks[i + 1])
+            end_loc = len(grid) - 1 if nxt_slot is None else grid.get_loc(nxt_slot)
+            end_loc = max(end_loc, loc + 1)
+        else:
+            end_loc = loc + 1
         c_ = 0.0
         for c, st in cohorts.items():
             if (i % max(period, 1) == c) or not st["names"]:
@@ -262,47 +282,58 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor):
                                if n in ctx.cw.columns else np.nan
                                for n in st["names"]}
                 c_ += COST / len(cohorts)
-        rs = []
-        for st in cohorts.values():
-            vals = []
-            for n in st["names"]:
-                if n not in ctx.wret.columns:
-                    vals.append(0.0)
-                    continue
-                if stop is not None:
-                    e, px = st["entry"].get(n), ctx.cw[n].asof(wk)
-                    if e and not pd.isna(px) and not pd.isna(e) and px / e - 1 <= stop:
-                        v = ctx.wret.loc[nxt, "SPY"]
-                        c_ += COST / (len(cohorts) * book)
-                        vals.append(0.0 if pd.isna(v) else float(v))
-                        continue
-                v = ctx.wret.loc[nxt, n]
-                vals.append(0.0 if pd.isna(v) else float(v))
-            rs.append(float(np.mean(vals)))
-        book_r = float(np.mean(rs)) - c_
-        hist = ctx.spy_w[ctx.spy_w.index <= wk]
-        g = float(np.mean([1.0 if len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
-                           else 0.0 for W in (30, 40, 52)]))
-        fvals = []
-        for W in (30, 40, 52):
-            below = len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
-            v = (ctx.wret.loc[nxt, "IEF"]
-                 if (below and "IEF" in ctx.wret.columns) else ctx.wret.loc[nxt, "SPY"])
-            fvals.append(0.0 if pd.isna(v) else float(v))
-        fr = float(np.mean(fvals))
-        if floor == "halfgate":
-            exp = 1.0 - 0.5 * g
-            ir = ctx.wret.loc[nxt].get("IEF")
-            ir = 0.0 if pd.isna(ir) else float(ir)
-            r = exp * book_r + (1 - exp) * ir - COST * abs(exp - exp_prev)
-            exp_prev = exp
-        elif floor in ("80/20", "70/30", "60/40"):
-            a = {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}[floor]
-            r = a * book_r + (1 - a) * fr
-        else:
-            r = book_r
-        rets[nxt] = r
+        for j in range(loc, end_loc):
+            wk, nxt = grid[j], grid[j + 1]
+            rets[nxt], exp_prev = _credit_week(ctx, cohorts, wk, nxt, c_, book,
+                                               stop, floor, exp_prev)
+            c_ = 0.0
     return pd.Series(rets).sort_index()
+
+
+def _credit_week(ctx, cohorts, wk, nxt, c_, book, stop, floor, exp_prev):
+    """Return of the book held at wk's close over the week ending nxt, after
+    the rotation cost c_ already paid this week, plus the floor's exposure
+    state for the next call."""
+    rs = []
+    for st in cohorts.values():
+        vals = []
+        for n in st["names"]:
+            if n not in ctx.wret.columns:
+                vals.append(0.0)
+                continue
+            if stop is not None:
+                e, px = st["entry"].get(n), ctx.cw[n].asof(wk)
+                if e and not pd.isna(px) and not pd.isna(e) and px / e - 1 <= stop:
+                    v = ctx.wret.loc[nxt, "SPY"]
+                    c_ += COST / (len(cohorts) * book)
+                    vals.append(0.0 if pd.isna(v) else float(v))
+                    continue
+            v = ctx.wret.loc[nxt, n]
+            vals.append(0.0 if pd.isna(v) else float(v))
+        rs.append(float(np.mean(vals)))
+    book_r = float(np.mean(rs)) - c_
+    hist = ctx.spy_w[ctx.spy_w.index <= wk]
+    g = float(np.mean([1.0 if len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
+                       else 0.0 for W in (30, 40, 52)]))
+    fvals = []
+    for W in (30, 40, 52):
+        below = len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
+        v = (ctx.wret.loc[nxt, "IEF"]
+             if (below and "IEF" in ctx.wret.columns) else ctx.wret.loc[nxt, "SPY"])
+        fvals.append(0.0 if pd.isna(v) else float(v))
+    fr = float(np.mean(fvals))
+    if floor == "halfgate":
+        exp = 1.0 - 0.5 * g
+        ir = ctx.wret.loc[nxt].get("IEF")
+        ir = 0.0 if pd.isna(ir) else float(ir)
+        r = exp * book_r + (1 - exp) * ir - COST * abs(exp - exp_prev)
+        exp_prev = exp
+    elif floor in ("80/20", "70/30", "60/40"):
+        a = {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}[floor]
+        r = a * book_r + (1 - a) * fr
+    else:
+        r = book_r
+    return r, exp_prev
 
 
 def sharpe(series, lo, hi):

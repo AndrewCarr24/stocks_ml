@@ -1,8 +1,11 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
+import pytest
 
-from stocks_ml.selection import (decide_book, decide_horizon, decide_window,
-                                 pick_capped)
+from stocks_ml.selection import (COST, decide_book, decide_horizon, decide_window,
+                                 pick_capped, simulate, slice_row, week_slot)
 
 
 def _frame(weeks, top6, spy=0.0, rand=0.0, top3=None, top10=None):
@@ -56,3 +59,62 @@ def test_pick_capped_fills_when_short():
     smap = {"A": "tech", "B": "tech", "C": "tech"}
     got = pick_capped(["A", "B", "C"], cap=2, k=3, smap=smap)
     assert len(got) == 3  # falls back rather than returning a short book
+
+
+# --- rank-date alignment ---------------------------------------------------
+# Rank dates are the last trading day of the week: a Friday, or a Thursday
+# when the Friday is a holiday. A pick dated t is paid for the week that
+# starts at t's close; snapping t back to the previous Friday label would
+# pay it for the week that had already happened.
+
+def _weekly(closes, start="2015-12-04"):
+    n = len(next(iter(closes.values())))
+    idx = pd.date_range(start, periods=n, freq="W-FRI")
+    cw = pd.DataFrame(closes, index=idx, dtype=float)
+    return SimpleNamespace(
+        cw=cw, wret=cw.pct_change(fill_method=None), spy_w=cw["SPY"], smap={},
+        fwd={"1w": cw.pct_change(1, fill_method=None).shift(-1)}, members={})
+
+
+def test_week_slot_is_the_friday_label_of_the_pick_week():
+    idx = pd.date_range("2015-12-04", periods=5, freq="W-FRI")
+    assert week_slot(idx, pd.Timestamp("2015-12-24")) == pd.Timestamp("2015-12-25")
+    assert week_slot(idx, pd.Timestamp("2015-12-25")) == pd.Timestamp("2015-12-25")
+    assert week_slot(idx, pd.Timestamp("2016-01-08")) is None
+
+
+def test_simulate_pays_a_thursday_pick_for_the_following_week():
+    # labels: 12-04, 12-11, 12-18, 12-25, 01-01. A: +10% into the holiday
+    # week ending Thu 12-24, then -5% the week after.
+    ctx = _weekly({"A": [100, 100, 100, 110, 104.5], "SPY": [100] * 5})
+    holdings = pd.DataFrame({"week": [pd.Timestamp("2015-12-24")], "top15": ["A"]})
+    rets = simulate(ctx, holdings, "1w", book=1, cap=None, stop=None, floor="none")
+    assert list(rets.index) == [pd.Timestamp("2016-01-01")]
+    assert rets.iloc[0] == pytest.approx(-0.05 - COST)
+
+
+def test_simulate_holds_the_book_through_a_week_without_a_pick():
+    # picks on 12-04 (A) and 12-18 (B); no pick dated 12-11.
+    ctx = _weekly({"A": [100, 102, 105.06, 105.06, 105.06],
+                   "B": [100, 100, 100, 103, 103], "SPY": [100] * 5})
+    holdings = pd.DataFrame({"week": pd.to_datetime(["2015-12-04", "2015-12-18"]),
+                             "top15": ["A", "B"]})
+    rets = simulate(ctx, holdings, "1w", book=1, cap=None, stop=None, floor="none")
+    assert list(rets.index) == list(pd.to_datetime(["2015-12-11", "2015-12-18", "2015-12-25"]))
+    assert rets.iloc[0] == pytest.approx(0.02 - COST)   # A, rotation paid
+    assert rets.iloc[1] == pytest.approx(0.03)          # A held, no rotation
+    assert rets.iloc[2] == pytest.approx(0.03 - COST)   # B
+
+
+def test_slice_row_reads_the_forward_return_from_the_pick_week():
+    names = [f"N{i}" for i in range(101)]
+    closes = {n: [100, 100, 100, 100, 100] for n in names}
+    closes["N0"] = [100, 100, 100, 110, 104.5]      # +10% then -5%
+    closes["SPY"] = [100, 100, 100, 101, 102.01]     # +1% then +1%
+    ctx = _weekly(closes)
+    t = pd.Timestamp("2015-12-24")
+    ctx.members[t] = names + ["SPY"]
+    preds = pd.Series(np.linspace(1, 0, len(names)), index=names)  # N0 ranked first
+    row = slice_row(ctx, t, "1w", preds)
+    assert row["spy"] == pytest.approx(0.01)
+    assert row["top3"] == pytest.approx(-0.05 / 3)
