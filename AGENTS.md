@@ -64,13 +64,15 @@ their original file references on purpose.
 
 ```bash
 uv sync                      # install (Python 3.12 — what the champion is locked and run on)
-uv run pytest                # 154 tests; MUST stay green with 0 warnings
+uv run pytest                # 161 tests; MUST stay green with 0 warnings
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
                              # the champion's weekly signal (Actions runs it; below)
 uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]
                              # the full selection procedure on a window
                              # (stages grid/wsweep/holdings/cascade; PROCEDURE.md)
 uv run stocks-ml procedure-card   # regenerate PROCEDURE.md from models/champion_spec.json
+.venv/bin/python app/oos/build.py # the OOS explorer -> reports/oos_explorer.html (git-ignored)
+/opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e   # its Playwright beta test
 ops/r5_seed.sh               # re-seed the Actions cache with the Mac's live world
 ops/r5_weekly.sh             # the weekly cycle by hand on the Mac (no commit)
 ```
@@ -252,6 +254,9 @@ ops/          r5_seed.sh (seed the Actions cache from the Mac), r5_weekly.sh +
 models/       champion_spec.json, trials_ledger.json      (tracked)
 reports/      nested_selection_protocol.md, source_point_in_time_audit.md,
               the two champion-vs-SPY charts                 (tracked)
+app/oos/      build.py + app.html: the nested OOS test as an interactive explorer
+              (replays selection.simulate with its trace hook; the built page
+              embeds per-hold weekly returns, so it is git-ignored)
 signals_r5/, ledger_r5.json                                  (tracked, job-written)
 ```
 

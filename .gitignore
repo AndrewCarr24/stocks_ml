@@ -6,3 +6,4 @@ __pycache__/
 .superpowers/
 /logs/
 .DS_Store
+/reports/oos_explorer.html

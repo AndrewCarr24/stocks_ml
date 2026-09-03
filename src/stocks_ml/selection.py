@@ -251,7 +251,10 @@ def pick_capped(names, cap, k, smap):
     return out if len(out) == k else (out + [n for n in names if n not in out])[:k]
 
 
-def simulate(ctx, holdings, horizon, book, cap, stop, floor):
+def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
+    """Weekly returns of the configured book, indexed by the week-ending label
+    each return is credited to. Pass a list as `trace` to receive one record
+    per credited week (pick date, sleeves, per-name returns, cost, floor)."""
     ranked = {r.week: r.top15.split(",") for r in holdings.itertuples()}
     weeks = sorted(ranked)
     period = HORIZONS[horizon]["kweeks"]
@@ -274,9 +277,10 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor):
             end_loc = max(end_loc, loc + 1)
         else:
             end_loc = loc + 1
-        c_ = 0.0
+        c_, rotated = 0.0, []
         for c, st in cohorts.items():
             if (i % max(period, 1) == c) or not st["names"]:
+                rotated.append(c)
                 st["names"] = pick_capped(ranked[t], cap, book, ctx.smap)
                 st["entry"] = {n: float(ctx.cw[n].asof(wk))
                                if n in ctx.cw.columns else np.nan
@@ -284,17 +288,23 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor):
                 c_ += COST / len(cohorts)
         for j in range(loc, end_loc):
             wk, nxt = grid[j], grid[j + 1]
-            rets[nxt], exp_prev = _credit_week(ctx, cohorts, wk, nxt, c_, book,
-                                               stop, floor, exp_prev)
-            c_ = 0.0
+            rets[nxt], exp_prev, info = _credit_week(ctx, cohorts, wk, nxt, c_, book,
+                                                     stop, floor, exp_prev)
+            if trace is not None:
+                trace.append({"t": t, "wk": wk, "nxt": nxt, "r": rets[nxt],
+                              "rotated": rotated,
+                              "sleeves": [list(st["names"]) for st in cohorts.values()],
+                              **info})
+            c_, rotated = 0.0, []
     return pd.Series(rets).sort_index()
 
 
 def _credit_week(ctx, cohorts, wk, nxt, c_, book, stop, floor, exp_prev):
     """Return of the book held at wk's close over the week ending nxt, after
-    the rotation cost c_ already paid this week, plus the floor's exposure
-    state for the next call."""
-    rs = []
+    the rotation cost c_ already paid this week, the floor's exposure state
+    for the next call, and the pieces (per-sleeve name returns, cost, floor
+    return, gate) the return was assembled from."""
+    rs, vals_by_sleeve = [], []
     for st in cohorts.values():
         vals = []
         for n in st["names"]:
@@ -311,6 +321,7 @@ def _credit_week(ctx, cohorts, wk, nxt, c_, book, stop, floor, exp_prev):
             v = ctx.wret.loc[nxt, n]
             vals.append(0.0 if pd.isna(v) else float(v))
         rs.append(float(np.mean(vals)))
+        vals_by_sleeve.append(vals)
     book_r = float(np.mean(rs)) - c_
     hist = ctx.spy_w[ctx.spy_w.index <= wk]
     g = float(np.mean([1.0 if len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
@@ -333,7 +344,8 @@ def _credit_week(ctx, cohorts, wk, nxt, c_, book, stop, floor, exp_prev):
         r = a * book_r + (1 - a) * fr
     else:
         r = book_r
-    return r, exp_prev
+    return r, exp_prev, {"vals": vals_by_sleeve, "cost": c_, "book_r": book_r,
+                         "fr": fr, "g": g}
 
 
 def sharpe(series, lo, hi):

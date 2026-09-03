@@ -118,3 +118,19 @@ def test_slice_row_reads_the_forward_return_from_the_pick_week():
     row = slice_row(ctx, t, "1w", preds)
     assert row["spy"] == pytest.approx(0.01)
     assert row["top3"] == pytest.approx(-0.05 / 3)
+
+
+def test_simulate_trace_reassembles_each_credited_week():
+    ctx = _weekly({"A": [100, 102, 105.06, 105.06, 105.06],
+                   "B": [100, 100, 100, 103, 103], "SPY": [100, 101, 102, 103, 104]})
+    holdings = pd.DataFrame({"week": pd.to_datetime(["2015-12-04", "2015-12-18"]),
+                             "top15": ["A", "B"]})
+    trace = []
+    rets = simulate(ctx, holdings, "1w", 1, None, None, "60/40", trace=trace)
+    assert [x["nxt"] for x in trace] == list(rets.index)
+    assert [x["rotated"] for x in trace] == [[0], [], [0]]
+    assert [x["sleeves"] for x in trace] == [[["A"]], [["A"]], [["B"]]]
+    assert [x["t"] for x in trace] == list(pd.to_datetime(["2015-12-04", "2015-12-04", "2015-12-18"]))
+    for x in trace:
+        book_r = np.mean([np.mean(v) for v in x["vals"]]) - x["cost"]
+        assert x["r"] == pytest.approx(0.6 * book_r + 0.4 * x["fr"])

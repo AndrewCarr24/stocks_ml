@@ -1,0 +1,402 @@
+<meta charset="utf-8">
+<title>Out-of-Sample Explorer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root { --surface:#fcfcfb; --panel:#ffffff; --ink:#0b0b0b; --ink2:#52514e; --ink3:#8a8984;
+  --line:#e8e7e3; --grid:#eeede9; --accent:#2a78d6; --accent-soft:#e7f0fb; --spy:#1baf7a;
+  --gain:#1f9d55; --loss:#d0453e; --gate:#c9a227; --focus:#2a78d6; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --surface:#1a1a19; --panel:#232322; --ink:#f4f3ef;
+    --ink2:#c3c2b7; --ink3:#8c8b83; --line:#33322f; --grid:#2c2b28; --accent:#3f8fe8;
+    --accent-soft:#1e2c3d; --spy:#22b57c; --gain:#2fb36a; --loss:#e0605a; --gate:#d4ad3a; } }
+:root[data-theme="dark"] { --surface:#1a1a19; --panel:#232322; --ink:#f4f3ef;
+  --ink2:#c3c2b7; --ink3:#8c8b83; --line:#33322f; --grid:#2c2b28; --accent:#3f8fe8;
+  --accent-soft:#1e2c3d; --spy:#22b57c; --gain:#2fb36a; --loss:#e0605a; --gate:#d4ad3a; }
+* { box-sizing:border-box; }
+body { background:var(--surface); color:var(--ink); margin:0;
+  font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,sans-serif; }
+main { max-width:1040px; margin:0 auto; padding:32px 20px 60px; }
+a { color:var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+h1 { font-size:24px; font-weight:700; margin:0 0 4px; text-wrap:balance; letter-spacing:-.01em; }
+h2 { font-size:16px; font-weight:600; margin:0 0 10px; }
+.sub { color:var(--ink2); margin:0 0 18px; max-width:72ch; }
+.mono, .tk, td.num, th.num, .stat b { font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; }
+.eyebrow { font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); font-weight:600; }
+.crumbs { font-size:13px; color:var(--ink2); margin-bottom:14px; }
+
+/* summary strip */
+.strip { display:grid; grid-template-columns:auto repeat(4, 1fr); gap:0 14px; align-items:baseline;
+  border:1px solid var(--line); border-radius:6px; background:var(--panel); padding:10px 16px; margin:0 0 16px;
+  font-variant-numeric:tabular-nums; }
+.strip .lbl { font-size:12px; color:var(--ink3); font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+.strip .row { display:contents; }
+.strip .who { font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:8px; }
+.strip .sv { font-size:14px; }
+.strip .sv b { font-weight:500; font-size:16px; font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; }
+.sw { display:inline-block; width:14px; height:3px; border-radius:2px; }
+.sw.acc { background:var(--accent); } .sw.spy { background:var(--spy); }
+
+/* chart */
+#wrap { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 8px 4px; }
+#wrap svg { display:block; width:100%; height:auto; }
+.hint { display:flex; justify-content:space-between; gap:12px; font-size:12.5px; color:var(--ink3); margin:8px 2px 0; }
+.hint .legend { display:flex; gap:16px; }
+.hint .legend span { display:inline-flex; align-items:center; gap:6px; }
+#tip { position:absolute; display:none; z-index:5; background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; padding:9px 12px 10px; font-size:12.5px; width:300px; box-shadow:0 3px 14px rgba(0,0,0,.14);
+  line-height:1.45; pointer-events:none; }
+#tip.pinned { pointer-events:auto; border-color:var(--accent); }
+#tip.pinned .d { padding-right:18px; }
+#tip .d { font-weight:600; font-size:13px; display:flex; justify-content:space-between; align-items:baseline; }
+#tip .d small { color:var(--ink3); font-weight:400; }
+#tip .navs { display:grid; grid-template-columns:auto 1fr auto; gap:2px 10px; margin:4px 0 6px; font-variant-numeric:tabular-nums; }
+#tip .navs .k { color:var(--ink2); }
+#tip .picks { border-top:1px solid var(--line); padding-top:6px; }
+#tip .picks .h { color:var(--ink3); font-size:11.5px; margin-bottom:2px; }
+#tip .picks ol { list-style:none; margin:0; padding:0; columns:2; column-gap:12px; }
+#tip .picks li { break-inside:avoid; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+#tip .picks li a { font-weight:500; }
+#tip .picks li a.tk { font-family:"IBM Plex Mono",monospace; }
+#tip .picks li em { color:var(--ink2); font-style:normal; }
+#tip .foot { color:var(--ink3); font-size:11px; margin-top:6px; }
+#tip .x { position:absolute; top:4px; right:6px; border:0; background:none; color:var(--ink3); cursor:pointer; font-size:14px; line-height:1; padding:2px 4px; }
+.gain { color:var(--gain); } .loss { color:var(--loss); }
+
+/* book panel */
+.panel { border:1px solid var(--line); border-radius:6px; background:var(--panel); padding:14px 16px; margin-top:16px; }
+.panel .head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+.panel .head p { margin:0; color:var(--ink2); font-size:13px; }
+.sleeves { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; }
+@media (max-width:820px) { .sleeves { grid-template-columns:repeat(2, minmax(0,1fr)); } .strip { grid-template-columns:auto repeat(2,1fr); } }
+.sleeve { border:1px solid var(--line); border-radius:5px; padding:8px 10px; font-size:12.5px; }
+.sleeve.rot { border-color:var(--accent); background:var(--accent-soft); }
+.sleeve .sh { display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink3); margin-bottom:4px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+.sleeve table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.sleeve td { padding:2px 0; border:0; vertical-align:baseline; }
+.sleeve td.nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:0; width:100%; color:var(--ink2); padding-left:6px; }
+.sleeve td.num { text-align:right; white-space:nowrap; padding-left:6px; font-size:12px; }
+.sleeve td.num small { color:var(--ink3); }
+
+/* tables */
+table.list { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:14px; }
+table.list th, table.list td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); }
+table.list th { color:var(--ink3); font-weight:600; font-size:12px; letter-spacing:.05em; text-transform:uppercase; }
+table.list th.num, table.list td.num { text-align:right; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+@media (max-width:820px) { .two { grid-template-columns:1fr; } }
+.note { color:var(--ink2); font-size:13px; max-width:78ch; border-top:1px solid var(--line); margin-top:22px; padding-top:14px; }
+.note p { margin:0 0 8px; }
+.find { display:flex; gap:8px; align-items:center; font-size:13px; }
+.find input { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:4px; background:var(--panel); color:var(--ink); width:150px; }
+button.link { font:inherit; color:var(--accent); background:none; border:0; padding:0; cursor:pointer; }
+
+/* company page */
+.co-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+.co-head h1 { font-size:26px; }
+.co-head .tk { font-size:16px; color:var(--ink2); }
+.co-meta { color:var(--ink2); margin:2px 0 14px; font-size:13.5px; }
+.stats { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+@media (max-width:820px) { .stats { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+.stat { border:1px solid var(--line); border-radius:6px; background:var(--panel); padding:10px 12px; }
+.stat .eyebrow { display:block; margin-bottom:2px; }
+.stat b { font-size:20px; font-weight:500; font-variant-numeric:tabular-nums; }
+.stat small { color:var(--ink3); font-size:12px; margin-left:4px; }
+#tl { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
+#tl svg { display:block; width:100%; height:auto; }
+#tl .bar { cursor:pointer; }
+#tl .bar:hover { opacity:.8; }
+#tltip { position:absolute; display:none; background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:8px 11px; font-size:12.5px; box-shadow:0 3px 14px rgba(0,0,0,.14); pointer-events:none; z-index:5;
+  font-variant-numeric:tabular-nums; line-height:1.45; }
+@media (prefers-reduced-motion:no-preference) { #tip, #tltip { transition:opacity .08s linear; } }
+</style>
+
+<main id="app"></main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById('data').textContent);
+  const N = D.weeks.length;                       // credited weeks; points = N + 1
+  const T = D.tickers, P = D.positions;
+  const byTk = new Map();                         // ticker idx -> positions (sorted by j0)
+  P.forEach(p => { if (!byTk.has(p.k)) byTk.set(p.k, []); byTk.get(p.k).push(p); });
+  const weekPnl = Array.from({ length: N }, () => new Map());   // week j -> (k -> $)
+  P.forEach(p => p.p.forEach((x, i) => weekPnl[p.j0 + i].set(p.k, x)));
+  const held = Array.from({ length: N }, () => new Map());      // week j -> (k -> position)
+  P.forEach(p => p.p.forEach((_, i) => held[p.j0 + i].set(p.k, p)));
+  const tkIdx = new Map(T.map((t, i) => [t.t, i]));
+  const app = document.getElementById('app');
+
+  const fmt$ = v => '$' + Math.round(v).toLocaleString('en-US');
+  const fmtP = v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(2);
+  const fmtPct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
+  const cls = v => v >= 0 ? 'gain' : 'loss';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ms = d => Date.parse(d + 'T00:00:00Z');
+  const dfmt = d => { const [y, m, dd] = d.split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]} ${+dd}, ${y}`; };
+  const holdRet = p => p.v.reduce((a, v) => a * (1 + v), 1) - 1;
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const title = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\bInc\b/, 'Inc').replace(/\bCorp\b/, 'Corp');
+
+  // ---------- routing ----------
+  function route() {
+    const h = location.hash || '#/';
+    const m = h.match(/^#\/co\/([A-Za-z0-9.\-]+)$/);
+    if (m && tkIdx.has(m[1].toUpperCase())) renderCompany(tkIdx.get(m[1].toUpperCase()));
+    else renderChart();
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', route);
+
+  // ---------- main chart ----------
+  let pinned = null;
+  function renderChart() {
+    const s = D.summary.strategy, y = D.summary.spy;
+    const stat = big => `<div class="sv"><b>${big}</b></div>`;
+    app.innerHTML = `
+      <h1>Out-of-Sample Explorer</h1>
+      <p class="sub">The selection procedure was run on 2006–2015 alone; the configuration it chose
+        (4-week horizon, 5-year training window, top-10 in four staggered sleeves, sector cap 2,
+        60/40 trend ballast) was then frozen and graded on ${dfmt(D.meta.lo)} → ${dfmt(D.dates[N])}
+        against the S&amp;P 500 (SPY), costs included, $100 start.
+        <strong>Hover</strong> the chart for that week's ten picks; <strong>click</strong> to pin and
+        open the full four-sleeve book; click any company for its history.</p>
+      <div class="strip">
+        <div class="lbl"></div><div class="lbl">End</div><div class="lbl">Per year</div><div class="lbl">Sharpe</div><div class="lbl">Max drawdown</div>
+        <div class="row"><div class="who"><i class="sw acc"></i>Procedure</div>
+          ${stat(fmt$(s.end))}${stat(fmtPct(s.cagr / 100))}${stat(s.sr.toFixed(2))}${stat('−' + (s.dd * 100).toFixed(0) + '%')}</div>
+        <div class="row"><div class="who"><i class="sw spy"></i>S&amp;P 500</div>
+          ${stat(fmt$(y.end))}${stat(fmtPct(y.cagr / 100))}${stat(y.sr.toFixed(2))}${stat('−' + (y.dd * 100).toFixed(0) + '%')}</div>
+      </div>
+      <div id="wrap"><svg id="chart" viewBox="0 0 1000 400" role="img" aria-label="Procedure vs S&amp;P 500, 2016 to 2024"></svg>
+        <div id="tip" role="dialog" aria-live="polite"></div>
+        <div class="hint"><div class="legend"><span><i class="sw acc"></i>Procedure</span><span><i class="sw spy"></i>S&amp;P 500</span>
+          <span><i class="sw" style="background:var(--gate);opacity:.7"></i>Ballast in IEF (strip: ⅓ · ⅔ · all)</span></div>
+          <div class="find"><label for="goto">Company</label><input id="goto" list="tks" placeholder="ticker or name" autocomplete="off">
+          <datalist id="tks">${T.map(t => `<option value="${esc(t.t)}">${esc(title(t.name))}</option>`).join('')}</datalist></div></div>
+      </div>
+      <div id="book"></div>
+      <div class="two" id="ranks"></div>
+      <div class="note" id="note"></div>`;
+    drawChart();
+    renderRanks();
+    document.getElementById('note').innerHTML = `
+      <p>${esc(D.meta.as_graded)}</p>
+      <p>Weekly accounting: each Friday close the model ranks the members; one of four sleeves is replaced
+        by the top ten (at most two per sector), paid 10 bp per rotation; every name is held four weeks;
+        40% of NAV sits in the trend ballast, SPY shifted to IEF one third per breached trailing mean
+        (30/40/52 weeks). Dollar figures are per $100 invested at the start; a company's
+        "won or lost" is its share of the book's weekly return, including its share of rotation costs.
+        Picks run ${dfmt(D.meta.first_pick)} → ${dfmt(D.meta.last_pick)}; the last credited week ends
+        ${dfmt(D.dates[N])}. Built ${D.meta.built} from the frozen Sharadar world (data/sharadar_world2000).</p>`;
+    const goto = document.getElementById('goto');
+    goto.addEventListener('change', () => {
+      const v = goto.value.trim().toUpperCase();
+      if (tkIdx.has(v)) location.hash = '#/co/' + v;
+    });
+    if (pinned !== null) showTip(pinned, true);
+  }
+
+  function drawChart() {
+    const svg = document.getElementById('chart');
+    const W = 1000, H = 400, L = 52, R = 16, Tp = 14, B = 46, G = 10;   // G: gate strip height
+    const x0 = ms(D.dates[0]), x1 = ms(D.dates[N]);
+    const ymax = Math.max(...D.nav, ...D.spy) * 1.04;
+    const X = d => L + (ms(d) - x0) / (x1 - x0) * (W - L - R);
+    const Y = v => Tp + (1 - v / ymax) * (H - Tp - B);
+    const xs = D.dates.map(X);
+    let g = '';
+    // y grid
+    const step = ymax > 600 ? 200 : 100;
+    for (let v = 0; v <= ymax; v += step) {
+      g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
+      g += `<text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">$${v}</text>`;
+    }
+    // year ticks
+    for (let yr = 2016; yr <= 2024; yr++) {
+      const d = `${yr}-01-01`; if (ms(d) < x0 || ms(d) > x1) continue;
+      g += `<line x1="${X(d)}" x2="${X(d)}" y1="${Tp}" y2="${H - B + 4}" stroke="var(--grid)" stroke-width="1"/>`;
+      g += `<text x="${X(d) + 4}" y="${H - B + 16}" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${yr}</text>`;
+    }
+    // gate strip (IEF share of the ballast, per credited week)
+    D.weeks.forEach((w, j) => {
+      if (w.g <= 0) return;
+      g += `<rect x="${xs[j]}" y="${H - B + 22}" width="${Math.max(xs[j + 1] - xs[j], .8)}" height="${G}" fill="var(--gate)" opacity="${0.25 + 0.7 * w.g}"/>`;
+    });
+    const path = arr => arr.map((v, i) => (i ? 'L' : 'M') + xs[i].toFixed(1) + ' ' + Y(v).toFixed(1)).join('');
+    g += `<path d="${path(D.spy)}" fill="none" stroke="var(--spy)" stroke-width="1.6"/>`;
+    g += `<path d="${path(D.nav)}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+    g += `<circle cx="${xs[N]}" cy="${Y(D.nav[N])}" r="3.5" fill="var(--accent)"/><circle cx="${xs[N]}" cy="${Y(D.spy[N])}" r="3" fill="var(--spy)"/>`;
+    g += `<g id="cursor" style="display:none"><line id="cl" y1="${Tp}" y2="${H - B + 4}" stroke="var(--ink3)" stroke-dasharray="3 3"/>
+          <circle id="c1" r="4" fill="var(--accent)" stroke="var(--panel)" stroke-width="1.5"/><circle id="c2" r="3.5" fill="var(--spy)" stroke="var(--panel)" stroke-width="1.5"/></g>`;
+    g += `<rect id="hit" x="${L}" y="${Tp}" width="${W - L - R}" height="${H - Tp - B + 4}" fill="transparent" style="cursor:crosshair"/>`;
+    svg.innerHTML = g;
+    const hit = document.getElementById('hit');
+    const idxAt = ev => {
+      const r = svg.getBoundingClientRect();
+      const px = (ev.clientX - r.left) / r.width * W;
+      let best = 0, bd = 1e9;
+      xs.forEach((x, i) => { const d = Math.abs(x - px); if (d < bd) { bd = d; best = i; } });
+      return best;
+    };
+    hit.addEventListener('mousemove', ev => { if (pinned === null) showTip(idxAt(ev), false); });
+    hit.addEventListener('mouseleave', () => { if (pinned === null) hideTip(); });
+    hit.addEventListener('click', ev => { pinned = idxAt(ev); showTip(pinned, true); });
+    svg._geom = { xs, Y, W, H };
+  }
+
+  function hideTip() {
+    document.getElementById('tip').style.display = 'none';
+    document.getElementById('cursor').style.display = 'none';
+  }
+  function unpin() { pinned = null; hideTip(); document.getElementById('book').innerHTML = ''; }
+
+  function showTip(j, pin) {
+    const svg = document.getElementById('chart'), { xs, Y, W, H } = svg._geom;
+    const tip = document.getElementById('tip'), cur = document.getElementById('cursor');
+    cur.style.display = '';
+    document.getElementById('cl').setAttribute('x1', xs[j]); document.getElementById('cl').setAttribute('x2', xs[j]);
+    document.getElementById('c1').setAttribute('cx', xs[j]); document.getElementById('c1').setAttribute('cy', Y(D.nav[j]));
+    document.getElementById('c2').setAttribute('cx', xs[j]); document.getElementById('c2').setAttribute('cy', Y(D.spy[j]));
+    const d = D.dates[j];
+    const wk = j < N ? D.weeks[j] : null;                  // decision made at this date
+    const dNav = j ? D.nav[j] - D.nav[j - 1] : 0, dSpy = j ? D.spy[j] - D.spy[j - 1] : 0;
+    let picks;
+    if (wk && wk.pick.length) {
+      picks = `<div class="h">Chosen ${wk.t === d ? 'at this close' : 'on ' + dfmt(wk.t) + ' (Friday holiday)'} — held four weeks</div>
+        <ol>${wk.pick.map(k => `<li><a class="tk" href="#/co/${esc(T[k].t)}">${esc(T[k].t)}</a> <em>${esc(shortName(T[k].name))}</em></li>`).join('')}</ol>`;
+    } else if (wk) {
+      picks = `<div class="h">No new picks this week — the book is held</div>`;
+    } else {
+      picks = `<div class="h">Last credited week. Last cached decision: ${dfmt(D.weeks[N - 1].t)}</div>`;
+    }
+    tip.innerHTML = `${pin ? '<button class="x" aria-label="Unpin">×</button>' : ''}
+      <div class="d">${dfmt(d)}<small>week ${j} of ${N}</small></div>
+      <div class="navs"><span class="k">Procedure</span><b class="mono">${fmt$(D.nav[j])}</b><span class="${cls(dNav)} mono">${j ? fmtP(dNav) : ''}</span>
+        <span class="k">S&amp;P 500</span><b class="mono">${fmt$(D.spy[j])}</b><span class="${cls(dSpy)} mono">${j ? fmtP(dSpy) : ''}</span></div>
+      <div class="picks">${picks}</div>
+      ${pin ? '' : '<div class="foot">Click to pin and open the full book</div>'}`;
+    tip.className = pin ? 'pinned' : '';
+    tip.style.display = 'block';
+    const wrap = document.getElementById('wrap'), r = svg.getBoundingClientRect();
+    const px = xs[j] / W * r.width, left = px + 14 + tip.offsetWidth > wrap.clientWidth ? px - tip.offsetWidth - 14 : px + 14;
+    tip.style.left = Math.max(4, left) + 'px';
+    tip.style.top = Math.max(8, Math.min(Y(D.nav[j]) / H * r.height - 20, wrap.clientHeight - tip.offsetHeight - 8)) + 'px';
+    if (pin) {
+      tip.querySelector('.x').addEventListener('click', unpin);
+      renderBook(j);
+    } else document.getElementById('book').innerHTML = '';
+  }
+  function shortName(n) { return title(n).replace(/ (Inc|Corp|Corporation|Co|Ltd|Plc|Company)\.?$/i, '').replace(/,$/, ''); }
+
+  function renderBook(j) {
+    const el = document.getElementById('book');
+    const wj = j < N ? j : N - 1;                             // book decided at this date (or held into it)
+    const w = D.weeks[wj], d = D.dates[j], rotated = new Set(j < N ? w.pick : []);
+    const prev = j >= 1 ? weekPnl[j - 1] : new Map();          // $ over the week that just ended
+    const heldNow = j < N ? held[j] : held[N - 1];
+    const sleeve = (names, c) => {
+      const isRot = j < N && names.every(k => rotated.has(k)) && names.length && w.pick.length;
+      return `<div class="sleeve${isRot ? ' rot' : ''}"><div class="sh"><span>Sleeve ${c + 1}</span><span>${isRot ? 'new this week' : 'held'}</span></div>
+        <table>${names.map(k => {
+          const p = heldNow.get(k), since = p ? p.b : d, sofar = p ? sum(p.p.slice(0, Math.max(0, j - p.j0))) : 0;
+          const wkp = prev.get(k);
+          return `<tr><td><a class="tk" href="#/co/${esc(T[k].t)}">${esc(T[k].t)}</a></td>
+            <td class="nm" title="${esc(title(T[k].name))} · ${esc(T[k].sector)}">${esc(shortName(T[k].name))}</td>
+            <td class="num">${wkp === undefined ? '<small>new</small>' : `<span class="${cls(wkp)}">${fmtP(wkp)}</span>`}
+              ${p && j - p.j0 > 0 ? `<br><small title="since ${dfmt(since)}">Σ ${fmtP(sofar)}</small>` : ''}</td></tr>`;
+        }).join('')}</table></div>`;
+    };
+    const names = new Set(w.book.flat());
+    const wkTotal = j ? sum([...prev.values()]) : 0;
+    const ballast = j ? (D.nav[j] - D.nav[j - 1]) - wkTotal : 0;
+    el.innerHTML = `<div class="panel"><div class="head"><h2>Book at the ${dfmt(d)} close</h2>
+      <p>${names.size} names across four sleeves${j ? ` · this week: names ${fmtP(wkTotal)}, ballast ${fmtP(ballast)}, total ${fmtP(D.nav[j] - D.nav[j - 1])}` : ''}
+        ${j < N ? '' : ' · held into the following week (no later decision cached)'}</p></div>
+      <div class="sleeves">${w.book.map(sleeve).join('')}</div></div>`;
+  }
+
+  function renderRanks() {
+    const tot = T.map((t, k) => ({ k, s: sum((byTk.get(k) || []).map(p => sum(p.p))), n: (byTk.get(k) || []).length }));
+    const rows = arr => `<table class="list"><tr><th>Company</th><th class="num">Holds</th><th class="num">Won / lost</th></tr>
+      ${arr.map(r => `<tr><td><a class="tk" href="#/co/${esc(T[r.k].t)}">${esc(T[r.k].t)}</a> <span style="color:var(--ink2)">${esc(shortName(T[r.k].name))}</span></td>
+        <td class="num mono">${r.n}</td><td class="num mono ${cls(r.s)}">${fmtP(r.s)}</td></tr>`).join('')}</table>`;
+    const best = [...tot].sort((a, b) => b.s - a.s).slice(0, 8), worst = [...tot].sort((a, b) => a.s - b.s).slice(0, 8);
+    document.getElementById('ranks').innerHTML = `<div><h2>Most won</h2>${rows(best)}</div><div><h2>Most lost</h2>${rows(worst)}</div>`;
+  }
+
+  // ---------- company page ----------
+  function renderCompany(k) {
+    const t = T[k], ps = byTk.get(k) || [];
+    const total = sum(ps.map(p => sum(p.p))), weeks = sum(ps.map(p => p.p.length));
+    const wins = ps.filter(p => sum(p.p) > 0).length;
+    const avgRet = ps.length ? sum(ps.map(holdRet)) / ps.length : 0;
+    app.innerHTML = `
+      <div class="crumbs"><a href="#/">← Out-of-sample chart</a></div>
+      <div class="co-head"><h1>${esc(title(t.name))}</h1><span class="tk">${esc(t.t)}</span></div>
+      <p class="co-meta">Sector <strong>${esc(t.sector)}</strong> (the cap's basis)${t.industry ? ' · ' + esc(t.industry) : ''}</p>
+      <div class="stats">
+        <div class="stat"><span class="eyebrow">Won / lost</span><b class="${cls(total)}">${fmtP(total)}</b><small>per $100 start</small></div>
+        <div class="stat"><span class="eyebrow">Holds</span><b>${ps.length}</b><small>${wins} won</small></div>
+        <div class="stat"><span class="eyebrow">Weeks in the book</span><b>${weeks}</b></div>
+        <div class="stat"><span class="eyebrow">Avg return per hold</span><b class="${cls(avgRet)}">${fmtPct(avgRet)}</b></div>
+        <div class="stat"><span class="eyebrow">Best / worst hold</span><b>${ps.length ? fmtP(Math.max(...ps.map(p => sum(p.p)))) : '—'}</b><small>${ps.length ? fmtP(Math.min(...ps.map(p => sum(p.p)))) : ''}</small></div>
+      </div>
+      <h2>Buys and sells, ${dfmt(D.meta.lo).slice(-4)} → ${dfmt(D.dates[N])}</h2>
+      <div id="tl"><svg id="tlsvg" viewBox="0 0 1000 220" role="img" aria-label="Holds of ${esc(t.t)} on a timeline"></svg><div id="tltip"></div></div>
+      <table class="list" style="margin-top:14px">
+        <tr><th>Bought</th><th>Sold</th><th class="num">Weeks</th><th class="num">Sleeves</th><th class="num">Stock over the hold</th><th class="num">Won / lost</th></tr>
+        ${ps.map(p => `<tr><td>${dfmt(p.b)}</td><td>${p.s ? dfmt(p.s) : '<em>still held</em>'}</td><td class="num mono">${p.p.length}</td>
+          <td class="num mono">${Math.max(...p.n)}</td><td class="num mono ${cls(holdRet(p))}">${fmtPct(holdRet(p))}</td><td class="num mono ${cls(sum(p.p))}">${fmtP(sum(p.p))}</td></tr>`).join('')}
+      </table>
+      <div class="note"><p>Bought = the Friday close whose ranking put ${esc(t.t)} in the rotating sleeve; the position
+        is paid from that close. Sold = the close it left the last sleeve holding it. A name picked again
+        while still held sits in two sleeves (double weight) and stays one hold, so the dollars can
+        disagree in sign with the stock's own return when the weight changed mid-hold. Dollar figures
+        are the company's share of the book's weekly return on a $100 start, rotation costs included.</p></div>`;
+    drawTimeline(ps);
+  }
+
+  function drawTimeline(ps) {
+    const svg = document.getElementById('tlsvg'), W = 1000, H = 220, L = 50, R = 14, mid = 100, top = 14, bot = 34;
+    const x0 = ms(D.dates[0]), x1 = ms(D.dates[N]);
+    const X = d => L + (ms(d) - x0) / (x1 - x0) * (W - L - R);
+    const amax = Math.max(0.05, ...ps.map(p => Math.abs(sum(p.p))));
+    const S = v => v / amax * (mid - top - 4);
+    let g = '';
+    for (let yr = 2016; yr <= 2024; yr++) {
+      const d = `${yr}-01-01`; if (ms(d) < x0 || ms(d) > x1) continue;
+      g += `<line x1="${X(d)}" x2="${X(d)}" y1="${top}" y2="${H - bot + 4}" stroke="var(--grid)"/>`;
+      g += `<text x="${X(d) + 4}" y="${H - bot + 16}" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${yr}</text>`;
+    }
+    [amax, amax / 2].forEach(v => { [1, -1].forEach(sg => {
+      g += `<line x1="${L}" x2="${W - R}" y1="${mid - sg * S(v)}" y2="${mid - sg * S(v)}" stroke="var(--grid)"/>`;
+      g += `<text x="${L - 6}" y="${mid - sg * S(v) + 4}" text-anchor="end" font-size="10.5" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${sg > 0 ? '+' : '−'}$${v.toFixed(2)}</text>`;
+    }); });
+    g += `<line x1="${L}" x2="${W - R}" y1="${mid}" y2="${mid}" stroke="var(--ink3)" stroke-width="1"/>`;
+    ps.forEach((p, i) => {
+      const v = sum(p.p), xa = X(p.b), xb = X(p.s || D.dates[N]), h = S(Math.abs(v));
+      g += `<rect class="bar" data-i="${i}" x="${xa.toFixed(1)}" y="${(v >= 0 ? mid - h : mid).toFixed(1)}" width="${Math.max(xb - xa, 2.5).toFixed(1)}" height="${Math.max(h, 1.5).toFixed(1)}" fill="var(--${v >= 0 ? 'gain' : 'loss'})" rx="1"/>`;
+      if (!p.s) g += `<text x="${xb + 3}" y="${mid - 6}" font-size="10.5" fill="var(--ink3)">held</text>`;
+    });
+    svg.innerHTML = g;
+    const tip = document.getElementById('tltip'), box = document.getElementById('tl');
+    svg.querySelectorAll('.bar').forEach(b => {
+      b.addEventListener('mouseenter', ev => {
+        const p = ps[+b.dataset.i], v = sum(p.p);
+        tip.innerHTML = `<b>${dfmt(p.b)}</b> → ${p.s ? dfmt(p.s) : 'still held'}<br>${p.p.length} weeks · stock <span class="${cls(holdRet(p))}">${fmtPct(holdRet(p))}</span> · <span class="${cls(v)}">${fmtP(v)}</span>`;
+        tip.style.display = 'block';
+        const r = box.getBoundingClientRect(), bx = ev.clientX - r.left;
+        tip.style.left = Math.min(bx + 12, box.clientWidth - tip.offsetWidth - 6) + 'px';
+        tip.style.top = (ev.clientY - r.top - tip.offsetHeight - 10) + 'px';
+      });
+      b.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    });
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && pinned !== null && !location.hash.startsWith('#/co/')) unpin(); });
+  route();
+})();
+</script>
