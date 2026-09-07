@@ -4,12 +4,27 @@
 runs, in order, with per-stage caching under data/experiments/<name>/:
 
   1. grid      population per-week top-k returns, horizons {1w,4w}, reference
-               2y training window, K=4 ensembles
-  2. wsweep    sampled-week training-window sweep {1..5}y at the chosen horizon
-  3. holdings  full-population ranked top-15 for the chosen (horizon, window)
-  4. cascade   the documented decisions (PROCEDURE.md "Selection procedure")
-  5. grade     frozen config on the eval window (if given) vs sp500
+               2y training window, K=K_COPIES ensembles
+  2. wsweep    population holdings at every training window {1..5}y on the
+               selection window, at the chosen horizon
+  3. holdings  the chosen (horizon, window)'s holdings extended to the eval end
+  4. screen    (--screen) the feature screen (feature_screen.py): probe the
+               panel's candidates on the window, examine the keepers as one
+               bundle in a second holdings run WITH them; admitted features
+               enter every stage below
+  5. cascade   the documented decisions (PROCEDURE.md "Selection procedure")
+  6. grade     frozen config on the eval window (if given) vs sp500
 
+Every decision reads every week of the selection window — no stage samples
+(owner mandate 2026-09-04; until then the window and book layers read a
+spaced sample of ~116 weeks, the book layer thinned to 29, and its argmax
+flipped between sample generations). Compounded statistics average the
+kweeks phases so every week counts. No decision reads a rank week whose
+forward label ends after the window (label_end): the last five weeks of a
+window that ends at the holdout's edge would otherwise be graded on holdout
+prices (the screen stage had this rule from the start; the cascade's
+horizon, window and book layers got it 2026-09-05, before the full-window
+run, with nested3_v1's choice unchanged).
 Model config is fixed (MODEL_PARAMS, depth-3 XGBoost) per the procedure card
 — never searched.
 Every stage appends to models/trials_ledger.json. Stages resume from cache;
@@ -19,11 +34,16 @@ from __future__ import annotations
 
 import copy
 import glob
+import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from stocks_ml.feature_screen import label_span_days
+from stocks_ml.ledger import (COST_BPS, Ledger, ballast_state, close_asof,  # noqa: F401
+                              pick_capped, rotate_sleeves, target_weights)
 
 MODEL_PARAMS = dict(max_depth=3, learning_rate=0.02, n_estimators=1500,
                     min_child_weight=20, subsample=0.85, colsample_bytree=0.8,
@@ -35,7 +55,7 @@ WINDOWS = (1, 2, 3, 4, 5)
 BOOKS = (3, 6, 10)
 FLOORS = ("none", "halfgate", "80/20", "70/30", "60/40")
 COST = 0.0010
-K_COPIES = 4
+K_COPIES = 16          # 4 until 2026-09-07 (ledger k16_champion_2006_2015_verdict)
 REF_WINDOW = 2
 
 
@@ -51,7 +71,8 @@ class Ctx:
         from stocks_ml.config import load_config
         from stocks_ml.data.store import DataStore
         self.cfg = load_config()
-        world = DataStore(data_dir)
+        self.world = DataStore(data_dir)
+        world = self.world
         p = Path(data_dir) / panel_file
         self.pan = pd.read_parquet(p) if p.exists() else world.read("panel")
         if "yr" in self.pan.columns:
@@ -60,15 +81,14 @@ class Ctx:
         mem = world.read("membership")
         self.smap = dict(mem.dropna(subset=["sector"])
                          .drop_duplicates("ticker")[["ticker", "sector"]].values)
-        self.cw = (self.prices.pivot(index="date", columns="ticker", values="close")
-                   .sort_index().ffill().resample("W-FRI").last())
-        self.wret = self.cw.pct_change(fill_method=None)
-        self.spy_w = self.cw["SPY"]
-        self.fwd = {h: self.cw.pct_change(c["kweeks"], fill_method=None)
-                    .shift(-c["kweeks"]) for h, c in HORIZONS.items()}
+        daily = self.prices.sort_values("date")
+        self.__dict__.update(price_frames(
+            daily.pivot(index="date", columns="ticker", values="close").sort_index(),
+            daily.pivot(index="date", columns="ticker", values="open").sort_index()))
         self.members = {d: list(g["ticker"])
                         for d, g in self.pan[["date", "ticker"]].groupby("date")}
         self.weeks = sorted(self.members)
+        self.extra: list[str] = []      # panel columns the model gets beyond feature_cols
 
     def world_cfg(self, train_years):
         c = copy.copy(self.cfg)
@@ -95,7 +115,8 @@ def ensemble_preds(ctx, t, horizon, train_years):
             bootstrap_seed=c)
         wf = walk_forward_predictions(ctx.pan, est, cfg2, start=t, end=t,
                                       label_col=h["label"],
-                                      purge_days=h["purge"])
+                                      purge_days=h["purge"],
+                                      extra_features=tuple(ctx.extra))
         p = wf.preds.get(t)
         if p is not None:
             copies.append(p)
@@ -103,6 +124,33 @@ def ensemble_preds(ctx, t, horizon, train_years):
         return None
     p = pd.concat(copies, axis=1).mean(axis=1)
     return p if p.nunique() >= 20 else None
+
+
+def price_frames(closes, opens):
+    """Everything the engine reads from daily closes and opens: the frames
+    themselves (closes carried forward), weekly closes on the W-FRI grid,
+    weekly returns, SPY's weekly closes, and per horizon the forward return
+    on the fill basis — a pick dated in week t is bought at the first open
+    after t and sold at the first open k weeks later (the training labels'
+    basis, and the live job's)."""
+    closes = closes.ffill()
+    cw = closes.resample("W-FRI").last()
+    fills = next_open(opens, cw.index)
+    return {"closes": closes, "opens": opens, "cw": cw,
+            "wret": cw.pct_change(fill_method=None), "spy_w": cw["SPY"],
+            "fwd": {h: fills.pct_change(c["kweeks"], fill_method=None).shift(-c["kweeks"])
+                    for h, c in HORIZONS.items()}}
+
+
+def next_open(opens, labels):
+    """Fill price after each week label: the open of the first session after
+    the label, or the first open within five sessions of it (ledger.fill_price);
+    NaN where there is none."""
+    pos = opens.index.searchsorted(labels, side="right")
+    ok = pos < len(opens.index)
+    out = opens.bfill(limit=4).iloc[pos[ok]]
+    out.index = labels[ok]
+    return out.reindex(labels)
 
 
 def week_slot(index, t):
@@ -162,6 +210,8 @@ def stage_grid(ctx, out, lo, hi, shard=(0, 1)):
 
 
 def sample_weeks(weeks, lo, hi, spacing=28, seed=11):
+    """Spaced random weeks for the cheap paired exams under ops/ (sample-first
+    compute). No selection decision reads a sample."""
     rng = np.random.default_rng(seed)
     out, last = [], pd.Timestamp("1900-01-01")
     for t in weeks:
@@ -172,23 +222,90 @@ def sample_weeks(weeks, lo, hi, spacing=28, seed=11):
 
 
 def stage_wsweep(ctx, out, horizon, lo, hi, shard=(0, 1)):
-    weeks = sample_weeks(ctx.weeks, lo, hi)
-    weeks = [t for i, t in enumerate(weeks) if i % shard[1] == shard[0]]
+    """Population holdings at every training window on the selection window:
+    the window decision's evidence, one file per window (the chosen window's
+    file is what stage holdings extends and the cascade grades)."""
     for yrs in WINDOWS:
-        _stage_loop(ctx, weeks, f"{out}/wsweep_{yrs}y_s{shard[0]}.parquet",
-                    lambda t, y=yrs: (lambda p: slice_row(ctx, t, horizon, p)
-                                      if p is not None else None)(
-                        ensemble_preds(ctx, t, horizon, y)), checkpoint=10)
+        print(f"  wsweep: {holdings_name(horizon, yrs, ctx.extra)} on {lo.date()} -> {hi.date()}", flush=True)
+        stage_holdings(ctx, out, horizon, yrs, lo, hi, shard)
+
+
+def holdings_name(horizon, train_years, features=()):
+    """Stem of the holdings files: `_x` plus a short hash of the bundle's
+    names marks a run WITH extra features, so a walk resumed from cache can
+    never mix two bundles."""
+    stem = f"holdings_{horizon}_{train_years}y"
+    if features:
+        stem += "_x" + hashlib.sha1(",".join(sorted(features)).encode()).hexdigest()[:6]
+    return stem
 
 
 def stage_holdings(ctx, out, horizon, train_years, lo, hi, shard=(0, 1)):
     weeks = [t for t in ctx.weeks if lo <= t <= hi]
     weeks = [t for i, t in enumerate(weeks) if i % shard[1] == shard[0]]
     _stage_loop(ctx, weeks,
-                f"{out}/holdings_{horizon}_{train_years}y_s{shard[0]}.parquet",
+                f"{out}/{holdings_name(horizon, train_years, ctx.extra)}_s{shard[0]}.parquet",
                 lambda t: (lambda p: slice_row(ctx, t, horizon, p)
                            if p is not None else None)(
                     ensemble_preds(ctx, t, horizon, train_years)))
+
+
+def stage_screen(ctx, out, horizon, train_years, lo, hi, end, shard=(0, 1),
+                 name=None, report_path=None):
+    """The feature screen (feature_screen.py): probe the panel's candidates on
+    the selection window; run the holdings stage again WITH the keepers
+    (ctx.extra) over the same weeks; verdict from the paired difference.
+    Writes screen.json / screen.md under `out` and one ledger row."""
+    import stocks_ml.feature_screen as fs
+    from stocks_ml.models.trials import record_trials
+    out = Path(out)
+    kweeks, label = HORIZONS[horizon]["kweeks"], HORIZONS[horizon]["label"]
+    probe_path = out / "screen_probe.parquet"
+    if probe_path.exists():
+        res = pd.read_parquet(probe_path)
+    else:
+        print("stage screen: probe", flush=True)
+        frame = fs.probe_frame(ctx.pan, ctx.world, lo, hi, kweeks, label,
+                               log=lambda m: print(f"  {m}", flush=True))
+        res = fs.probe(frame, lo, hi, kweeks, label)
+        res.to_parquet(probe_path)
+    keep = fs.keepers(res)
+    print(f"stage screen: keepers {keep or 'none'}", flush=True)
+    ex = df = None
+    if keep:
+        ctx.extra = list(keep)
+        try:
+            stage_holdings(ctx, out, horizon, train_years, lo, end, shard)
+        finally:
+            ctx.extra = []
+        without = _load(out, f"{holdings_name(horizon, train_years)}_s*.parquet")
+        with_ = _load(out, f"{holdings_name(horizon, train_years, keep)}_s*.parquet")
+        assert without is not None, "holdings stage not run — run stage holdings first"
+        need = set(without.week[(without.week >= lo) & (without.week <= hi)])
+        if not need <= set(with_.week):
+            print(f"stage screen: with-arm holdings cover {len(need & set(with_.week))}/{len(need)} "
+                  f"window weeks — rerun --stage screen once every shard has finished", flush=True)
+            return None
+        df = fs.paired_rows(without, with_, lo, hi, kweeks)
+        ex = fs.exam(df, kweeks)
+    name = name or out.name
+    summary = fs.write_screen(out, name, (lo, hi), kweeks, label, res, keep, ex, df, report_path)
+    stats = None if ex is None else ex["stats"][fs.PRIMARY]
+    record_trials([{"kind": "feature_screen", "name": name,
+                    "config": {"window": summary["window"], "horizon": horizon, "train_years": int(train_years),
+                               "candidates": len(res), "keepers": keep,
+                               "exam_weeks": None if df is None else int(len(df)),
+                               "hac_bandwidth_days": None if ex is None else ex["hac_bandwidth_days"]},
+                    **({} if stats is None else {"top6_diff": stats["diff"], "top6_t": stats["t"],
+                                                 "top6_cmp": ex["compounded_pct"]}),
+                    "passed": None if ex is None else ex["passed"], "admitted": summary["admitted"],
+                    "notes": ("no keeper cleared the probe" if ex is None else
+                              f"{'ADMITTED' if ex['passed'] else 'NOT ADMITTED'} ({ex['rule']}): top-6 "
+                              f"compounded {ex['compounded_pct']['without']:.2f} -> "
+                              f"{ex['compounded_pct']['with']:.2f} %/yr, paired diff {stats['diff']:+.2%}, "
+                              f"HAC t {stats['t']:+.2f} on {len(df)} weeks") + f"; {out / 'screen.md'}"}])
+    print(f"SCREEN: admitted {summary['admitted'] or 'nothing'}", flush=True)
+    return summary
 
 
 def _load(out, pattern):
@@ -201,23 +318,42 @@ def _load(out, pattern):
 
 
 # ---- pure decision functions (unit-testable) ----
+def label_end(hi, kweeks=max(c["kweeks"] for c in HORIZONS.values())):
+    """Last rank week whose k-week forward label (fill basis) ends inside a
+    window closing at `hi` — the screen stage's rule (feature_screen). The
+    default is the longest horizon's span, so layers that compare horizons
+    read the same weeks."""
+    return pd.Timestamp(hi) - pd.Timedelta(days=label_span_days(kweeks))
+
+
+def compounded_pct(df, col, kweeks, lo, hi):
+    """Cost-adjusted compounded %/yr of a book held kweeks, on every week of
+    [lo, hi]: the non-overlapping chain from each of the kweeks phases,
+    averaged (a single phase would leave three weeks in four unread)."""
+    g = df[(df.week >= lo) & (df.week <= hi)].sort_values("week")
+    out = []
+    for phase in range(kweeks):
+        r = g[col].iloc[phase::kweeks] - COST
+        yrs = len(r) * kweeks / 52
+        out.append((float(np.prod(1 + r)) ** (1 / yrs) - 1) * 100)
+    return float(np.mean(out))
+
+
 def decide_horizon(grids: dict, lo, hi) -> str:
-    """Cost-adjusted compounded %/yr of the top-6 book decides."""
-    res = {}
-    for h, df in grids.items():
-        kw = HORIZONS[h]["kweeks"]
-        g = df[(df.week >= lo) & (df.week <= hi)].iloc[::kw]
-        r = g["top6"] - COST
-        yrs = len(g) * kw / 52
-        res[h] = (float(np.prod(1 + r)) ** (1 / yrs) - 1) * 100
+    """Cost-adjusted compounded %/yr of the top-6 book decides, both horizons
+    read on the weeks whose labels end inside the window."""
+    last = label_end(hi)
+    res = {h: compounded_pct(df, "top6", HORIZONS[h]["kweeks"], lo, last)
+           for h, df in grids.items()}
     return max(res, key=res.get), res
 
 
 def decide_window(sweeps: dict, lo, hi):
-    """top-6 edge vs random on paired sampled weeks decides."""
-    common = None
+    """top-6 edge vs random, paired on the weeks every window has, decides.
+    `sweeps` holds each window's population holdings (load_windows)."""
+    common, last = None, label_end(hi)
     for df in sweeps.values():
-        w = set(df[(df.week >= lo) & (df.week <= hi)]["week"])
+        w = set(df[(df.week >= lo) & (df.week <= last)]["week"])
         common = w if common is None else common & w
     res = {}
     for yrs, df in sweeps.items():
@@ -227,125 +363,124 @@ def decide_window(sweeps: dict, lo, hi):
 
 
 def decide_book(df, horizon, lo, hi):
+    """Cost-adjusted compounded %/yr of each book on the chosen window's
+    population holdings (the frame the cascade grades) decides."""
     kw = HORIZONS[horizon]["kweeks"]
-    g = df[(df.week >= lo) & (df.week <= hi)].iloc[::kw]
-    res = {}
-    for k in BOOKS:
-        r = g[f"top{k}"] - COST
-        yrs = len(g) * kw / 52
-        res[k] = (float(np.prod(1 + r)) ** (1 / yrs) - 1) * 100
+    res = {k: compounded_pct(df, f"top{k}", kw, lo, label_end(hi, kw)) for k in BOOKS}
     return max(res, key=res.get), res
 
 
-def pick_capped(names, cap, k, smap):
-    if cap is None:
-        return names[:k]
-    out, cnt = [], {}
-    for n in names:
-        s = smap.get(n, "UNK")
-        if cnt.get(s, 0) < cap:
-            out.append(n)
-            cnt[s] = cnt.get(s, 0) + 1
-        if len(out) == k:
-            break
-    return out if len(out) == k else (out + [n for n in names if n not in out])[:k]
+def load_windows(out, horizon, lo, hi, min_coverage=0.95):
+    """Every window's population holdings on [lo, hi]; a missing or
+    unfinished window (fewer weeks than 95% of the fullest) is an error,
+    so no decision reads a partial stage."""
+    frames = {y: d for y in WINDOWS
+              if (d := _load(out, f"{holdings_name(horizon, y)}_s*.parquet")) is not None}
+    missing = [y for y in WINDOWS if y not in frames]
+    n = {y: int(((d.week >= lo) & (d.week <= hi)).sum()) for y, d in frames.items()}
+    short = [y for y, k in n.items() if k < min_coverage * max(n.values(), default=0)]
+    if missing or short:
+        raise RuntimeError(f"window sweep incomplete on {lo.date()} -> {hi.date()}: "
+                           f"missing {missing}, short {short} of {n} weeks — rerun --stage wsweep")
+    return frames
+
+
+def floor_split(floor, gates):
+    """The floor menu as (book fraction, ballast thirds) for ledger.target_weights.
+    `gates` is ballast_state's per-window SPY/IEF reading."""
+    if floor == "none":
+        return 1.0, {}
+    if floor == "halfgate":
+        # book exposure 1 - g/2, g the share of windows below their mean; the
+        # rest in IEF
+        below = {w: f for w, f in gates.items() if f == "IEF"}
+        return 1.0 - 0.5 * len(below) / len(gates), below
+    return {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}[floor], dict(gates)
 
 
 def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
-    """Weekly returns of the configured book, indexed by the week-ending label
-    each return is credited to. Pass a list as `trace` to receive one record
-    per credited week (pick date, sleeves, per-name returns, cost, floor)."""
+    """Weekly returns of the configured book under the live job's rules
+    (stocks_ml.ledger): each rank date's target weights are filled at the
+    next session's open at COST_BPS a side, rebalances under 0.5% of NAV are
+    skipped, and NAV is marked at each week's last close. Indexed by the
+    week-ending label each return is credited to; a week with no pick holds
+    the book. `stop` moves a name that has fallen that far from its rotation
+    close into SPY until its sleeve rotates. Pass a list as `trace` to
+    receive one record per credited week (pick date, sleeves, fills, per-name
+    $ and price returns, gate)."""
     ranked = {r.week: r.top15.split(",") for r in holdings.itertuples()}
-    weeks = sorted(ranked)
-    period = HORIZONS[horizon]["kweeks"]
-    ncoh = period
-    cohorts = {c: {"names": [], "entry": {}} for c in range(max(ncoh, 1))}
-    rets, exp_prev = {}, 1.0
     grid = ctx.wret.index
-    for i, t in enumerate(weeks):
-        wk = week_slot(grid, t)
-        if wk is None:
-            break
-        loc = grid.get_loc(wk)
-        if loc + 1 >= len(grid):
-            break
-        # the book decided at t is held until the next pick's week: a week
-        # with no pick keeps the previous book and still counts
-        if i + 1 < len(weeks):
-            nxt_slot = week_slot(grid, weeks[i + 1])
-            end_loc = len(grid) - 1 if nxt_slot is None else grid.get_loc(nxt_slot)
-            end_loc = max(end_loc, loc + 1)
-        else:
-            end_loc = loc + 1
-        c_, rotated = 0.0, []
-        for c, st in cohorts.items():
-            if (i % max(period, 1) == c) or not st["names"]:
-                rotated.append(c)
-                st["names"] = pick_capped(ranked[t], cap, book, ctx.smap)
-                st["entry"] = {n: float(ctx.cw[n].asof(wk))
-                               if n in ctx.cw.columns else np.nan
-                               for n in st["names"]}
-                c_ += COST / len(cohorts)
-        for j in range(loc, end_loc):
-            wk, nxt = grid[j], grid[j + 1]
-            rets[nxt], exp_prev, info = _credit_week(ctx, cohorts, wk, nxt, c_, book,
-                                                     stop, floor, exp_prev)
-            if trace is not None:
-                trace.append({"t": t, "wk": wk, "nxt": nxt, "r": rets[nxt],
-                              "rotated": rotated,
-                              "sleeves": [list(st["names"]) for st in cohorts.values()],
-                              **info})
-            c_, rotated = 0.0, []
-    return pd.Series(rets).sort_index()
+    by_label = {}
+    for t in sorted(ranked):
+        lab = week_slot(grid, t)
+        if lab is not None:
+            by_label[lab] = t
+    if not by_label:
+        return pd.Series(dtype=float)
+    n_sleeves = HORIZONS[horizon]["kweeks"]
+    labels = grid[(grid >= min(by_label)) & (grid <= max(by_label) + pd.Timedelta(days=7))]
+    led = Ledger.new(100.0, min(by_label))
+    entry, stopped = {}, {}                  # sleeve -> {name: rotation close} / stopped names
+    nav, prev, t, rotated, g, weights = {}, None, None, [], 0.0, {}
+    for lab in labels:
+        v_prev = led.value_of(ctx.closes, prev) if trace is not None and prev is not None else {}
+        fills = led.fill_pending(ctx.closes, ctx.opens, lab)
+        nav[lab], _ = led.mark(ctx.closes, lab)
+        if trace is not None and prev is not None:
+            trace.append({"t": t, "wk": prev, "nxt": lab, "r": nav[lab] / nav[prev] - 1.0,
+                          "rotated": rotated, "g": g, "nav": nav[lab], "weights": weights,
+                          "fills": fills,
+                          "sleeves": [list(s["names"]) for s in led.sleeves.values()],
+                          **_attribute(ctx, led, v_prev, fills, prev, lab)})
+        prev = lab
+        if lab not in by_label:                # no signal this week: hold the book
+            rotated, weights = [], {}
+            continue
+        t = by_label[lab]
+        sleeves, rotated = rotate_sleeves(led.sleeves, t, ranked[t], ctx.smap,
+                                          n_sleeves, book, cap)
+        for k in rotated:
+            entry[k] = {n: close_asof(ctx.closes, n, t)[0] for n in sleeves[str(k)]["names"]}
+            stopped[k] = set()
+        held = sleeves
+        if stop is not None:
+            held = {}
+            for k, s in sleeves.items():
+                for n in s["names"]:
+                    px, e = close_asof(ctx.closes, n, t)[0], entry[int(k)].get(n)
+                    if e and np.isfinite(px) and np.isfinite(e) and px / e - 1 <= stop:
+                        stopped[int(k)].add(n)
+                held[k] = {"names": ["SPY" if n in stopped[int(k)] else n for n in s["names"]]}
+        gates = ballast_state(ctx.spy_w, t)
+        g = sum(f == "IEF" for f in gates.values()) / len(gates)
+        frac, ballast = floor_split(floor, gates)
+        weights = target_weights(held, ballast, frac)
+        led.sleeves = sleeves
+        led.pending = {"decision_date": str(t.date()), "weights": weights}
+    return pd.Series(nav).sort_index().pct_change().iloc[1:]
 
 
-def _credit_week(ctx, cohorts, wk, nxt, c_, book, stop, floor, exp_prev):
-    """Return of the book held at wk's close over the week ending nxt, after
-    the rotation cost c_ already paid this week, the floor's exposure state
-    for the next call, and the pieces (per-sleeve name returns, cost, floor
-    return, gate) the return was assembled from."""
-    rs, vals_by_sleeve = [], []
-    for st in cohorts.values():
-        vals = []
-        for n in st["names"]:
-            if n not in ctx.wret.columns:
-                vals.append(0.0)
-                continue
-            if stop is not None:
-                e, px = st["entry"].get(n), ctx.cw[n].asof(wk)
-                if e and not pd.isna(px) and not pd.isna(e) and px / e - 1 <= stop:
-                    v = ctx.wret.loc[nxt, "SPY"]
-                    c_ += COST / (len(cohorts) * book)
-                    vals.append(0.0 if pd.isna(v) else float(v))
-                    continue
-            v = ctx.wret.loc[nxt, n]
-            vals.append(0.0 if pd.isna(v) else float(v))
-        rs.append(float(np.mean(vals)))
-        vals_by_sleeve.append(vals)
-    book_r = float(np.mean(rs)) - c_
-    hist = ctx.spy_w[ctx.spy_w.index <= wk]
-    g = float(np.mean([1.0 if len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
-                       else 0.0 for W in (30, 40, 52)]))
-    fvals = []
-    for W in (30, 40, 52):
-        below = len(hist) >= W and hist.iloc[-1] < hist.iloc[-W:].mean()
-        v = (ctx.wret.loc[nxt, "IEF"]
-             if (below and "IEF" in ctx.wret.columns) else ctx.wret.loc[nxt, "SPY"])
-        fvals.append(0.0 if pd.isna(v) else float(v))
-    fr = float(np.mean(fvals))
-    if floor == "halfgate":
-        exp = 1.0 - 0.5 * g
-        ir = ctx.wret.loc[nxt].get("IEF")
-        ir = 0.0 if pd.isna(ir) else float(ir)
-        r = exp * book_r + (1 - exp) * ir - COST * abs(exp - exp_prev)
-        exp_prev = exp
-    elif floor in ("80/20", "70/30", "60/40"):
-        a = {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}[floor]
-        r = a * book_r + (1 - a) * fr
-    else:
-        r = book_r
-    return r, exp_prev, {"vals": vals_by_sleeve, "cost": c_, "book_r": book_r,
-                         "fr": fr, "g": g}
+def _attribute(ctx, led, v_prev, fills, wk, nxt):
+    """Per name over the week wk -> nxt: `pnl` in $ (value change less the
+    cash paid for it, fees included; sums to the NAV change) and `vals`, the
+    name's price return over the part of the week the book held it."""
+    v_now = led.value_of(ctx.closes, nxt)
+    pnl, vals = {}, {}
+    paid, first_px = {}, {}
+    for _, tk, units, price, fee in fills:
+        paid[tk] = paid.get(tk, 0.0) + units * price + fee
+        first_px.setdefault(tk, price)
+    for tk in set(v_prev) | set(v_now) | set(paid):
+        pnl[tk] = v_now.get(tk, 0.0) - v_prev.get(tk, 0.0) - paid.get(tk, 0.0)
+        c1, c0 = close_asof(ctx.closes, tk, nxt)[0], close_asof(ctx.closes, tk, wk)[0]
+        if tk in v_prev and tk in v_now:
+            v = c1 / c0 - 1.0
+        elif tk in v_now:                                  # bought this week
+            v = c1 / first_px[tk] - 1.0
+        else:                                              # sold out this week
+            v = first_px[tk] / c0 - 1.0 if tk in first_px else 0.0
+        vals[tk] = float(v) if np.isfinite(v) else 0.0
+    return {"pnl": pnl, "vals": vals}
 
 
 def sharpe(series, lo, hi):
@@ -364,22 +499,22 @@ def metrics(series, lo, hi):
             "n_weeks": len(x)}
 
 
-def run_cascade(ctx, out, lo, hi):
+def run_cascade(ctx, out, lo, hi, features=(), name=None):
+    """Horizon and window are decided on the standing features; from the book
+    down every decision reads the holdings the run grades (the `_x` file of a
+    screened run). The ledger row is named after the run (`name`, `_x` for
+    the with-features arm), so two runs on one window keep separate rows."""
     from stocks_ml.models.trials import record_trials
     grids = {h: _load(out, f"grid_{h}_s*.parquet") for h in HORIZONS}
     horizon, hres = decide_horizon(grids, lo, hi)
     if horizon == "4w":
-        sweeps = {y: _load(out, f"wsweep_{y}y_s*.parquet") for y in WINDOWS}
-        sweeps = {y: d for y, d in sweeps.items() if d is not None}
-        window, wres = decide_window(sweeps, lo, hi)
+        window, wres = decide_window(load_windows(out, horizon, lo, hi), lo, hi)
     else:
         window, wres = REF_WINDOW, {"fixed": "1w keeps reference window"}
-    src = _load(out, f"wsweep_{window}y_s*.parquet") if window != REF_WINDOW \
-        else grids[horizon]
-    book, bres = decide_book(src, horizon, lo, hi)
-    holdings = _load(out, f"holdings_{horizon}_{window}y_s*.parquet")
+    holdings = _load(out, f"{holdings_name(horizon, window, features)}_s*.parquet")
     assert holdings is not None, \
         f"holdings stage not run for {horizon}/{window}y — run stage holdings"
+    book, bres = decide_book(holdings, horizon, lo, hi)
     fres = {f: sharpe(simulate(ctx, holdings, horizon, book, None, None, f), lo, hi)
             for f in FLOORS}
     floor = max(fres, key=fres.get)
@@ -390,25 +525,36 @@ def run_cascade(ctx, out, lo, hi):
             for c in (None, 2)}
     cap = None if cres["None"] >= cres["2"] else 2
     config = {"horizon": horizon, "train_years": int(window), "book": int(book),
-              "floor": floor, "stop": stop, "cap": cap,
+              "floor": floor, "stop": stop, "cap": cap, "features": list(features),
               "evidence": {"horizon": hres, "window": {str(k): round(v, 2) if isinstance(v, float) else v for k, v in wres.items()},
                            "book": {str(k): round(v, 2) for k, v in bres.items()},
                            "floor": {k: round(v, 3) for k, v in fres.items()},
                            "stop": {k: round(v, 3) for k, v in sres.items()},
                            "cap": {k: round(v, 3) for k, v in cres.items()}}}
-    record_trials([{"kind": "select_pipeline", "name": f"select_{lo.date()}_{hi.date()}",
+    record_trials([{"kind": "select_pipeline",
+                    "name": f"{name or f'select_{lo.date()}_{hi.date()}'}{'_x' if features else ''}",
                     "notes": json.dumps({k: config[k] for k in
                                          ("horizon", "train_years", "book",
-                                          "floor", "stop", "cap")})}])
+                                          "floor", "stop", "cap", "features")})}])
     return config
 
 
+def decide_engine(out, lo, hi):
+    """(horizon, window) from the cached grid and wsweep stages."""
+    grids = {h: _load(out, f"grid_{h}_s*.parquet") for h in HORIZONS}
+    h, _ = decide_horizon(grids, lo, hi)
+    w = decide_window(load_windows(out, h, lo, hi), lo, hi)[0] if h == "4w" else REF_WINDOW
+    return h, w
+
+
 def run_select(sel_start, sel_end, eval_start=None, eval_end=None,
-               name=None, stage="all", shard=(0, 1)):
+               name=None, stage="all", shard=(0, 1), screen=False):
+    from stocks_ml.feature_screen import load_screen
     lo, hi = pd.Timestamp(sel_start), pd.Timestamp(sel_end)
     name = name or f"select_{lo.date()}_{hi.date()}"
     out = Path("data/experiments") / name
     out.mkdir(parents=True, exist_ok=True)
+    end = pd.Timestamp(eval_end) if eval_end else hi
     ctx = Ctx()
     if stage in ("all", "grid"):
         print("stage grid", flush=True)
@@ -421,30 +567,31 @@ def run_select(sel_start, sel_end, eval_start=None, eval_end=None,
                 print("stage wsweep", flush=True)
                 stage_wsweep(ctx, out, h, lo, hi, shard)
     if stage in ("all", "holdings"):
-        grids = {h: _load(out, f"grid_{h}_s*.parquet") for h in HORIZONS}
-        h, _ = decide_horizon(grids, lo, hi)
-        if h == "4w":
-            sweeps = {y: d for y in WINDOWS
-                      if (d := _load(out, f"wsweep_{y}y_s*.parquet")) is not None}
-            w, _ = decide_window(sweeps, lo, hi)
-        else:
-            w = REF_WINDOW
+        h, w = decide_engine(out, lo, hi)
         print(f"stage holdings ({h}/{w}y)", flush=True)
-        stage_holdings(ctx, out, h, w, lo,
-                       pd.Timestamp(eval_end) if eval_end else hi, shard)
+        stage_holdings(ctx, out, h, w, lo, end, shard)
+    if stage == "screen" or (screen and stage == "all"):
+        h, w = decide_engine(out, lo, hi)
+        print(f"stage screen ({h}/{w}y)", flush=True)
+        stage_screen(ctx, out, h, w, lo, hi, end, shard, name=name,
+                     report_path=Path("reports") / f"{name}_screen.md")
     if stage in ("all", "cascade"):
-        config = run_cascade(ctx, out, lo, hi)
-        (out / "frozen_config.json").write_text(json.dumps(config, indent=2))
+        # --screen: cascade on the screen stage's admitted features (if any);
+        # its outputs carry the `_x` suffix so both arms live in one experiment
+        features = (load_screen(out) or {}).get("admitted", []) if screen else []
+        sfx = "_x" if features else ""
+        config = run_cascade(ctx, out, lo, hi, features, name=name)
+        (out / f"frozen_config{sfx}.json").write_text(json.dumps(config, indent=2))
         print("FROZEN:", {k: config[k] for k in
-                          ("horizon", "train_years", "book", "floor", "stop", "cap")})
+                          ("horizon", "train_years", "book", "floor", "stop", "cap", "features")})
         if eval_start:
-            holdings = _load(out, f"holdings_{config['horizon']}_"
-                                  f"{config['train_years']}y_s*.parquet")
+            holdings = _load(out, f"{holdings_name(config['horizon'], config['train_years'], features)}"
+                                  f"_s*.parquet")
             s = simulate(ctx, holdings, config["horizon"], config["book"],
                          config["cap"], config["stop"], config["floor"])
             elo, ehi = pd.Timestamp(eval_start), pd.Timestamp(eval_end)
             rep = {"config": metrics(s, elo, ehi),
                    "sp500": metrics(ctx.wret["SPY"].reindex(s.index), elo, ehi)}
-            (out / "eval.json").write_text(json.dumps(rep, indent=2))
+            (out / f"eval{sfx}.json").write_text(json.dumps(rep, indent=2))
             print("EVAL:", json.dumps(rep))
     return out

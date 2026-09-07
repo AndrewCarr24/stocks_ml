@@ -16,7 +16,7 @@ def cmd_select(args, cfg):
 
     shard = tuple(int(x) for x in args.shard.split("/")) if args.shard else (0, 1)
     run_select(args.sel_start, args.sel_end, args.eval_start, args.eval_end,
-               name=args.name, stage=args.stage, shard=shard)
+               name=args.name, stage=args.stage, shard=shard, screen=args.screen)
 
 
 def cmd_procedure_card(args, cfg):
@@ -83,15 +83,21 @@ def main():
                       help="git add/commit/push the signal and ledger after a real run")
 
     p_sel = sub.add_parser("select", help="run the full selection procedure "
-                           "on a window (stages: grid, wsweep, holdings, cascade)")
+                           "on a window (stages: grid, wsweep, holdings, [screen], cascade)")
     p_sel.add_argument("--sel-start", required=True)
     p_sel.add_argument("--sel-end", required=True)
     p_sel.add_argument("--eval-start", default=None)
     p_sel.add_argument("--eval-end", default=None)
     p_sel.add_argument("--name", default=None)
     p_sel.add_argument("--stage", default="all",
-                       choices=["all", "grid", "wsweep", "holdings", "cascade"])
+                       choices=["all", "grid", "wsweep", "holdings", "screen", "cascade"])
     p_sel.add_argument("--shard", default=None, help="i/n to split stage weeks")
+    p_sel.add_argument("--screen", action="store_true",
+                       help="run the feature screen after holdings (probe the panel's x_ "
+                            "candidates on the window, exam the keepers as one bundle); "
+                            "with --stage cascade, cascade and grade on the admitted bundle "
+                            "(outputs frozen_config_x.json / eval_x.json) — without it the "
+                            "cascade is the base arm")
 
     sub.add_parser("procedure-card", help="regenerate PROCEDURE.md from "
                    "models/champion_spec.json")

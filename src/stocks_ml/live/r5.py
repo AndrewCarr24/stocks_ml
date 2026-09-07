@@ -5,278 +5,46 @@ key and a fresh world store, neither of which belongs in Actions. Steps:
 
   1. data/world.py refreshes the live world and rebuilds panel_sf.parquet
   2. selection.ensemble_preds ranks this Friday's members exactly as the
-     research pipeline did (K=4 week-bootstrap copies, 4w label, 5y window)
+     research pipeline did (K=16 week-bootstrap copies, 4w label, 5y window,
+     the panel's f_ columns plus the champion's generated bundle, the g_
+     columns build_world_panel computes from features/bundle.py's formulas;
+     SPEC["features"])
   3. the sleeve schedule rotates one of four 6-name sleeves (sector cap 2)
   4. the 70/30 trend ballast decides SPY vs IEF per moving-average third
   5. a paper ledger fills LAST week's orders at Monday's open, marks NAV at
      Friday's close and stores this week's target weights as pending orders
 
 Everything the job decides is written to signals_r5/<friday>.md (+ .json)
-and ledger_r5.json. The rules mirror selection.simulate — the function the
-champion was scored with — with two live-only additions: a name must have
-traded within the last five sessions to be rankable (simulate required a
-forward return, which implies the same), and a sleeve that missed its
-rotation because the job skipped a week is rotated at the next run.
-
-Units in the ledger are on Sharadar's total-return price basis (closeadj):
-dividends and splits arrive as retroactive rescalings of the whole history,
-so every mark stores a reference close per position and the next run
-rescales units by old/new reference close before doing anything else.
+and ledger_r5.json. The rules and the ledger are stocks_ml.ledger — the same
+code selection.simulate grades the champion with — plus one live-only
+requirement: a name must have traded within the last few sessions to be
+rankable. Units in the ledger are on Sharadar's total-return price basis;
+see ledger.py for the rebase that keeps them right when the vendor
+re-adjusts a history.
 """
 from __future__ import annotations
 
 import json
-import os
 import time
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-from stocks_ml.selection import HORIZONS, Ctx, ensemble_preds, pick_capped
+from stocks_ml.features.bundle import FEATURES as BUNDLE
+from stocks_ml.ledger import (FUNDS, Ledger, ballast_state, due_sleeve, friday_of,
+                              rotate_sleeves, sleeve_counts, target_weights)
+from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds
 
 SPEC = {"horizon": "4w", "train_years": 5, "book": 6, "cap": 2, "floor": 0.7,
-        "top_n": 15}                       # models/champion_spec.json
+        "top_n": 15,                       # models/champion_spec.json (tests keep them equal)
+        "features": list(BUNDLE)}          # the generated bundle (features/bundle.py), adopted 2026-09-06
 N_SLEEVES = HORIZONS[SPEC["horizon"]]["kweeks"]
-ANCHOR = pd.Timestamp("2001-01-05")        # week 0 of the sleeve schedule
-BALLAST_WINDOWS = (30, 40, 52)             # weeks; each third: IEF when SPY < its MA
-COST_BPS = 5.0                             # per side (procedure card)
-STALE_WEEKS = 5                            # a sleeve this old missed a rotation
 MIN_UNIVERSE = 100                         # rankable names needed for a signal
-MIN_TRADE_FRAC = 0.005                     # skip rebalances under 0.5% of NAV (full exits always run)
 TRADABLE_DAYS = 7                          # a name must have a close this recent
-FUNDS = ("SPY", "IEF")
 
 
 def _log(msg):
     print(msg, flush=True)
-
-
-# ---- pure rules (unit-tested) ----
-def week_index(t) -> int:
-    return int((pd.Timestamp(t) - ANCHOR).days // 7)
-
-
-def due_sleeve(t) -> int:
-    return week_index(t) % N_SLEEVES
-
-
-def friday_of(t) -> pd.Timestamp:
-    t = pd.Timestamp(t)
-    return t + pd.Timedelta(days=(4 - t.weekday()) % 7)
-
-
-def rotate_sleeves(sleeves: dict, t, ranked: list[str], smap: dict) -> tuple[dict, list[int]]:
-    """One sleeve rotates per week (week_index mod 4, as simulate's
-    `i % period == c`); empty sleeves fill immediately (simulate's first
-    week), stale ones catch up. Returns (new sleeves, rotated sleeve ids)."""
-    t = pd.Timestamp(t)
-    out, rotated = {}, []
-    for k in range(N_SLEEVES):
-        s = sleeves.get(str(k), {"names": [], "since": None})
-        age = (t - pd.Timestamp(s["since"])).days // 7 if s.get("since") else None
-        if age is not None and age <= 0 and s["names"]:
-            # already rotated on this signal date: a rerun of the same
-            # Friday must not rotate it again (simulate: once per week)
-            out[str(k)] = {"names": list(s["names"]), "since": s["since"]}
-        elif k == due_sleeve(t) or not s["names"] or (age is not None and age >= STALE_WEEKS):
-            names = pick_capped(list(ranked[:SPEC["top_n"]]), SPEC["cap"], SPEC["book"], smap)
-            out[str(k)] = {"names": names, "since": str(t.date())}
-            rotated.append(k)
-        else:
-            out[str(k)] = {"names": list(s["names"]), "since": s["since"]}
-    return out, rotated
-
-
-def ballast_state(spy_weekly: pd.Series, t) -> dict[str, str]:
-    """Per moving-average window: 'IEF' when SPY's weekly close is below its
-    trailing W-week mean, else 'SPY'. Uses closes through t's week."""
-    hist = spy_weekly[spy_weekly.index <= friday_of(t)].dropna()
-    out = {}
-    for w in BALLAST_WINDOWS:
-        below = len(hist) >= w and float(hist.iloc[-1]) < float(hist.iloc[-w:].mean())
-        out[str(w)] = "IEF" if below else "SPY"
-    return out
-
-
-def target_weights(sleeves: dict, ballast: dict, floor: float = SPEC["floor"]) -> dict[str, float]:
-    """simulate's book: sleeves equal-weighted, names equal within a sleeve;
-    the (1 - floor) ballast split evenly across the MA thirds."""
-    w: dict[str, float] = {}
-    for s in sleeves.values():
-        for n in s["names"]:
-            w[n] = w.get(n, 0.0) + floor / (len(sleeves) * len(s["names"]))
-    for fund in ballast.values():
-        w[fund] = w.get(fund, 0.0) + (1.0 - floor) / len(ballast)
-    return dict(sorted(w.items(), key=lambda kv: (-kv[1], kv[0])))
-
-
-def sleeve_counts(sleeves: dict) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for s in sleeves.values():
-        for n in s["names"]:
-            out[n] = out.get(n, 0) + 1
-    return out
-
-
-# ---- paper ledger ----
-def _close_asof(cw: pd.DataFrame, ticker: str, date) -> tuple[float, pd.Timestamp | None]:
-    if ticker not in cw.columns:
-        return np.nan, None
-    s = cw[ticker].loc[:pd.Timestamp(date)].dropna()
-    return (float(s.iloc[-1]), s.index[-1]) if len(s) else (np.nan, None)
-
-
-def _fill_price(cw: pd.DataFrame, ow: pd.DataFrame, ticker: str, fill_date) -> tuple[float, pd.Timestamp | None]:
-    """Open on the fill date, else the first open within five sessions, else
-    the last close before it (a name that stopped trading is closed out at
-    its final print)."""
-    if ticker in ow.columns:
-        s = ow[ticker].loc[pd.Timestamp(fill_date):].dropna().iloc[:5]
-        if len(s):
-            return float(s.iloc[0]), s.index[0]
-    return _close_asof(cw, ticker, fill_date)
-
-
-@dataclass
-class R5Ledger:
-    cash: float = 0.0
-    positions: dict = field(default_factory=dict)    # ticker -> units (closeadj basis)
-    refs: dict = field(default_factory=dict)         # ticker -> [date, close] at last mark
-    sleeves: dict = field(default_factory=dict)      # "0".."3" -> {names, since}
-    pending: dict | None = None                       # {decision_date, weights}
-    nav_history: list = field(default_factory=list)  # [date, nav, spy_nav]
-    trades: list = field(default_factory=list)       # [fill_date, ticker, units, price, fee]
-    bench: dict = field(default_factory=dict)        # SPY buy-and-hold: cash, units, ref
-    started: str | None = None
-
-    @classmethod
-    def new(cls, capital: float, t) -> "R5Ledger":
-        return cls(cash=float(capital), bench={"cash": float(capital), "units": 0.0, "ref": None},
-                   started=str(pd.Timestamp(t).date()))
-
-    @classmethod
-    def load(cls, path) -> "R5Ledger | None":
-        p = Path(path)
-        if not p.exists():
-            return None
-        return cls(**json.loads(p.read_text()))
-
-    def save(self, path) -> None:
-        path = Path(path)
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        with tmp.open("w") as fh:
-            fh.write(json.dumps(asdict(self), indent=2, allow_nan=False))
-            fh.flush()
-            os.fsync(fh.fileno())
-        tmp.replace(path)
-
-    def rebase(self, cw: pd.DataFrame) -> dict[str, float]:
-        """Rescale units where the vendor re-adjusted a held name's history
-        since the last mark (value-preserving). Returns the factors applied."""
-        factors = {}
-        for tk, (d, c_old) in list(self.refs.items()):
-            if tk not in self.positions or not c_old:
-                continue
-            c_new, _ = _close_asof(cw, tk, d)
-            if np.isfinite(c_new) and c_new > 0 and abs(c_new / c_old - 1.0) > 1e-9:
-                factors[tk] = c_old / c_new
-                self.positions[tk] *= factors[tk]
-                self.refs[tk] = [d, c_new]
-        ref = self.bench.get("ref")
-        if ref and self.bench.get("units"):
-            c_new, _ = _close_asof(cw, "SPY", ref[0])
-            if np.isfinite(c_new) and c_new > 0 and abs(c_new / ref[1] - 1.0) > 1e-9:
-                factors["SPY(bench)"] = ref[1] / c_new
-                self.bench["units"] *= factors["SPY(bench)"]
-                self.bench["ref"] = [ref[0], c_new]
-        return factors
-
-    def fill_pending(self, cw: pd.DataFrame, ow: pd.DataFrame, t, cost_bps: float = COST_BPS) -> list:
-        """Execute the stored target weights at the first open after their
-        decision date: sells first, buys scaled to the cash left after fees
-        (never overdrawn); rebalances under MIN_TRADE_FRAC of NAV are skipped
-        (simulate charges only rotations, and dust trades are not worth a
-        $100 book's spread). Orders decided on `t` itself wait for next run."""
-        if not self.pending:
-            return []
-        d = pd.Timestamp(self.pending["decision_date"])
-        t = pd.Timestamp(t)
-        after = ow.index[ow.index > d]
-        if d >= t or not len(after):
-            return []
-        fd, fee = after[0], cost_bps / 1e4
-        weights = {k: float(v) for k, v in self.pending["weights"].items()}
-        names = sorted(set(weights) | set(self.positions))
-        px = {tk: _fill_price(cw, ow, tk, fd) for tk in names}
-        nav = self.cash + sum(u * px[tk][0] for tk, u in self.positions.items()
-                              if np.isfinite(px[tk][0]))
-        delta = {tk: weights.get(tk, 0.0) * nav - self.positions.get(tk, 0.0) * px[tk][0]
-                 for tk in names if np.isfinite(px[tk][0]) and px[tk][0] > 0}
-        floor = MIN_TRADE_FRAC * nav
-        fills = []
-        for tk in sorted(delta, key=delta.get):            # sells first (most negative)
-            if delta[tk] >= -1e-9:
-                break
-            exit_all = weights.get(tk, 0.0) <= 0.0
-            if not exit_all and -delta[tk] < floor:
-                continue
-            p, when = px[tk]
-            held = self.positions.get(tk, 0.0)
-            units = held if exit_all else min(held, -delta[tk] / p)
-            if units <= 0:
-                continue
-            f = units * p * fee
-            self.cash += units * p - f
-            self._add_units(tk, -units)
-            fills.append([str(when.date()), tk, -units, p, f])
-        buys = {tk: v for tk, v in delta.items() if v >= floor}
-        total = sum(buys.values())
-        scale = min(1.0, self.cash / (total * (1 + fee))) if total > 0 else 0.0
-        for tk in sorted(buys):
-            p, when = px[tk]
-            dollars = buys[tk] * scale
-            if dollars <= 1e-9:
-                continue
-            self.cash -= dollars * (1 + fee)
-            self._add_units(tk, dollars / p)
-            fills.append([str(when.date()), tk, dollars / p, p, dollars * fee])
-        if self.bench.get("cash", 0.0) > 0 and not self.bench.get("units"):
-            p, when = px.get("SPY") or _fill_price(cw, ow, "SPY", fd)
-            self.bench["units"] = self.bench["cash"] / (p * (1 + fee))
-            self.bench["cash"] = 0.0
-        self.trades.extend(fills)
-        self.pending = None
-        return fills
-
-    def _add_units(self, tk: str, units: float) -> None:
-        new = self.positions.get(tk, 0.0) + units
-        if abs(new) < 1e-12:
-            self.positions.pop(tk, None)
-        else:
-            self.positions[tk] = new
-
-    def mark(self, cw: pd.DataFrame, t) -> tuple[float, float]:
-        """NAV at the last close on or before t; refresh the reference closes."""
-        t = pd.Timestamp(t)
-        nav, refs = self.cash, {}
-        for tk, u in self.positions.items():
-            c, when = _close_asof(cw, tk, t)
-            if np.isfinite(c):
-                nav += u * c
-                refs[tk] = [str(when.date()), c]
-        self.refs = refs
-        spy, when = _close_asof(cw, "SPY", t)
-        bench = self.bench.get("cash", 0.0) + self.bench.get("units", 0.0) * spy
-        if self.bench.get("units"):
-            self.bench["ref"] = [str(when.date()), spy]
-        row = [str(t.date()), nav, bench]
-        self.nav_history = [r for r in self.nav_history if r[0] != row[0]] + [row]
-        return nav, bench
-
-    def value_of(self, cw: pd.DataFrame, t) -> dict[str, float]:
-        return {tk: u * _close_asof(cw, tk, t)[0] for tk, u in self.positions.items()}
 
 
 # ---- the weekly run ----
@@ -310,13 +78,18 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         build_world_panel(live_dir, cfg, log=log)
 
     ctx = Ctx(str(live_dir))
+    ctx.extra = list(SPEC.get("features", ()))     # the champion's bundle beyond feature_cols
+    missing = [c for c in ctx.extra if c not in ctx.pan.columns]
+    if missing:
+        raise RuntimeError(f"panel_sf lacks the champion's bundle columns {missing[:3]}...: "
+                           "rebuild it (build_world_panel computes the g_ columns)")
     t = pd.Timestamp(as_of) if as_of else ctx.weeks[-1]
     if t not in ctx.members:
         raise RuntimeError(f"{t.date()} is not a panel date; latest is {ctx.weeks[-1].date()}")
     if as_of is None and friday_of(t) < last_friday():       # holiday Fridays: Thursday is fine
         raise RuntimeError(f"panel ends {t.date()} but the last Friday was "
                            f"{last_friday().date()}: prices are not refreshed yet")
-    log(f"signal date {t.date()} (sleeve {due_sleeve(t)} due); fitting {SPEC}")
+    log(f"signal date {t.date()} (sleeve {due_sleeve(t, N_SLEEVES)} due); fitting {SPEC}")
     t1 = time.time()
     preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"])
     if preds is None:
@@ -325,22 +98,20 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     log(f"ranked {len(ranked)} names in {time.time() - t1:.0f}s; "
         f"top-{SPEC['top_n']}: {', '.join(ranked.index[:SPEC['top_n']])}")
 
-    ledger = R5Ledger.load(ledger_path) or R5Ledger.new(capital, t)
-    daily = ctx.prices.sort_values("date")
-    cw = daily.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
-    ow = daily.pivot(index="date", columns="ticker", values="open").sort_index()
-    factors = ledger.rebase(cw)
-    fills = ledger.fill_pending(cw, ow, t)
-    nav, bench = ledger.mark(cw, t)
-    sleeves, rotated = rotate_sleeves(ledger.sleeves, t, list(ranked.index), ctx.smap)
+    ledger = Ledger.load(ledger_path) or Ledger.new(capital, t)
+    factors = ledger.rebase(ctx.closes)
+    fills = ledger.fill_pending(ctx.closes, ctx.opens, t)
+    nav, bench = ledger.mark(ctx.closes, t)
+    sleeves, rotated = rotate_sleeves(ledger.sleeves, t, list(ranked.index), ctx.smap,
+                                      N_SLEEVES, SPEC["book"], SPEC["cap"], SPEC["top_n"])
     ballast = ballast_state(ctx.spy_w, t)
-    weights = target_weights(sleeves, ballast)
+    weights = target_weights(sleeves, ballast, SPEC["floor"])
     ledger.sleeves = sleeves
     ledger.pending = {"decision_date": str(t.date()), "weights": weights}
 
-    held = ledger.value_of(cw, t)
+    held = ledger.value_of(ctx.closes, t)
     signal = {
-        "date": str(t.date()), "sleeve_due": due_sleeve(t), "rotated": rotated,
+        "date": str(t.date()), "sleeve_due": due_sleeve(t, N_SLEEVES), "rotated": rotated,
         "sleeves": sleeves, "ballast": ballast, "weights": weights,
         "nav": nav, "spy_nav": bench, "cash": ledger.cash,
         "held_value": held, "fills": fills, "rebase_factors": factors,
@@ -384,7 +155,7 @@ def render_markdown(sig: dict, smap: dict) -> str:
     counts = sleeve_counts(sig["sleeves"])
     lines = [f"# r5 signal — {sig['date']}", "",
              "Champion r5 (PROCEDURE.md): 70/30 trend ballast, top-6 four-sleeve "
-             "stagger, sector cap 2, 4-week label, 5-year window, K=4.", "",
+             f"stagger, sector cap 2, 4-week label, 5-year window, K={K_COPIES}.", "",
              f"Paper NAV **${nav:,.2f}** · SPY buy-and-hold ${bench:,.2f} · "
              f"cash ${sig['cash']:,.2f}", "",
              "## This week", "",

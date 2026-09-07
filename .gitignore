@@ -7,3 +7,6 @@ __pycache__/
 /logs/
 .DS_Store
 /reports/oos_explorer.html
+/reports/oos_x_explorer.html
+/reports/select_explorer.html
+/reports/champion_explorer.html

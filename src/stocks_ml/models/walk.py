@@ -47,7 +47,8 @@ def rebalance_calendar(panel, start=None, end=None, rebalance_every: int = 1) ->
 def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
                              label_col: str = "label", purge_days: int | None = None,
                              rebalance_every: int = 1,
-                             cache_path=None) -> WalkForwardPredictions:
+                             cache_path=None,
+                             extra_features=()) -> WalkForwardPredictions:
     """Staggered-refit ensemble walk: refresh one member per rebalance period.
 
     At each rebalance the newest member trains on data ending purge_days
@@ -62,7 +63,9 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
 
     Other targets/cadences pass `label_col` (e.g. "label_4w"), `purge_days`
     exceeding that label's calendar span, and `rebalance_every` (panel dates
-    per rebalance)."""
+    per rebalance). `extra_features` names panel columns the model gets on
+    top of feature_cols(panel) — a screen's admitted candidates (``x_``) or a
+    pending ``f_`` feature admitted by name."""
     # Walks cost hours of fits; cache_path (under the data dir, NOT tmp — the
     # OS purges tmp and has eaten these before) lets studies reuse them. The
     # caller owns invalidation: pass a new path when estimator/panel change.
@@ -75,6 +78,10 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
                 n_fits=int(stored.attrs.get("n_fits", len(stored.columns))))
     purge = cfg.purge_days if purge_days is None else purge_days
     fcols = feature_cols(panel)
+    missing = [c for c in extra_features if c not in panel.columns]
+    if missing:
+        raise KeyError(f"extra_features not in the panel: {missing}")
+    fcols += [c for c in extra_features if c not in fcols]
     rdates = rebalance_calendar(panel, start, end, rebalance_every)
     labeled = panel[panel[label_col].notna()]
 

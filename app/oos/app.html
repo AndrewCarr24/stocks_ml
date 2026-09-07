@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>Out-of-Sample Explorer</title>
+<title>__TITLE__</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 :root { --surface:#fcfcfb; --panel:#ffffff; --ink:#0b0b0b; --ink2:#52514e; --ink3:#8a8984;
@@ -41,6 +41,7 @@ h2 { font-size:16px; font-weight:600; margin:0 0 10px; }
 /* chart */
 #wrap { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 8px 4px; }
 #wrap svg { display:block; width:100%; height:auto; }
+#ratio { margin-top:6px; border-top:1px solid var(--line); }
 .hint { display:flex; justify-content:space-between; gap:12px; font-size:12.5px; color:var(--ink3); margin:8px 2px 0; }
 .hint .legend { display:flex; gap:16px; }
 .hint .legend span { display:inline-flex; align-items:center; gap:6px; }
@@ -137,6 +138,11 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
   const ms = d => Date.parse(d + 'T00:00:00Z');
   const dfmt = d => { const [y, m, dd] = d.split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m - 1]} ${+dd}, ${y}`; };
   const holdRet = p => p.v.reduce((a, v) => a * (1 + v), 1) - 1;
+  const nweeks = p => p.n.filter(n => n > 0).length;   // the exit week (n = 0) carries the sale, not a hold
+  const stoppedAt = p => {                             // first decision that parked the hold in SPY, or null
+    for (let i = 0; i < p.n.length; i++) { const j = p.j0 + i; if (j < N && p.n[i] > 0 && D.weeks[j].stop.includes(p.k)) return D.weeks[j].t; }
+    return null;
+  };
   const sum = a => a.reduce((x, y) => x + y, 0);
   const title = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\bInc\b/, 'Inc').replace(/\bCorp\b/, 'Corp');
 
@@ -156,12 +162,9 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
     const s = D.summary.strategy, y = D.summary.spy;
     const stat = big => `<div class="sv"><b>${big}</b></div>`;
     app.innerHTML = `
-      <h1>Out-of-Sample Explorer</h1>
-      <p class="sub">The selection procedure was run on 2006–2015 alone; the configuration it chose
-        (4-week horizon, 5-year training window, top-10 in four staggered sleeves, sector cap 2,
-        60/40 trend ballast) was then frozen and graded on ${dfmt(D.meta.lo)} → ${dfmt(D.dates[N])}
-        against the S&amp;P 500 (SPY), costs included, $100 start.
-        <strong>Hover</strong> the chart for that week's ten picks; <strong>click</strong> to pin and
+      <h1>${esc(D.meta.title)}</h1>
+      <p class="sub">${esc(D.meta.intro)}
+        <strong>Hover</strong> the chart for that week's ${esc(D.meta.book_word)} picks; <strong>click</strong> to pin and
         open the full four-sleeve book; click any company for its history.</p>
       <div class="strip">
         <div class="lbl"></div><div class="lbl">End</div><div class="lbl">Per year</div><div class="lbl">Sharpe</div><div class="lbl">Max drawdown</div>
@@ -170,7 +173,8 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
         <div class="row"><div class="who"><i class="sw spy"></i>S&amp;P 500</div>
           ${stat(fmt$(y.end))}${stat(fmtPct(y.cagr / 100))}${stat(y.sr.toFixed(2))}${stat('−' + (y.dd * 100).toFixed(0) + '%')}</div>
       </div>
-      <div id="wrap"><svg id="chart" viewBox="0 0 1000 400" role="img" aria-label="Procedure vs S&amp;P 500, 2016 to 2024"></svg>
+      <div id="wrap"><svg id="chart" viewBox="0 0 1000 400" role="img" aria-label="Procedure vs S&amp;P 500, ${D.dates[0].slice(0, 4)} to ${D.dates[N].slice(0, 4)}"></svg>
+        <svg id="ratio" viewBox="0 0 1000 150" role="img" aria-label="Procedure divided by the S&amp;P 500, both from $100"></svg>
         <div id="tip" role="dialog" aria-live="polite"></div>
         <div class="hint"><div class="legend"><span><i class="sw acc"></i>Procedure</span><span><i class="sw spy"></i>S&amp;P 500</span>
           <span><i class="sw" style="background:var(--gate);opacity:.7"></i>Ballast in IEF (strip: ⅓ · ⅔ · all)</span></div>
@@ -183,12 +187,9 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
     drawChart();
     renderRanks();
     document.getElementById('note').innerHTML = `
-      <p>${esc(D.meta.as_graded)}</p>
-      <p>Weekly accounting: each Friday close the model ranks the members; one of four sleeves is replaced
-        by the top ten (at most two per sector), paid 10 bp per rotation; every name is held four weeks;
-        40% of NAV sits in the trend ballast, SPY shifted to IEF one third per breached trailing mean
-        (30/40/52 weeks). Dollar figures are per $100 invested at the start; a company's
-        "won or lost" is its share of the book's weekly return, including its share of rotation costs.
+      <p>${esc(D.meta.verdict)}</p>
+      ${D.meta.features ? `<p>${esc(D.meta.features)}</p>` : ''}
+      <p>${esc(D.meta.accounting)}
         Picks run ${dfmt(D.meta.first_pick)} → ${dfmt(D.meta.last_pick)}; the last credited week ends
         ${dfmt(D.dates[N])}. Built ${D.meta.built} from the frozen Sharadar world (data/sharadar_world2000).</p>`;
     const goto = document.getElementById('goto');
@@ -203,19 +204,26 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
     const svg = document.getElementById('chart');
     const W = 1000, H = 400, L = 52, R = 16, Tp = 14, B = 46, G = 10;   // G: gate strip height
     const x0 = ms(D.dates[0]), x1 = ms(D.dates[N]);
-    const ymax = Math.max(...D.nav, ...D.spy) * 1.04;
     const X = d => L + (ms(d) - x0) / (x1 - x0) * (W - L - R);
-    const Y = v => Tp + (1 - v / ymax) * (H - Tp - B);
+    // a long span reads on a log scale (equal vertical steps = equal % moves), bounded by the
+    // $25·2^k gridlines just outside the curves; a short one stays linear from $0
+    const log = D.meta.scale === 'log', lo = Math.min(...D.nav, ...D.spy), hi = Math.max(...D.nav, ...D.spy);
+    let ymin = 0, ymax = hi * 1.04; const grid = [];
+    if (log) {
+      ymin = 25; while (ymin * 2 <= lo / 1.02) ymin *= 2;
+      ymax = ymin; while (ymax < hi * 1.02) ymax *= 2;
+      for (let v = ymin; v <= ymax; v *= 2) grid.push(v);
+    } else { const step = ymax > 600 ? 200 : 100; for (let v = 0; v <= ymax; v += step) grid.push(v); }
+    const frac = log ? v => (Math.log(v) - Math.log(ymin)) / (Math.log(ymax) - Math.log(ymin)) : v => v / ymax;
+    const Y = v => Tp + (1 - frac(v)) * (H - Tp - B);
     const xs = D.dates.map(X);
     let g = '';
-    // y grid
-    const step = ymax > 600 ? 200 : 100;
-    for (let v = 0; v <= ymax; v += step) {
+    for (const v of grid) {
       g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/>`;
       g += `<text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">$${v}</text>`;
     }
     // year ticks
-    for (let yr = 2016; yr <= 2024; yr++) {
+    for (let yr = +D.dates[0].slice(0, 4); yr <= +D.dates[N].slice(0, 4); yr++) {
       const d = `${yr}-01-01`; if (ms(d) < x0 || ms(d) > x1) continue;
       g += `<line x1="${X(d)}" x2="${X(d)}" y1="${Tp}" y2="${H - B + 4}" stroke="var(--grid)" stroke-width="1"/>`;
       g += `<text x="${X(d) + 4}" y="${H - B + 16}" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${yr}</text>`;
@@ -241,28 +249,59 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
       xs.forEach((x, i) => { const d = Math.abs(x - px); if (d < bd) { bd = d; best = i; } });
       return best;
     };
-    hit.addEventListener('mousemove', ev => { if (pinned === null) showTip(idxAt(ev), false); });
-    hit.addEventListener('mouseleave', () => { if (pinned === null) hideTip(); });
-    hit.addEventListener('click', ev => { pinned = idxAt(ev); showTip(pinned, true); });
-    svg._geom = { xs, Y, W, H };
+    // relative strength: the procedure's $ divided by the S&P 500's, both from $100 — the
+    // "vs sp500 (x)" panel of the report charts. Above the dotted 1.0 the procedure is ahead.
+    const ratio = D.nav.map((v, i) => v / D.spy[i]);
+    const rsvg = document.getElementById('ratio'), RH = 150, RT = 12, RB = 24;
+    const rmin = Math.floor((Math.min(1, ...ratio) - 0.05) / 0.25) * 0.25;
+    const rmax = Math.ceil((Math.max(1, ...ratio) + 0.05) / 0.25) * 0.25;
+    const RY = v => RT + (1 - (v - rmin) / (rmax - rmin)) * (RH - RT - RB);
+    let h = '';
+    for (let v = Math.ceil(rmin / 0.5) * 0.5; v <= rmax + 1e-9; v += 0.5) {
+      h += `<line x1="${L}" x2="${W - R}" y1="${RY(v)}" y2="${RY(v)}" stroke="var(--grid)" stroke-width="1"/>`;
+      h += `<text x="${L - 8}" y="${RY(v) + 4}" text-anchor="end" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${v.toFixed(1)}×</text>`;
+    }
+    for (let yr = +D.dates[0].slice(0, 4); yr <= +D.dates[N].slice(0, 4); yr++) {
+      const d = `${yr}-01-01`; if (ms(d) < x0 || ms(d) > x1) continue;
+      h += `<line x1="${X(d)}" x2="${X(d)}" y1="${RT}" y2="${RH - RB + 4}" stroke="var(--grid)" stroke-width="1"/>`;
+      h += `<text x="${X(d) + 4}" y="${RH - RB + 16}" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${yr}</text>`;
+    }
+    h += `<line x1="${L}" x2="${W - R}" y1="${RY(1)}" y2="${RY(1)}" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="2 3"/>`;
+    h += `<path d="${ratio.map((v, i) => (i ? 'L' : 'M') + xs[i].toFixed(1) + ' ' + RY(v).toFixed(1)).join('')}" fill="none" stroke="var(--accent)" stroke-width="1.6"/>`;
+    h += `<circle cx="${xs[N]}" cy="${RY(ratio[N])}" r="3" fill="var(--accent)"/>`;
+    h += `<text x="${L + 8}" y="${RT + 10}" font-size="11.5" fill="var(--ink2)" font-family="IBM Plex Sans,system-ui,sans-serif">Procedure ÷ S&amp;P 500 — ends <tspan font-family="IBM Plex Mono,monospace" fill="var(--accent)">${ratio[N].toFixed(2)}×</tspan></text>`;
+    h += `<g id="rcursor" style="display:none"><line id="rcl" y1="${RT}" y2="${RH - RB + 4}" stroke="var(--ink3)" stroke-dasharray="3 3"/>
+          <circle id="rc1" r="3.5" fill="var(--accent)" stroke="var(--panel)" stroke-width="1.5"/></g>`;
+    h += `<rect id="rhit" x="${L}" y="${RT}" width="${W - L - R}" height="${RH - RT - RB + 4}" fill="transparent" style="cursor:crosshair"/>`;
+    rsvg.innerHTML = h;
+    [hit, document.getElementById('rhit')].forEach(el => {
+      el.addEventListener('mousemove', ev => { if (pinned === null) showTip(idxAt(ev), false); });
+      el.addEventListener('mouseleave', () => { if (pinned === null) hideTip(); });
+      el.addEventListener('click', ev => { pinned = idxAt(ev); showTip(pinned, true); });
+    });
+    svg._geom = { xs, Y, W, H, RY, ratio };
   }
 
   function hideTip() {
     document.getElementById('tip').style.display = 'none';
     document.getElementById('cursor').style.display = 'none';
+    document.getElementById('rcursor').style.display = 'none';
   }
   function unpin() { pinned = null; hideTip(); document.getElementById('book').innerHTML = ''; }
 
   function showTip(j, pin) {
-    const svg = document.getElementById('chart'), { xs, Y, W, H } = svg._geom;
+    const svg = document.getElementById('chart'), { xs, Y, W, H, RY, ratio } = svg._geom;
     const tip = document.getElementById('tip'), cur = document.getElementById('cursor');
-    cur.style.display = '';
+    cur.style.display = ''; document.getElementById('rcursor').style.display = '';
     document.getElementById('cl').setAttribute('x1', xs[j]); document.getElementById('cl').setAttribute('x2', xs[j]);
     document.getElementById('c1').setAttribute('cx', xs[j]); document.getElementById('c1').setAttribute('cy', Y(D.nav[j]));
     document.getElementById('c2').setAttribute('cx', xs[j]); document.getElementById('c2').setAttribute('cy', Y(D.spy[j]));
+    document.getElementById('rcl').setAttribute('x1', xs[j]); document.getElementById('rcl').setAttribute('x2', xs[j]);
+    document.getElementById('rc1').setAttribute('cx', xs[j]); document.getElementById('rc1').setAttribute('cy', RY(ratio[j]));
     const d = D.dates[j];
     const wk = j < N ? D.weeks[j] : null;                  // decision made at this date
     const dNav = j ? D.nav[j] - D.nav[j - 1] : 0, dSpy = j ? D.spy[j] - D.spy[j - 1] : 0;
+    const dRel = j ? ratio[j] / ratio[j - 1] - 1 : 0;      // the week's lead over the S&P 500
     let picks;
     if (wk && wk.pick.length) {
       picks = `<div class="h">Chosen ${wk.t === d ? 'at this close' : 'on ' + dfmt(wk.t) + ' (Friday holiday)'} — held four weeks</div>
@@ -275,7 +314,8 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
     tip.innerHTML = `${pin ? '<button class="x" aria-label="Unpin">×</button>' : ''}
       <div class="d">${dfmt(d)}<small>week ${j} of ${N}</small></div>
       <div class="navs"><span class="k">Procedure</span><b class="mono">${fmt$(D.nav[j])}</b><span class="${cls(dNav)} mono">${j ? fmtP(dNav) : ''}</span>
-        <span class="k">S&amp;P 500</span><b class="mono">${fmt$(D.spy[j])}</b><span class="${cls(dSpy)} mono">${j ? fmtP(dSpy) : ''}</span></div>
+        <span class="k">S&amp;P 500</span><b class="mono">${fmt$(D.spy[j])}</b><span class="${cls(dSpy)} mono">${j ? fmtP(dSpy) : ''}</span>
+        <span class="k">ratio</span><b class="mono">${ratio[j].toFixed(2)}×</b><span class="${cls(dRel)} mono" title="this week, procedure minus S&amp;P 500">${j ? fmtPct(dRel) : ''}</span></div>
       <div class="picks">${picks}</div>
       ${pin ? '' : '<div class="foot">Click to pin and open the full book</div>'}`;
     tip.className = pin ? 'pinned' : '';
@@ -302,10 +342,11 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
       return `<div class="sleeve${isRot ? ' rot' : ''}"><div class="sh"><span>Sleeve ${c + 1}</span><span>${isRot ? 'new this week' : 'held'}</span></div>
         <table>${names.map(k => {
           const p = heldNow.get(k), since = p ? p.b : d, sofar = p ? sum(p.p.slice(0, Math.max(0, j - p.j0))) : 0;
-          const wkp = prev.get(k);
+          const wkp = prev.get(k), stp = j < N && w.stop.includes(k);
           return `<tr><td><a class="tk" href="#/co/${esc(T[k].t)}">${esc(T[k].t)}</a></td>
             <td class="nm" title="${esc(title(T[k].name))} · ${esc(T[k].sector)}">${esc(shortName(T[k].name))}</td>
             <td class="num">${wkp === undefined ? '<small>new</small>' : `<span class="${cls(wkp)}">${fmtP(wkp)}</span>`}
+              ${stp ? '<br><small class="loss" title="sold at the stop; its sleeve money sits in SPY until the sleeve rotates">stopped · in SPY</small>' : ''}
               ${p && j - p.j0 > 0 ? `<br><small title="since ${dfmt(since)}">Σ ${fmtP(sofar)}</small>` : ''}</td></tr>`;
         }).join('')}</table></div>`;
     };
@@ -330,13 +371,13 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
   // ---------- company page ----------
   function renderCompany(k) {
     const t = T[k], ps = byTk.get(k) || [];
-    const total = sum(ps.map(p => sum(p.p))), weeks = sum(ps.map(p => p.p.length));
+    const total = sum(ps.map(p => sum(p.p))), weeks = sum(ps.map(nweeks));
     const wins = ps.filter(p => sum(p.p) > 0).length;
     const avgRet = ps.length ? sum(ps.map(holdRet)) / ps.length : 0;
     app.innerHTML = `
-      <div class="crumbs"><a href="#/">← Out-of-sample chart</a></div>
+      <div class="crumbs"><a href="#/">← ${esc(D.meta.crumb)}</a></div>
       <div class="co-head"><h1>${esc(title(t.name))}</h1><span class="tk">${esc(t.t)}</span></div>
-      <p class="co-meta">Sector <strong>${esc(t.sector)}</strong> (the cap's basis)${t.industry ? ' · ' + esc(t.industry) : ''}</p>
+      <p class="co-meta">Sector <strong>${esc(t.sector)}</strong>${D.meta.config.cap ? " (the cap's basis)" : ''}${t.industry ? ' · ' + esc(t.industry) : ''}</p>
       <div class="stats">
         <div class="stat"><span class="eyebrow">Won / lost</span><b class="${cls(total)}">${fmtP(total)}</b><small>per $100 start</small></div>
         <div class="stat"><span class="eyebrow">Holds</span><b>${ps.length}</b><small>${wins} won</small></div>
@@ -348,14 +389,18 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
       <div id="tl"><svg id="tlsvg" viewBox="0 0 1000 220" role="img" aria-label="Holds of ${esc(t.t)} on a timeline"></svg><div id="tltip"></div></div>
       <table class="list" style="margin-top:14px">
         <tr><th>Bought</th><th>Sold</th><th class="num">Weeks</th><th class="num">Sleeves</th><th class="num">Stock over the hold</th><th class="num">Won / lost</th></tr>
-        ${ps.map(p => `<tr><td>${dfmt(p.b)}</td><td>${p.s ? dfmt(p.s) : '<em>still held</em>'}</td><td class="num mono">${p.p.length}</td>
+        ${ps.map(p => `<tr><td>${dfmt(p.b)}</td><td>${p.s ? dfmt(p.s) : '<em>still held</em>'}${stoppedAt(p) ? `<br><small class="loss">stopped ${dfmt(stoppedAt(p))}</small>` : ''}</td><td class="num mono">${nweeks(p)}</td>
           <td class="num mono">${Math.max(...p.n)}</td><td class="num mono ${cls(holdRet(p))}">${fmtPct(holdRet(p))}</td><td class="num mono ${cls(sum(p.p))}">${fmtP(sum(p.p))}</td></tr>`).join('')}
       </table>
-      <div class="note"><p>Bought = the Friday close whose ranking put ${esc(t.t)} in the rotating sleeve; the position
-        is paid from that close. Sold = the close it left the last sleeve holding it. A name picked again
+      <div class="note"><p>Bought = the Friday whose ranking put ${esc(t.t)} in the rotating sleeve; the position
+        fills at the next session's open. Sold = the Friday it left the last sleeve holding it; the exit
+        fills at the following open, so the exit week's gap and fee close the position. A name picked again
         while still held sits in two sleeves (double weight) and stays one hold, so the dollars can
         disagree in sign with the stock's own return when the weight changed mid-hold. Dollar figures
-        are the company's share of the book's weekly return on a $100 start, rotation costs included.</p></div>`;
+        are the company's share of the week's NAV change on a $100 start, fees included.${D.meta.config.stop ? `
+        A hold marked stopped was sold at the next open after that Friday's close put it ${Math.round(-D.meta.config.stop * 100)}% under
+        its rotation close; its sleeve money then sat in SPY (counted as ballast) until the sleeve rotated,
+        so the hold's weeks include the parked ones.` : ''}</p></div>`;
     drawTimeline(ps);
   }
 
@@ -366,7 +411,7 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
     const amax = Math.max(0.05, ...ps.map(p => Math.abs(sum(p.p))));
     const S = v => v / amax * (mid - top - 4);
     let g = '';
-    for (let yr = 2016; yr <= 2024; yr++) {
+    for (let yr = +D.dates[0].slice(0, 4); yr <= +D.dates[N].slice(0, 4); yr++) {
       const d = `${yr}-01-01`; if (ms(d) < x0 || ms(d) > x1) continue;
       g += `<line x1="${X(d)}" x2="${X(d)}" y1="${top}" y2="${H - bot + 4}" stroke="var(--grid)"/>`;
       g += `<text x="${X(d) + 4}" y="${H - bot + 16}" font-size="11" fill="var(--ink3)" font-family="IBM Plex Mono,monospace">${yr}</text>`;
@@ -386,7 +431,7 @@ button.link { font:inherit; color:var(--accent); background:none; border:0; padd
     svg.querySelectorAll('.bar').forEach(b => {
       b.addEventListener('mouseenter', ev => {
         const p = ps[+b.dataset.i], v = sum(p.p);
-        tip.innerHTML = `<b>${dfmt(p.b)}</b> → ${p.s ? dfmt(p.s) : 'still held'}<br>${p.p.length} weeks · stock <span class="${cls(holdRet(p))}">${fmtPct(holdRet(p))}</span> · <span class="${cls(v)}">${fmtP(v)}</span>`;
+        tip.innerHTML = `<b>${dfmt(p.b)}</b> → ${p.s ? dfmt(p.s) : 'still held'}${stoppedAt(p) ? ` · stopped ${dfmt(stoppedAt(p))}` : ''}<br>${nweeks(p)} weeks · stock <span class="${cls(holdRet(p))}">${fmtPct(holdRet(p))}</span> · <span class="${cls(v)}">${fmtP(v)}</span>`;
         tip.style.display = 'block';
         const r = box.getBoundingClientRect(), bx = ev.clientX - r.left;
         tip.style.left = Math.min(bx + 12, box.clientWidth - tip.offsetWidth - 6) + 'px';

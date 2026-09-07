@@ -23,18 +23,107 @@ their original file references on purpose.
   rebuild on the Sharadar world: depth-3 XGBoost (MODEL_PARAMS in
   selection.py, untuned by design), 4-week open-to-open label minus the
   week's member median, 35-day purge, weekly refit on the trailing 5 years
-  with a purged time-tail early stop, K=4 week-bootstrap copies averaged;
+  with a purged time-tail early stop, K=16 week-bootstrap copies averaged
+  (K=4 until 2026-09-07);
   top-6 equal weight in four staggered sleeves (one rotates per week, every
   name held four weeks), sector cap 2; 70% book / 30% ballast, the ballast
   SPY shifting to IEF one third per breached SPY trailing mean (30/40/52
-  weeks); 5 bp one-way, Monday-open fills. Selection window 2006 → 2024-06:
-  $100 → $1,586 (+16.8%/yr, Sharpe 0.74, DD 58%) vs SPY $563 (+10.2%/yr,
-  0.62, 54%), read with the spec's caveats (era-concentrated edge, ~+3.8%/yr
-  of design-iteration shine on dollars, size for SPY-like adverse regimes).
-  Those figures were graded before the rank-date fix (commit dccca9a:
-  Thursday-dated picks were paid for the week that had already ended) and
-  are not yet re-run; the nested OOS grade re-run on the fixed join is
-  $464 vs SPY $307 (ledger `nested2_verdict_amended`), not $497 vs $295.
+  weeks); fills at the next session's open, 5 bp a side. **Since 2026-09-06
+  the model also trains on the generated bundle of 40 features**
+  (`features/bundle.py`: formulas over the panel's raw inputs, chosen on
+  2006-2015 alone by the OpenFE arm's v3 — see "Feature engineering"; the
+  spec's `features` + `formulas`, the `g_` columns `build_world_panel`
+  computes on every run, ~40 s). It replaced the screened bundle of 7
+  ideas adopted 2026-09-05 (x_8k_distress_26w, x_cash_runway, x_dps_yoy,
+  x_earn_react_mean4, x_earn_window, x_price_level, f_vol_chg_12w; ledger
+  `champion_r5_7030_cap2_bundle`, its record $3,058 vs SPY $628 with the
+  ideas' asterisk stays as history). Record as deployed, on the K=16 walk
+  (`data/experiments/k16_champion_2006_2015/preds.parquet` joined with
+  `k16_seed_spread_2016_2024/preds.parquet`, 2006-01 → 2024-07, 967 rank
+  weeks, ranks before the holdout): **$100 → $4,256 (+22.4%/yr, Sharpe
+  0.92, DD 55%) vs SPY $608 (+10.2%/yr, 0.63, 55%)**, no asterisk (no
+  grading year was read to choose the features; ledger
+  `champion_r5_7030_cap2_generated_k16`, reports/k16_champion_record.md;
+  2016 → 2024-07 $900, SR 1.14, DD 35% vs the clean line at K=16 $666 and
+  SPY $310; 2006-2015, the bundle's own selection window, $473 vs SPY
+  $197). The K=4 walk of record until 2026-09-07 (v3's,
+  `openfe_v3_2006_2015/holdings_4w_5y_x724d05_s0`; ledger
+  `champion_r5_7030_cap2_generated`) graded $3,498 (+21.1%/yr, Sharpe
+  0.88, DD 50%; 2016 → 2024-07 $863 vs the clean K=4 line $590, the ideas
+  line* $772) and stays as history: it is copies 1-4 of the K=16 walk,
+  which reproduce it row for row. Before
+  any bundle the same settings graded $1,553 (+15.9%/yr, Sharpe 0.72, DD
+  62%) vs SPY $623 (+10.4%/yr, 0.64, 55%) on 2006 → 2024-06 (1,195 rank
+  weeks), read with the spec's caveats (era-concentrated edge, ~+3%/yr of
+  design-iteration shine on dollars, size for SPY-like adverse regimes).
+  **The seed spread is measured (2026-09-07, `ops/k16_seed_spread.py`,
+  preregistration `k16_seed_spread_2016_2024`, reports/k16_seed_spread.md):**
+  sixteen copies of the champion's model on every rank week 2016-01-08 →
+  2024-07-12, each copy's scores saved (data/experiments/k16_seed_spread_2016_2024/).
+  Copies 1-4 reproduce v3's walk row for row ($863); the three other
+  disjoint K=4 draws grade $597, $614, $697 — the record was the luckiest
+  of four (CAGR 23.1-28.5 %/yr, Sharpe 0.98-1.13); twelve random K=4
+  subsets average $643 ($513-$758). Two disjoint K=8 draws $733 and $738;
+  K=16 $896 (SR 1.14). Random subsets by K (exploratory, overlapping):
+  K=2 $645, K=4 $643, K=8 $762, K=12 $843, K=16 $896 — averaging more
+  copies raises the graded result monotonically. Two disjoint K=4 ensembles
+  agree at week-averaged Spearman 0.70 (2.8 of 6 top names shared), two
+  K=8 at 0.80 (3.4 of 6). So the generated line's margin over the clean
+  record ($590, one K=4 draw) was inside the K=4 seed noise.
+  **The K=16 program (owner's go 2026-09-07, `ops/k16_program.py`,
+  preregistrations `k16_clean_2016_2024` and `k16_champion_2006_2015`,
+  verdicts `k16_clean_verdict` and `k16_champion_2006_2015_verdict`):**
+  (1) the clean line at sixteen copies on 2016-01 → 2024-07, the same bar
+  at the same K (reports/k16_clean_line.md): clean K=16 $666 (+24.7%/yr,
+  SR 0.98, DD 42%) vs generated K=16 $896 (+29.1%/yr, SR 1.14, DD 35%),
+  SPY $310; clean K=4 draws $584 / $700 / $626 / $553, K=8 $660 / $599 —
+  **the generated bundle stays**. Copies 1-4 reproduce the clean walk of
+  record on 397 of 441 common weeks and every other week is explained
+  with no score differing: 39 are tie reorders (shallow trees give many
+  names identical scores; `slice_row` breaks ties by arrival order) and 5
+  are weeks where the record lists a name that left the tape within the
+  horizon (ADT1, WFM, SBNY: `regrade_campaign.graded_rows` keeps the
+  cached ticker list while the returns skip unlabelled names; worth $1 on
+  the record's grade; the live job ranks every tradable name, a
+  backtest-vs-live gap left as is). (2) The champion at sixteen copies on
+  2006-01 → 2015-12 (2.7 h), joined with the seed-spread walk = the K=16
+  record above (reports/k16_champion_record.md); copies 1-4 reproduce
+  v3's walk on 522 of 522 weeks. 2006-2015: K=4 draws $405 / $580 / $345 /
+  $347 (mean $419), K=8 $487 / $469, K=16 $473, SPY $197. 2006-2024: K=4
+  draws $3,498 / $3,434 / $2,493 / $2,218, K=8 $3,560 / $3,554, K=16
+  $4,256. Two disjoint K=4 ensembles agree at Spearman 0.72 (2.7 of 6 top
+  names), K=8 0.81 (3.3 of 6). The cascade's book-down layers re-decided
+  on the K=16 holdings over 2006-2015 alone (`run_cascade`'s own rules,
+  no new fits): top-6 (17.88 %/yr vs top-3 15.76, top-10 15.19), floor
+  **halfgate** (Sharpe 0.830 vs 70-30 0.743, 60-40 0.760, 80-20 0.730,
+  none 0.701), no stop (0.830 vs 0.827), **cap none** (0.830 vs cap 2
+  0.808); the four K=4 draws pick halfgate every time, top-3 three times,
+  cap 2 twice. Per the preregistration the champion's settings stand
+  (top-6 / 70-30 / no stop / cap 2); halfgate and cap-none are the
+  owner's separate decision, not adopted, and no alternative setting has
+  read 2016-2024. (3) **K=16 is the protocol since 2026-09-07**
+  (`selection.K_COPIES`, the spec's `k_copies`, replication.py, the live
+  job's signal header — every finalist alike; `tests/test_r5.py` pins the
+  spec's `k_copies` to `K_COPIES`; the live fit is 16 copies instead of
+  4, well under two minutes of a ~25 min job); ledger
+  `champion_r5_7030_cap2_generated_k16`. Uncommitted until the owner
+  commits the change set (before the Saturday 2026-09-12 run).
+  Every clean campaign number was re-graded twice:
+  on the fixed rank-date join (commit dccca9a: Thursday-dated picks had been
+  paid for the week that had already ended; `ops/regrade_campaign.py`,
+  reports/rank_date_regrade.md; before the fix the record read $1,586 vs
+  $563) and on the live job's fill rules (2026-09-03: `selection.simulate`
+  runs `stocks_ml.ledger`, the code the weekly job trades with — next-open
+  fills, 5 bp a side, dust threshold — and `slice_row` grades open-to-open
+  like the training labels; `ops/fill_basis_regrade.py`,
+  reports/fill_basis_regrade.md; the close-basis record read $1,644,
+  +16.3%/yr). No cascade layer's argmax moved either time. The clean nested
+  OOS grade as deployed is **$521 vs SPY $316** (procedure v3, ledger
+  `nested3_verdict`, 2026-09-04; 2016-01-01 -> 2024-07-19 exclusive, 446
+  weeks: +21.2%/yr, SR 1.00, DD 34% vs +14.3%/yr, SR 0.87, DD 32%). The v2
+  record stays in the ledger as history: $463 vs $307
+  (`nested2_verdict_amended`; $464 on the close basis, $497 vs $295 as first
+  graded; $469 vs $316 on v3's 446 weeks).
 - **Selection is mechanical** (`stocks-ml select`, selection.py): a fixed
   cascade — horizon, training window, book size, ballast, stop-loss, sector
   cap — one decision per layer by a metric declared in advance, run on the
@@ -43,6 +132,121 @@ their original file references on purpose.
   nested test in `reports/nested_selection_protocol.md`. Re-selection only
   on a structural trigger (new data source passes its gate, a pre-registered
   kill criterion fires, or the owner directs it) — never on a calendar.
+  **Procedure v3 (2026-09-04, owner mandate: no decision on a sample):**
+  every layer now reads every week of the selection window. Until then the
+  training-window layer read ~116 spaced sampled weeks and the book layer
+  29 of them (one 4-week phase of the sample); re-running that cascade on
+  the same caches flipped the book from top-10 to top-3 (OOS $463 -> $695
+  vs SPY $307), so the v2 nested line was partly a coin flip. v3: the
+  window sweep is a population holdings walk at every window (1-5y), the
+  book is decided on the chosen window's population holdings, and
+  compounded statistics average the four phases (`compounded_pct`). Both
+  OOS grades were seen before the change; the rule was registered
+  (`nested3_v1`, `nested3_features_v1`) before its numbers. Result
+  (`nested3_frozen_config`): 4w / 5y / top-6 / 60-40 / stop -25% / cap 2 —
+  the 5y window won clearly (+3.05 %/yr edge vs random, 1-4y all negative),
+  top-6 beat top-10 (2.94 vs 1.90 %/yr) and top-3 came last (-0.11), so the
+  v2 sample's top-3 was noise; graded $521 vs SPY $316. The champion was
+  selected under v2 (its whole-window cascade `select_2006-01-01_2024-07-18`
+  froze top-3 on a sampled book layer); re-selection under v3 needs four
+  more population walks over 2006-2024 and is the owner's separate call.
+- **Feature engineering is a stage of the same procedure** (2026-09-04;
+  `stocks-ml select --screen`, feature_screen.py): candidate columns
+  (`x_`, features/candidates.py — the 30 "tails" ideas) ride in the panel
+  invisibly; a run probes them on its own selection window and examines
+  the keepers as one bundle against its own base holdings in a second
+  population walk before the cascade sees them. **Admission rule v3.1
+  (owner, 2026-09-05):** the bundle enters iff the top-6 book's cost-
+  adjusted compounded %/yr on the exam weeks is higher with it than
+  without — the book layer's own metric, the argmax standard every other
+  layer and the champion were held to; v3's bar (paired calendar-HAC t > 2)
+  was a stricter standard than the incumbent ever faced ("we are imposing a
+  higher standard on the challenger than on the incumbent") and now stays
+  in the report as a statistic. The rule was changed after seeing the
+  2006-2015 exam (t 1.61) and before any grading-year number
+  (preregistration `nested3_features_v2`). A bundle reaches the champion
+  only on the owner's go (`frozen_config["features"]`, then the spec's
+  `features`, which the live job reads). Asterisk rule (owner, 2026-09-04): the
+  candidate *ideas* were written from the whole 2006-2024 record, so any
+  nested grade with the bundle is reported as a separate "+ engineered
+  features" line, marked as such, beside — never in place of — the clean
+  nested result (v3 `nested3_v1`; v2's was $463 vs $307). The windowed
+  screen on 2006-2015 (`feature_screen` row `nested3_v1`, 2026-09-04,
+  reports at data/experiments/nested3_v1/screen.md) kept 7 of 48 candidates
+  (x_8k_distress_26w, x_cash_runway, x_dps_yoy, x_earn_react_mean4,
+  x_earn_window, x_price_level, f_vol_chg_12w) and examined them as one
+  bundle in a population walk with them: top-6 +0.45%/4w (0.98% -> 1.43%
+  per hold), HAC t 1.61 on 508 weeks — below v3's bar of 2, **nothing
+  admitted** under v3 (`nested3_features_verdict`). **Under v3.1
+  (`nested3_v2`, 2026-09-05, same caches, data/experiments/nested3_v2/):**
+  the top-6 book compounds 10.16 vs 4.03 %/yr with the bundle on those
+  weeks, so it was admitted; the with-bundle cascade froze top-3 / halfgate
+  / no stop / cap 2 (book top-3 14.74 vs top-6 11.49 vs top-10 8.61 %/yr;
+  halfgate beat 60/40 by 0.001 Sharpe) and was graded once on 2016 ->
+  2024-07-19: **$1,379 (+35.8%/yr, Sharpe 1.14, max DD 40%) vs the clean
+  line $521 (SR 1.00, DD 34%) vs SPY $316 (SR 0.87, DD 32%)**, 446 weeks
+  (`nested3_features_v2_frozen_config`, `nested3_features_v2_verdict`).
+  The bundle line beats the clean line out of sample; its deeper drawdown
+  comes with the riskier layer its own selection chose. **Adopted into the
+  champion 2026-09-05** (owner: "the pros of adding engineered features
+  typically outweigh the cons. XGB is good at not using bad features, so
+  worst case scenario the new features give little lift or slight
+  degradation"): the spec's `features` carries the bundle, the live job
+  trains with it (dry run on 2026-08-28: 502 names ranked in 7 s; 4 of the
+  6 picks overlap the no-bundle signal), and the champion's record is the
+  with-bundle line under "Champion" (`ops/champion_bundle_regrade.py`
+  grades it on the walk `champion_2006_2024/holdings_4w_5y_xeeaf48_s0`,
+  nested3_v2's rows extended back to 2001-06, ~9 min). The champion keeps
+  its own book and ballast (top-6 / 70-30); the with-bundle cascade's
+  top-3 / halfgate pick would grade $7,684 (+26.3%/yr, SR 0.94, DD 55%) on
+  the champion's span and stands in the ledger as an option
+  (`champion_bundle_top3_halfgate_2006_2024`), not adopted. The pooled
+  sample exam that had passed (`tails_exam_v3`, 346 weeks, +0.91%/4w,
+  t 2.75) chose and graded its 8-feature bundle on weeks from the whole
+  2006-2024 record, grading years included; the windowed screen chose its
+  own bundle (5 of those 8, plus x_dps_yoy and f_vol_chg_12w) on 2006-2015
+  alone, and that was the bundle adopted — until the generated bundle
+  replaced it (below).
+- **Generated features — the OpenFE arm** (features/generated.py,
+  ops/openfe_arm.py, ops/openfe_arm_v2.py; 2026-09-05/06). The owner's
+  purpose: replace the ideas bundle, whose candidates were written after
+  reading 2016-2024, with a bundle "based only on 2006-2015". Inputs
+  written down as a rule (the 64 base features before ranking, every SF1
+  field as level and yoy, every 8-K item code as a 26-week count, the
+  close: `raw_inputs`), OpenFE's order-1 formula space, every generated
+  column ranked per week like any feature. Three arms, each one walk at the
+  champion's settings and one grade on 2016-01 → 2024-07 (2006-2015 is
+  in-sample): **v1** (`openfe_2006_2015`, OpenFE's own two-stage selector,
+  14 features) $760; **v2** (`openfe_v2_2006_2015`, the weekly-Spearman-IC
+  t statistic on 56,758 candidates, dedup |corr| ≤ 0.9, 40 features — but
+  run WITH the 7 ideas riding along, a mistake against the purpose) $697;
+  **v3** (`openfe_v3_2006_2015`, `--generated-only`: v2's selector, the
+  dedup held against the 64 base features only, no ideas anywhere)
+  **$863 (+28.5%/yr, SR 1.13, DD 36%) vs the clean line $590 vs the
+  ideas line* $772 vs SPY $310** (preregistration
+  `openfe_arm_v3_generated_2006_2015`, grade
+  `openfe_arm_v3_generated_2016_2024`, reports/openfe_arm_v3.md). The bar
+  for a clean bundle is the clean line. **Adopted 2026-09-06 on the
+  owner's decision** in place of the ideas (`champion_r5_7030_cap2_generated`):
+  `features/bundle.py` holds the 40 formulas; `build_world_panel` computes
+  the `g_` columns for every row (`generated.add_generated` on
+  `generated.raw_inputs`, the research walks' recipe), so live and research
+  use one code path — checked 2026-09-06: the research store through
+  `Ctx` + `ensemble_preds` + `rank_members` reproduces v3's walk top-15 at
+  2024-07-12 exactly. Known about the bundle: it is redundant (mean
+  |pairwise corr| 0.28, PC1 33%; mostly size and nominal price written many
+  ways — the reason v2 with the ideas did worse, not a lack of signal:
+  35/40 formulas keep their IC sign out of sample, median OOS/IS |IC|
+  0.63). Its ranking is also the most sensitive of the three feature sets to
+  the data snapshot: the Mac's live store (Sharadar refreshed 2026-09-02)
+  and the research store differ by a hair per cell (mean 0.002-0.003 on the
+  rank scale, 502 vs 505 names a week), yet the same Friday's top-6 shares
+  4/6 names across the two stores for the clean and the ideas models and
+  1-3/6 for the generated one (Spearman of the rankings 0.55-0.72 vs
+  0.73-0.94; three Fridays, 2022-2024). Not a bug in the path — a property
+  of the model plus the bundle; what a backtest promises is the
+  distribution of picks, not the names. Ideas never enter the arm (v2's
+  seven are a fixed list in `ops/openfe_arm_v2.py`, not the spec's features).
 - **The holdout (2024-07-19 onward) is a single-use exam.** It has not been
   graded for r5 and nothing may touch it without the owner's explicit go.
 - **Live:** `.github/workflows/champion.yml` is the only workflow; it runs
@@ -64,15 +268,29 @@ their original file references on purpose.
 
 ```bash
 uv sync                      # install (Python 3.12 — what the champion is locked and run on)
-uv run pytest                # 161 tests; MUST stay green with 0 warnings
+uv run pytest                # 207 tests (1 skipped); MUST stay green with 0 warnings
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
                              # the champion's weekly signal (Actions runs it; below)
-uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]
+uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] [--screen]
                              # the full selection procedure on a window
-                             # (stages grid/wsweep/holdings/cascade; PROCEDURE.md)
+                             # (stages grid/wsweep/holdings/[screen]/cascade; PROCEDURE.md;
+                             # wsweep = population holdings at every window; --screen =
+                             # the feature screen, feature_screen.py; `--screen --stage
+                             # cascade` = the with-bundle arm, frozen_config_x/eval_x.json)
 uv run stocks-ml procedure-card   # regenerate PROCEDURE.md from models/champion_spec.json
-.venv/bin/python app/oos/build.py # the OOS explorer -> reports/oos_explorer.html (git-ignored)
-/opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e   # its Playwright beta test
+.venv/bin/python ops/regrade_campaign.py {build,cascade,report,charts}
+                             # the campaign's numbers on the fixed rank-date join
+                             # (needs data/experiments/r4w_campaign_cache/, git-ignored)
+.venv/bin/python ops/live_emulation.py   # champion graded by the live ledger's rules (8 s)
+.venv/bin/python ops/champion_bundle_regrade.py {grade,charts,all}
+                             # the champion with the bundle on its recorded basis (~9 min;
+                             # reports/champion_bundle_regrade.md; charts need `uv run --with matplotlib`)
+.venv/bin/python app/oos/build.py [oos|oos_x|select|champion]
+                                  # explorers -> reports/{oos,oos_x,select,champion}_explorer.html
+                                  # (nested3 OOS test $521 vs $316; the same with the bundle $1,379;
+                                  # the v2 cascade's pick on 2006-2024 $1,424; the champion as deployed
+                                  # $3,058 vs $628; git-ignored; ~20 s each)
+/opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e   # their Playwright beta test
 ops/r5_seed.sh               # re-seed the Actions cache with the Mac's live world
 ops/r5_weekly.sh             # the weekly cycle by hand on the Mac (no commit)
 ```
@@ -89,7 +307,8 @@ The production champion (`models/champion_spec.json`, PROCEDURE.md) gets its
 signal from `stocks-ml r5-weekly` (src/stocks_ml/live/r5.py), run by the
 GitHub Actions workflow `.github/workflows/champion.yml` every Saturday
 13:00 UTC with `--commit` (dispatchable by hand with `as_of` / `dry_run`;
-~25 min, nearly all data refresh — the K=4 ensemble fits in seconds). Outputs
+~25 min, nearly all data refresh — the K=16 ensemble fits in well under two
+minutes). Outputs
 are tracked and committed by the job as "r5: signal <friday>":
 `signals_r5/<friday>.md` (+ `.json`) and `ledger_r5.json`; the signal also
 lands in the run's summary page. A run fails loudly (GitHub emails the
@@ -154,25 +373,33 @@ What it does, in order:
    "members" forever with all-neutral features and NaN labels (508 open
    stints vs 503 current). Closing them changes no other panel row.
 3. `selection.ensemble_preds` ranks the Friday's members exactly as the
-   research did (K=4 week-bootstrap copies, label_4w, 5-year window, purge
-   35 d). A name must have a close in the last 7 days to be rankable (≥100
+   research did (K=16 week-bootstrap copies since 2026-09-07, K=4 before;
+   label_4w, 5-year window, purge
+   35 d; `ctx.extra = SPEC["features"]`, the generated bundle since
+   2026-09-06 (the screened ideas 2026-09-05 → 2026-09-06) — the panel
+   carries every `x_` candidate and every `g_` bundle column, computed by
+   `build_world_panel` on each run, and the job refuses a panel that lacks
+   a bundle column, never a silent neutral fill). A
+   name must have a close in the last 7 days to be rankable (≥100
    required, else the job fails loudly rather than trade a thin universe).
-4. Sleeve schedule: four 6-name sleeves (sector cap 2 from the top-15), one
-   rotates per week — `((t − 2001-01-05) // 7 days) mod 4` — mirroring
-   `simulate`'s `i % 4 == c`; empty sleeves fill at once (simulate's first
-   week); a sleeve ≥5 weeks old (the job skipped its week) rotates too.
-   Ballast: per 30/40/52-week third, IEF when SPY's weekly close is below the
+4. Sleeve schedule (`ledger.rotate_sleeves`, the code `simulate` runs): four
+   6-name sleeves (sector cap 2 from the top-15), one rotates per week —
+   `((friday_of(t) − 2001-01-05) // 7 days) mod 4`, so a holiday Thursday
+   rotates the Friday's sleeve; empty sleeves fill at once (the first week);
+   a sleeve ≥5 weeks old (the job skipped its week) rotates too. Ballast:
+   per 30/40/52-week third, IEF when SPY's weekly close is below the
    trailing mean, else SPY. Weights: 0.7 × 1/24 per sleeve slot, 0.3 split
    across the thirds.
-5. Paper ledger (`R5Ledger`): fills LAST week's pending weights at the first
-   open after the decision date (Monday), sells first, buys sized net of a
-   5 bp fee (never overdrawn; rebalances under 0.5% of NAV skipped, full
-   exits always run; a name that stopped trading closes at its last print),
-   then marks NAV at Friday's close against SPY buy-and-hold from the same
-   $100. Units are on the closeadj (total-return) basis, so each mark stores
-   a reference close per position and the next run rescales units by
-   old/new reference close before anything else (value-preserving, tested).
-   Orders decided on the signal date wait for the next run.
+5. Paper ledger (`ledger.Ledger`): fills LAST week's pending weights at the
+   first open after the decision date (Monday; a name with no open within
+   five sessions closes at its last print), sells first, buys sized net of
+   a 5 bp fee (never overdrawn; rebalances under 0.5% of NAV skipped, full
+   exits always run), then marks NAV at Friday's close against SPY
+   buy-and-hold from the same $100. Units are on the closeadj (total-return)
+   basis, so each mark stores a reference close per position and the next
+   run rescales units by old/new reference close before anything else
+   (value-preserving, tested). Orders decided on the signal date wait for
+   the next run.
 
 Fails loudly (no signal written) when the panel's last date is not the last
 Friday (prices not refreshed), when the ensemble returns nothing, or when the
@@ -238,25 +465,60 @@ src/stocks_ml/
               T10Y2Y/FEDFUNDS admitted)
   features/   panel.py (build_panel = the one place features/labels are made;
               REJECTED/PENDING feature sets), fundamentals.py, events.py,
-              insiders.py, sharadar_fundamentals.py, ranking.py
+              insiders.py, sharadar_fundamentals.py, ranking.py,
+              candidates.py (the x_ candidate columns: built from the store,
+              ranked, appended to panel_sf by build_world_panel; invisible to
+              feature_cols until a screen admits them)
   models/     xgb.py (TimeTailEarlyStopXGB + dated_features), walk.py
               (walk_forward_predictions: staggered no-lookahead walk),
               replication.py (WeekBootstrapEstimator, the K-copy protocol),
               trials.py (models/trials_ledger.json)
   selection.py     the selection procedure; ensemble_preds is the champion's
-                   model call (also what r5 ranks with); simulate/pick_capped
+                   model call (also what r5 ranks with; ctx.extra = admitted
+                   features); simulate replays the ledger over a holdings file
+                   (trace hook for attribution)
+  feature_screen.py  the feature screen (probe + bundle exam), a stage of
+                   select: rules in its docstring; screen.json / screen.md
+                   under the experiment, `_x` holdings = the with-bundle arm
+  features/bundle.py  the champion's generated bundle: 40 formulas (FORMULAS)
+                   and the g_ column names (FEATURES); provenance in its docstring
+  features/generated.py  raw_inputs (the formulas' inputs for every panel row)
+                   and add_generated (evaluate, rank per week) — the one code
+                   path behind the g_ columns, research walks and the live job
+  ledger.py        the live rules and paper ledger, shared by simulate and the
+                   weekly job: sleeve schedule, pick_capped, ballast, target
+                   weights, next-open fills at 5 bp a side, NAV marks
   procedure_card.py  PROCEDURE.md from models/champion_spec.json
-  live/r5.py       the weekly job: sleeves, ballast, R5Ledger, report
+  live/r5.py       the weekly job: rank, then ledger.py's rules; the report
   cli.py           r5-weekly | select | procedure-card
 .github/workflows/champion.yml   the champion's Saturday cycle (the only workflow)
 ops/          r5_seed.sh (seed the Actions cache from the Mac), r5_weekly.sh +
-              com.stocks-ml.r5-weekly.plist (manual / retired local schedule)
+              com.stocks-ml.r5-weekly.plist (manual / retired local schedule),
+              regrade_campaign.py (the campaign re-graded on the fixed join;
+              close basis, not to be re-run), fill_basis_regrade.py (the same
+              on the live fill rules), live_emulation.py (what fill timing
+              is worth), openfe_arm.py + openfe_arm_v2.py (the generated
+              features arm: v1 / v2 / v3 `--generated-only`; outputs under
+              data/experiments/openfe_*, reports/openfe_arm*.md)
 models/       champion_spec.json, trials_ledger.json      (tracked)
 reports/      nested_selection_protocol.md, source_point_in_time_audit.md,
-              the two champion-vs-SPY charts                 (tracked)
-app/oos/      build.py + app.html: the nested OOS test as an interactive explorer
-              (replays selection.simulate with its trace hook; the built page
-              embeds per-hold weekly returns, so it is git-ignored)
+              rank_date_regrade.md, fill_basis_regrade.md, live_emulation.md,
+              champion_bundle_regrade.md, the two champion-vs-SPY charts
+              (clean and with-bundle lines)                (tracked)
+app/oos/      build.py + app.html: interactive explorers of a chosen configuration,
+              week by week (replays selection.simulate with its trace hook). Four
+              variants: `oos`, the v3 nested OOS test (data/experiments/nested3_v2's
+              clean walk, 2016 -> 2024-07-19, $521 vs $316); `oos_x`, the same
+              test's with-bundle arm (its frozen_config_x, top-3 / halfgate,
+              $1,379 vs $316); `select`, what the v2 cascade froze on the whole
+              selection window (4w/5y/top-3/60-40/stop -25%/no cap) graded on
+              that window, in-sample: $1,424 vs SPY $623 (ledger select_2006_2024_
+              mechanical_pick_graded); and `champion`, the spec's configuration
+              read from models/champion_spec.json (features included) on the
+              champion's own walk, 2006 -> 2024-07: $3,058 vs $628. Every page's
+              notes carry the screen's asterisked bundle line (features_line).
+              The built pages embed per-hold weekly returns, so they are
+              git-ignored.
 signals_r5/, ledger_r5.json                                  (tracked, job-written)
 ```
 
@@ -266,7 +528,8 @@ predicting the market); `label_4w` = the 4-week analogue, the champion's
 target (consumers must purge past its span: 35 days).
 Features are rank-normalized to (-1,1] per week; prefixes: `f_` = model feature,
 `aux_` = raw helper (never ranked), `f_evt_`/`f_mkt_`/`f_macro_`/`f_sec_` =
-rank-exempt (time-only or binary). Only ALFRED-audited `T10Y2Y` and `FEDFUNDS`
+rank-exempt (time-only or binary), `x_` = screen candidate (ranked, carried
+by panel_sf, never a model input unless admitted by name). Only ALFRED-audited `T10Y2Y` and `FEDFUNDS`
 macro features are admitted; revision-prone macro series and all sector-derived
 features are excluded (the free-data world's Wikipedia sectors were not
 effective-dated; the sector cap uses Sharadar's sector only to cap, never as a
@@ -301,8 +564,10 @@ means suspect a bug — but selection is by walked dollars, never by IC.
 4. **Tests green, zero warnings**, no network in tests (fetchers are injectable;
    fixtures only). Silence third-party noise via their own APIs, not warning filters.
 5. Money math is guarded: weights ≥ 0, sum ≤ 1, cost-netted buys, sells
-   before buys, never overdrawn, no leverage — `selection.simulate` for the
-   research exam, `R5Ledger` for the paper account (tests/test_r5.py).
+   before buys, never overdrawn, no leverage — one engine, `ledger.Ledger`,
+   for the research exam (`selection.simulate`) and the paper account
+   (tests/test_ledger.py, test_selection.py). Backtests emulate the live
+   deployment: a change to the live rules is a change to the engine.
 6. **Champion selection is mechanical (owner-mandated 2026-08-20; metric
    amended 2026-08-21).** The champion is the argmax of PRE-TAX EARNINGS
    (terminal $ from 100) on the 2001-2024 extended pre-holdout, SR tiebreak
@@ -315,7 +580,8 @@ means suspect a bug — but selection is by walked dollars, never by IC.
    MEASURED that dimension to be noise. Origin: Claude overrode the rule for
    a "winner's curse" argument; the owner challenged; seed replication proved
    the argmax right (history #9).
-   The canonical K-copy procedure (K=4; random_state=c + whole-week training
+   The canonical K-copy procedure (K=16 since 2026-09-07, K=4 from
+   2026-08-20; random_state=c + whole-week training
    bootstrap seeded by c; average the copies' predictions) is
    `selection.ensemble_preds` over `models/replication.WeekBootstrapEstimator`
    — use it, never an ad-hoc variant, so no finalist is advantaged by its
@@ -576,12 +842,14 @@ are current.
    decision pending): month-horizon rebuild — label_4w, matched purge,
    slower cadence, nested-protocol honest grading.
    POPULATION GRID (2026-08-31, 2,405 week-slots, simple-DT K=4, raw / no
-   costs, vs expected random-k basket): modern era 4w CONFIRMED — top-3
-   +16.6%/yr (block-t 2.3), top-6 +11.5 (t 2.1), top-10 +8.1 (t 1.9);
-   compounded +29.0/+22.5/+18.9%/yr vs SPY +14.5. Modern 1w ~= 0 (fourth
-   and final confirmation; sampled +10-14%/yr was luck). 2001-2012: 1w
-   positive-unprovable over the full era (t 1.0-1.4; significance was
-   concentrated in 2001-04 per the t12 pre-sample), 4w dead (t <= 0.7).
+   costs, vs expected random-k basket; figures re-graded 2026-09-03 on the
+   fixed rank-date join): modern era 4w CONFIRMED — top-3 +16.9%/yr
+   (block-t 2.4), top-6 +12.0 (t 2.2), top-10 +8.6 (t 2.0); compounded
+   +27.8/+22.8/+18.5%/yr vs SPY +14.3. Modern 1w ~= 0 (fourth and final
+   confirmation; sampled +10-14%/yr was luck; t <= 1.2 on the fixed join).
+   2001-2012: 1w positive-unprovable over the full era (t 1.3-1.5;
+   significance was concentrated in 2001-04 per the t12 pre-sample), 4w
+   dead (t <= 0.8).
    Book-size ordering (3/6/10) flips between samples = noise; top-6
    stands as the robustness choice. Raw DD 49-88% everywhere — the floor
    layer is mandatory. Convergence: the vsRand estimate needs ~400 weeks
@@ -682,15 +950,66 @@ are current.
 ## Open items / likely next steps
 
 - **Let the paper ledger accumulate** before real money — the plan since day
-  one; backtest fills are friendlier than a real Monday open. The pre-
-  registered sizing/kill/promotion contract for the legacy champion
-  (DEPLOYMENT.md at the tag) needs an r5 equivalent before any real order.
+  one. Owner mandate (2026-09-03): training runs and backtests emulate the
+  live deployment as closely as possible — hence the shared engine. Fill
+  timing is worth -0.1%/yr over 2006-2024 (`ops/live_emulation.py`,
+  reports/live_emulation.md: $1,580 -> $1,553; picks do not gap up over the
+  weekend, +3.1 bp vs +5.7 bp for the names they replace); the rest of the
+  -0.4%/yr between the close-basis $1,644 and the as-deployed $1,553 is the
+  ledger's accounting, mostly the 5 bp on every rebalance trade. The
+  pre-registered sizing/kill/promotion contract for the
+  legacy champion (DEPLOYMENT.md at the tag) needs an r5 equivalent before
+  any real order.
 - **The holdout exam (2024-07-19 →)** is graded once, on the owner's go, with
   the champion frozen as specified; the result never feeds re-selection.
 - **PENDING_ABLATION_FEATURES** (features/panel.py) stay out of the model
   matrix; all three candidate families were rejected at t≥3 on the legacy
   weekly label (reports/ablation_*.md at the tag). Re-admission is a
-  structural re-selection trigger, not an edit.
+  structural re-selection trigger, not an edit; the screen probes them
+  alongside the `x_` candidates.
+- **nested3 (done 2026-09-04, owner's go):** `data/experiments/nested3_v1/`
+  holds the population grid, the 1-5y window sweep (`holdings_4w_{1..5}y_s0`,
+  5y extended to 2024-07-19), the with-bundle walk
+  `holdings_4w_5y_xeeaf48_s0` (the stem's hash names the 7-feature bundle;
+  the screen's second walk runs to the eval end, 2024-07-19, so an admitted
+  bundle can be graded without another walk — its 2016+ rows were never
+  read), screen_probe.parquet, screen.{json,md}, and the clean
+  line's frozen_config.json / eval.json; the chain was `select ... --name
+  nested3_v1 --stage wsweep | holdings | cascade | --screen --stage screen |
+  --screen --stage cascade` (grid and 5y caches copied from
+  `data/experiments/champion_2006_2024/`, the caches nested2_v1 graded).
+  Clean line $521 vs $316; "+ engineered features" line under v3: nothing
+  admitted (t 1.61), equals the clean line. `data/experiments/nested3_v2/`
+  (2026-09-05) re-ran the screen and the with-bundle cascade on copies of
+  the same caches under rule v3.1 (`--stage cascade | --screen --stage
+  screen | --screen --stage cascade`, ~1 minute, no new walk): admitted,
+  frozen_config_x.json / eval_x.json = $1,379 vs $316 (see "Feature
+  engineering"). nested3_v1 keeps the v3 record. The clean 5y walk lacks 8
+  weeks of 2010-2013 that the bundle walk has (paired numbers use the 508
+  common weeks; the with-bundle book order holds on both sets). A full-
+  window screen/re-selection (`select3_2006_2024`, 2026-09-05) was launched
+  on a misread "go", killed after 12 minutes and WITHDRAWN in the ledger:
+  reading 2016-2024 for selection leaves nothing to backtest on; its
+  partial caches sit in `data/experiments/select3_2006_2024/`, unused.
+  The bundle decision is taken (adopted 2026-09-05, "Feature
+  engineering"); the with-bundle walk was extended back to 2001-06 into
+  `data/experiments/champion_2006_2024/holdings_4w_5y_xeeaf48_s0` for the
+  champion's record. One owner decision remains open, not started:
+  champion re-selection under v3 on the full pre-holdout window (four more
+  population walks; the with-bundle nested cascade's top-3 / halfgate is
+  the hint that the book and ballast layers might move).
+- **OpenFE arm (done 2026-09-06, "Feature engineering"):**
+  `data/experiments/openfe_2006_2015/` (v1: inputs.parquet + inputs.json,
+  the raw inputs every arm reads; timing.json; stage1_scores.parquet,
+  stage2_gains.csv, formulas.json, generated.parquet, the walk
+  `holdings_4w_5y_x<hash>_s0`, grades.json), `openfe_v2_2006_2015/`
+  (stage1_ic.parquet — the IC t statistic of 56,758 candidates, the file v3
+  copies; the with-ideas walk, 16 h) and `openfe_v3_2006_2015/` (bundle.csv,
+  formulas.json = features/bundle.py, generated.parquet, the champion's
+  walk `holdings_4w_5y_x724d05_s0` 2006-01-06 → 2024-07-12, grades.json).
+  The research panel `data/sharadar_world2000/panel_sf.parquet` carries the
+  g_ columns since 2026-09-06 (192 columns; identical to v3's
+  generated.parquet), as the live panel does.
 - **Structural triggers for re-selection** (the only ones): a new data
   source passing its gate, a pre-registered kill criterion firing, or the
   owner's direction. Calendar re-tuning is forbidden by evidence (history).

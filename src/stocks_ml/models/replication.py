@@ -4,7 +4,8 @@ Every configuration the selection procedure grades — and the champion the
 weekly job runs — is the replicated-ensemble form produced by exactly this
 procedure (owner-approved 2026-08-20):
 
-  * K = 4 copies, identical for every finalist and every model class.
+  * K = 16 copies (``selection.K_COPIES``; 4 from 2026-08-20 to 2026-09-07),
+    identical for every finalist and every model class.
   * Copy c (c = 1..K) re-rolls two dice, both seeded by c:
       - the model's internal randomness (``random_state = c``), applied when
         the estimator exposes that parameter and inert otherwise;

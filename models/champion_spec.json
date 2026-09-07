@@ -1,7 +1,7 @@
 {
   "name": "r5 monthly system \u2014 70/30 trend-ballast",
-  "selected": "2026-09-01",
-  "provenance": "Owner-declared champion after the 4-week rebuild campaign (AGENTS.md 9h and ledger r4w_*/r5pkg_* entries). Supersedes ext-t20 weekly champion (its edge was confined to 2001-2012). Pre-holdout record 2006-2024: $1,586 (stop removed, sector cap 2 added post-audit) vs SPY $563, SR 0.70 vs 0.62; 2024-07-19+ holdout deliberately unspent.",
+  "selected": "2026-09-01 (declared); 2026-09-05 (the screened bundle added, features); 2026-09-06 (the generated bundle replaces it, features + formulas)",
+  "provenance": "Owner-declared champion after the 4-week rebuild campaign (AGENTS.md 9h and ledger r4w_*/r5pkg_* entries). Supersedes ext-t20 weekly champion (its edge was confined to 2001-2012). Pre-holdout record 2006-2024 as deployed (selection.simulate on the live ledger rules since 2026-09-03: fills at the next open, 5 bp a side; the walk from 2001-06, ranks before the holdout): with the screened bundle (adopted 2026-09-05, ledger champion_r5_7030_cap2_bundle) $3,058 (+20.2%/yr, SR 0.85, DD 59%) vs SPY $628 (+10.4%/yr, SR 0.64, DD 55%), 2006-01 -> 2024-07, 968 credited weeks \u2014 asterisk: the bundle's candidate ideas were written from the whole 2006-2024 record; before the bundle $1,553 (+15.9%/yr, SR 0.72, DD 62%) vs SPY $623 on the clean walk's 1195 rank weeks (2006-01 -> 2024-06; the bundle on those same weeks $3,092; ledger champion_r5_7030_cap2_regraded, reports/fill_basis_regrade.md); on the close basis with the fixed rank-date join (commit dccca9a; reports/rank_date_regrade.md) the clean line read $1,644 (+16.3%/yr), and before the fix $1,586 vs $563. 2024-07-19+ holdout deliberately unspent. 2026-09-06: the generated bundle (features_note) replaced the ideas bundle on the owner's decision; the champion's pre-holdout record with it is the v3 arm's grade (walk from 2006-01): $3,498 (+21.1%/yr, SR 0.88, DD 50%) vs SPY $608, 2006-01 -> 2024-07, 967 rank weeks; 2016-01 -> 2024-07 $863 vs clean $590 vs ideas $772 vs SPY $310. No asterisk.",
   "model": {
     "family": "TimeTailEarlyStopXGB",
     "params": {
@@ -35,7 +35,8 @@
   "training_window_years": 5,
   "training_window_rationale": "style-cycle whipsaw protection; directionally better in both whipsaw eras, never worse; robustness pick within noise band",
   "ensemble": {
-    "k_copies": 4,
+    "k_copies": 16,
+    "k_copies_note": "16 since 2026-09-07 (4 from 2026-08-20): four disjoint K=4 draws of the champion graded $2,218-$3,498 over 2006-2024 and K=16 $4,256, so the K=4 record was one draw's luck on top of the model; the record is the K=16 walk (ledger k16_champion_2006_2015_verdict, reports/k16_champion_record.md); selection.K_COPIES is pinned to this value by tests/test_r5.py",
     "method": "WeekBootstrapEstimator: copy c = random_state c + whole-week bootstrap seeded by c; predictions averaged (replication.py)"
   },
   "strategy": {
@@ -45,9 +46,9 @@
     "hold_weeks": 4,
     "weight": "equal, re-leveled weekly (drift-threshold in live trading)",
     "stop_loss": null,
-    "stop_action": "none \u2014 audited 2026-09-01: stop measured mildly negative in final configuration (off $1,383 vs -25% $1,296, identical DD); removed for simplicity",
+    "stop_action": "none \u2014 audited 2026-09-01: stop measured mildly negative on dollars in the final configuration (as deployed, 2026-09-03: off $1,553 vs -25% $1,499, SR 0.72 vs 0.73, DD 62% vs 60%; close basis, fixed join: $1,644 vs $1,533, identical DD; before the rank-date fix, without the cap, $1,383 vs $1,296); removed for simplicity",
     "sector_cap": 2,
-    "sector_cap_note": "max 2 of 6 per sector; blocked slots go to next-ranked name from another sector (adopted 2026-09-01: +0.9%/yr and better SR in every window on the champion; no DD effect)"
+    "sector_cap_note": "max 2 of 6 per sector; blocked slots go to next-ranked name from another sector (adopted 2026-09-01: +0.9%/yr and better SR in every window on the champion, no DD effect; re-graded on the fixed join +0.3 to +1.9%/yr per window, +1.2%/yr and SR 0.67 -> 0.72 over 2006-2024; as deployed (2026-09-03) +1.1%/yr and SR 0.67 -> 0.72 over 2006-2024, per window +2.1 / +0.5 / -0.1%/yr for 2006-12 / 2013-24 / 2021-24 with SR up or level in each)"
   },
   "ballast": {
     "mix": "70% book / 30% ballast",
@@ -55,7 +56,50 @@
     "trend_rule": "one third of ballast to IEF per breached SPY trailing MA (30/40/52 weeks), evaluated weekly, point-in-time"
   },
   "costs_assumed_bps_oneway": 5,
-  "panel": "data/sharadar_world2000/panel_sf.parquet (price/volume + Sharadar fundamentals f_sf_* + insiders f_sfi_*)",
+  "panel": "data/sharadar_world2000/panel_sf.parquet (price/volume + Sharadar fundamentals f_sf_* + insiders f_sfi_* + the screen's candidates x_*, features/candidates.py + the champion's generated bundle g_*, features/bundle.py on generated.raw_inputs)",
+  "features": [
+    "g_00",
+    "g_01",
+    "g_02",
+    "g_03",
+    "g_04",
+    "g_05",
+    "g_06",
+    "g_07",
+    "g_08",
+    "g_09",
+    "g_10",
+    "g_11",
+    "g_12",
+    "g_13",
+    "g_14",
+    "g_15",
+    "g_16",
+    "g_17",
+    "g_18",
+    "g_19",
+    "g_20",
+    "g_21",
+    "g_22",
+    "g_23",
+    "g_24",
+    "g_25",
+    "g_26",
+    "g_27",
+    "g_28",
+    "g_29",
+    "g_30",
+    "g_31",
+    "g_32",
+    "g_33",
+    "g_34",
+    "g_35",
+    "g_36",
+    "g_37",
+    "g_38",
+    "g_39"
+  ],
+  "features_note": "The generated feature bundle (features/bundle.py; formulas above): 40 order-1 formulas over the raw inputs (the f_ columns before ranking, every SF1 field and its year-over-year change, the 8-K item counts, the nominal close), each ranked within the week. Selected mechanically on 2006-01 -> 2015-11 alone (ops/openfe_arm_v2.py --generated-only; preregistration openfe_arm_v3_generated_2006_2015): every candidate scored by the t statistic of its weekly Spearman IC with the 4-week demedianed return, then a greedy dedup in descending |t| against the 64 base features and each other (|corr| <= 0.9), the first 40 kept; no grading year read. Graded once out of sample with the champion's own walk (4w / 5y / K=4, from 2006-01): 2016-01 -> 2024-07 $863 (+28.5%/yr, SR 1.13, DD 36%) vs the clean line $590 (+23.2%/yr, SR 0.95, DD 42%), the ideas bundle $772 (+26.8%/yr, SR 1.06, DD 42%) and SPY $310; 2006-2015 in-sample $405 vs clean $263 vs ideas $396; 2006-01 -> 2024-07 $3,498 (+21.1%/yr, SR 0.88, DD 50%) vs SPY $608 (ledger openfe_arm_v3_generated_2016_2024, reports/openfe_arm_v3.md). Adopted by the owner 2026-09-06 in place of the screened ideas bundle (x_8k_distress_26w, x_cash_runway, x_dps_yoy, x_earn_react_mean4, x_earn_window, x_price_level, f_vol_chg_12w; adopted 2026-09-05, ledger champion_r5_7030_cap2_bundle, $772), whose thirty candidate ideas had been written after reading the whole 2006-2024 record \u2014 the asterisk this bundle does not carry (its one caveat: the input rule was written by someone who knows those ideas exist; the rule is generic \u2014 every field, one standard window). The model's matrix is feature_cols (the f_ columns) plus these forty, research and live alike (walk.extra_features; r5.SPEC['features']); build_world_panel computes the g_ columns from the formulas each week (generated.add_generated on generated.raw_inputs), the research panel_sf carries the same columns. Known about the bundle: its members are correlated with each other (mean |corr| 0.28; about a third of their variance is one factor \u2014 company size and nominal price), and one walk per arm measured no seed spread. Book, ballast, cap and stop are unchanged.",
   "retune_policy": {
     "cadence": "never on a calendar (nested experiment); structural triggers only",
     "triggers": [
@@ -69,7 +113,7 @@
   "honest_expectation": "edge is era-concentrated (strong 2013-2020, index-matching in whipsaw/megacap regimes); pre-holdout numbers carry design-iteration shine; deployment sizing should assume SPY-like outcomes in adverse regimes",
   "deployed": false,
   "selection_procedure": {
-    "note": "Mechanical cascade, run in this order on the selection window only; validated by the nested test (nested2_v1, 2026-09-01: select on 2006-2015, grade 2016-2024). Model config is NOT searched (simple-DT fixed; tuning measured as noise). Run programmatically: `stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D]` (stages cached & resumable under data/experiments/).",
+    "note": "Mechanical cascade, run in this order on the selection window only; validated by the nested test (nested3_v1, 2026-09-04: select on every week of 2006-2015, grade 2016-2024; nested3_v2 re-ran it with the feature screen under rule v3.1, 2026-09-05; nested2_v1 was its sampled predecessor). Model config is NOT searched (simple-DT fixed; tuning measured as noise). Run programmatically: `stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] [--screen]` (stages cached & resumable under data/experiments/).",
     "steps": [
       {
         "step": "horizon",
@@ -79,7 +123,12 @@
       {
         "step": "training window",
         "menu": "1/2/3/4/5 years",
-        "metric": "top-6 edge vs random basket, paired on identical sampled weeks; all windows fully formed"
+        "metric": "top-6 edge vs random basket, paired on the weeks every window's population walk has (every week of the selection window since v3); all windows fully formed"
+      },
+      {
+        "step": "feature screen (--screen)",
+        "menu": "the x_ candidates (features/candidates.py) as one bundle",
+        "metric": "probe: Newey-West t of 2 or more in size and the same IC sign in both halves of the window; the keepers ride a second population walk and enter iff the top-6 book's cost-adjusted compounded return is higher with them than without (v3.1, 2026-09-05; the paired HAC t is reported, not the rule). The champion carries the bundle nested3_v2 admitted (`features`, adopted 2026-09-05); a future screen's bundle enters the champion only on the owner's go"
       },
       {
         "step": "book size",
@@ -108,6 +157,49 @@
       }
     ],
     "metric_convention": "engine choices (horizon, window, book) by cost-adjusted compounded return; risk layers (floor, stop, cap) by Sharpe \u2014 owner-ratified 2026-09-01, 'for now'; earlier campaigns ranked by pre-tax earnings",
-    "measured_selection_inflation": "+3.8%/yr on dollars, ~0 on Sharpe (champion vs honest-procedure config, 2016-2024)"
+    "measured_selection_inflation": "champion vs the nested honest-procedure pick on 2016-2024, as deployed: clean $590 (+23.2%/yr) vs v3's $521 (+21.2%/yr), +1.9%/yr on dollars, ~0 on Sharpe (0.95 vs 1.00); with the bundle the nested cascade's own pick out-earns the champion's settings ($1,379 vs $772), so the champion's book/ballast carry no inflation there \u2014 the asterisk on the bundle's ideas is the caveat that remains. History: +3.4%/yr vs v2's $463 as deployed, +3.1 on the close basis with the fixed join, +3.8 as first graded",
+    "constraints": "No layer reads a sample (v3, 2026-09-04), and no layer reads a rank week whose forward label ends after the window (`selection.label_end`: 35 days for 4w, 14 for 1w; 2026-09-05) \u2014 at a window ending at the holdout's edge those weeks would be graded on holdout prices. A bundle the screen admits is graded as a separate \"+ engineered features\" line with an asterisk (the candidate ideas were written from the whole 2006-2024 record), beside the clean line, never in place of it; the owner adopted nested3_v2's bundle into the champion on 2026-09-05 (features_note), so the champion's own record now carries the asterisk."
+  },
+  "formulas": {
+    "g_00": "(r_close*r_sf_bvps)",
+    "g_01": "(f_sf_sales_to_price/r_sf_bvps)",
+    "g_02": "(r_close/r_sf_roe)",
+    "g_03": "max(f_dollar_vol,r_sf_bvps)",
+    "g_04": "(f_sf_sales_to_price-r_sf_bvps)",
+    "g_05": "(r_8k_2_02/r_sf_bvps)",
+    "g_06": "(f_sf_debt_ebitda+r_close)",
+    "g_07": "max(r_close,r_sf_bvps)",
+    "g_08": "(f_log_mktcap+r_8k_2_03)",
+    "g_09": "(f_sf_gross_prof/r_close)",
+    "g_10": "(r_sf_bvps*r_sf_grossmargin)",
+    "g_11": "(f_idio_vol_60d*r_close)",
+    "g_12": "(r_sf_bvps+r_sf_roe_yoy)",
+    "g_13": "(r_sf_bvps/r_sf_de)",
+    "g_14": "(r_8k_2_02/r_close)",
+    "g_15": "(f_log_mktcap+r_8k_1_01)",
+    "g_16": "(f_leverage-f_log_mktcap)",
+    "g_17": "(f_log_mktcap-r_sf_dps_yoy)",
+    "g_18": "(r_sf_bvps/r_sf_revenue)",
+    "g_19": "(r_close/r_sf_shareswa)",
+    "g_20": "(f_sf_sales_to_price/r_sf_eps)",
+    "g_21": "min(f_month,r_sf_bvps)",
+    "g_22": "(f_sfi_buyers_13w-r_sf_bvps)",
+    "g_23": "min(f_sf_fcf_yield,f_sf_gross_prof)",
+    "g_24": "(f_sf_roe/r_close)",
+    "g_25": "(f_sf_fcf_yield/r_sf_bvps)",
+    "g_26": "(f_log_mktcap-r_sf_fcf_yoy)",
+    "g_27": "(f_days_since_earnings_8k/r_sf_bvps)",
+    "g_28": "min(f_log_mktcap,r_sf_bvps)",
+    "g_29": "(r_sf_bvps-r_sf_divyield_yoy)",
+    "g_30": "(f_log_mktcap+r_sf_netinc_yoy)",
+    "g_31": "(f_book_to_market/r_sf_bvps)",
+    "g_32": "(f_log_mktcap+r_sf_epsusd)",
+    "g_33": "(f_sf_current_ratio*r_sf_bvps)",
+    "g_34": "(f_cf_to_price/r_8k_7_01)",
+    "g_35": "(f_sfi_buyers_13w+r_close)",
+    "g_36": "min(f_days_since_filing,r_sf_bvps)",
+    "g_37": "(f_log_mktcap-r_8k_2_02)",
+    "g_38": "(r_8k_9_01/r_sf_debt)",
+    "g_39": "min(f_days_since_earnings_8k,r_sf_bvps)"
   }
 }

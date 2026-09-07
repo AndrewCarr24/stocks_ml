@@ -27,6 +27,7 @@ not this file). Rationale and history: AGENTS.md.
 | Model | {model_summary} |
 | Prediction target | {horizon_label}: stock's {hold_weeks}-week return minus that week's median member's ({purge_days}-day purge) |
 | Training | weekly refit on trailing {train_years} years; early stop on validation rank correlation |
+| Features | {features_summary} |
 | Ensemble | K={k_copies} copies (random_state + whole-week bootstrap), predictions averaged |
 | Book | top-{book_size}, equal weight, {sleeves} staggered sleeves rotating weekly, {hold_weeks}-week holds; weekly re-leveling; max {sector_cap}/sector (blocked slots to next-ranked other-sector name); no stop (audited: adds nothing over the ballast) |
 | Ballast | {mix}: ballast in SPY, shifted to IEF one-third per breached trailing MA (30/40/52w) |
@@ -48,6 +49,8 @@ not this file). Rationale and history: AGENTS.md.
 |---|---|---|
 {procedure_rows}
 
+{procedure_constraints}
+
 Metric convention: {metric_convention}. Measured selection inflation of this
 procedure: {inflation}.
 
@@ -61,6 +64,23 @@ procedure: {inflation}.
 """
 
 
+def features_summary(s: dict) -> str:
+    """The model's inputs: the panel's standing f_ columns plus the spec's
+    bundle, if one was adopted — the generated bundle (g_ columns with their
+    formulas) or a screened bundle of hand-written ideas (asterisk)."""
+    feats = s.get("features") or []
+    if not feats:
+        return "the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*); no screened bundle"
+    formulas = s.get("formulas") or {}
+    if formulas and all(f in formulas for f in feats):
+        return (f"the panel's f_ columns plus the generated bundle of {len(feats)} (features/bundle.py, "
+                f"selected on 2006-2015 alone, no asterisk): "
+                + ", ".join(f"{f} = `{formulas[f]}`" for f in feats))
+    return (f"the panel's f_ columns plus the screened bundle of {len(feats)}: {', '.join(feats)} "
+            f"(feature screen, rule v3.1; asterisk: the candidate ideas were written from the whole "
+            f"2006-2024 record)")
+
+
 def render(spec: dict, today: str | None = None) -> str:
     s = spec
     return TEMPLATE.format(
@@ -70,6 +90,7 @@ def render(spec: dict, today: str | None = None) -> str:
         purge_days=s["horizon"]["purge_days"],
         train_years=s["training_window_years"],
         k_copies=s["ensemble"]["k_copies"],
+        features_summary=features_summary(s),
         book_size=s["strategy"]["book_size"],
         sleeves=s["strategy"]["sleeves"],
         hold_weeks=s["strategy"]["hold_weeks"],
@@ -84,6 +105,7 @@ def render(spec: dict, today: str | None = None) -> str:
         procedure_rows="\n".join(
             f"| {st['step']} | {st['menu']} | {st['metric']} |"
             for st in s["selection_procedure"]["steps"]),
+        procedure_constraints=s["selection_procedure"]["constraints"],
         metric_convention=s["selection_procedure"]["metric_convention"],
         inflation=s["selection_procedure"]["measured_selection_inflation"],
     )
