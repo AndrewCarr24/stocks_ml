@@ -200,3 +200,17 @@ def test_pending_ablation_features_generated_but_not_admitted(synthetic_store, t
     # EDGAR ones may be absent in sparse fixtures
     assert {"f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm"} <= generated
     assert PENDING_ABLATION_FEATURES.isdisjoint(admitted)
+
+
+def test_rebalance_dates_reach_a_holiday_fridays_thursday():
+    """build_panel extends its end to the running week's anchor: a store that
+    ends on holiday-Thursday 2026-12-24 still gets that week's row (the old
+    end=cal.max() dropped it and the live job starved every Christmas week)."""
+    from stocks_ml.features.panel import rebalance_dates
+    cal = pd.DatetimeIndex(["2026-12-14", "2026-12-15", "2026-12-16", "2026-12-17",
+                            "2026-12-18", "2026-12-21", "2026-12-22", "2026-12-23",
+                            "2026-12-24"])
+    assert rebalance_dates(cal, cal.min(), cal.max())[-1] == pd.Timestamp("2026-12-18")
+    end = cal.max() + pd.Timedelta(days=(4 - cal.max().weekday()) % 7)
+    assert list(rebalance_dates(cal, cal.min(), end)[-2:]) == \
+        [pd.Timestamp("2026-12-18"), pd.Timestamp("2026-12-24")]

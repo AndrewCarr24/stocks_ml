@@ -105,9 +105,14 @@ jobs:
           uv run stocks-ml r5-weekly "${args[@]}"
 
       - name: Signal → run summary
+        if: ${{ inputs.dry_run != true }}   # a dry run writes nothing: the latest file would be last week's
         run: |
-          latest=$(ls signals_r5/*.md | sort | tail -n1)
-          cat "$latest" >> "$GITHUB_STEP_SUMMARY"
+          latest=$(ls signals_r5/*.md 2>/dev/null | sort | tail -n1)
+          if [ -n "$latest" ]; then
+            cat "$latest" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no signal files (fresh checkout?)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Encrypt the refreshed world
         env:

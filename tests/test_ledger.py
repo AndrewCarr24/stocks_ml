@@ -138,7 +138,8 @@ def test_fill_waits_for_the_first_open_after_the_decision():
     assert led.bench["units"] == pytest.approx(100.0 / (ow.loc["2026-08-31", "SPY"] * (1 + fee)))
     nav, bench = led.mark(cw, "2026-09-04")
     assert nav == pytest.approx(led.positions["AAA"] * 19.0 + led.positions["SPY"] * 500.0)
-    assert led.refs["AAA"] == ["2026-09-04", 19.0]
+    # references anchor at the fill date (two closes) and mark leaves them there
+    assert led.refs["AAA"] == ["2026-08-31", 15.0, "2026-08-28", 14.0]
     assert led.nav_history == [["2026-09-04", nav, bench]]
     led.mark(cw, "2026-09-04")                                       # rerun: one row
     assert len(led.nav_history) == 1
@@ -232,3 +233,146 @@ def test_ledger_roundtrip(tmp_path):
     assert again == led
     assert json.loads(path.read_text())["started"] == "2026-08-28"
     assert Ledger.load(tmp_path / "missing.json") is None
+
+
+# ---- safety: renames, rebase discipline, dead names (2026-09 bug hunt) ----
+def test_rename_moves_the_book_to_the_new_symbol():
+    """EQR -> VMRK (2026-09-01): the vendor rewrites every table, so the
+    ledger must follow or the holding has no price column: worth $0 in NAV
+    and unsellable."""
+    led = Ledger.new(100.0, "2026-08-28")
+    led.positions = {"EQR": 3.0, "BBB": 1.0}
+    led.refs = {"EQR": ["2026-08-28", 10.0, "2026-08-27", 9.0]}
+    led.sleeves = {"0": {"names": ["EQR", "BBB"], "since": "2026-08-28"}}
+    led.pending = {"decision_date": "2026-08-28", "weights": {"EQR": 0.5, "SPY": 0.5}}
+    hit = led.rename({"EQR": "VMRK", "ZZZ": "YYY"})
+    assert hit == {"EQR": "VMRK"}
+    assert led.positions == {"VMRK": 3.0, "BBB": 1.0}
+    assert "EQR" not in led.refs and led.refs["VMRK"][1] == 10.0
+    assert led.sleeves["0"]["names"] == ["VMRK", "BBB"]
+    assert led.pending["weights"] == {"VMRK": 0.5, "SPY": 0.5}
+
+
+def test_rebase_refuses_a_held_name_with_no_price_column():
+    cw, _ = market()
+    led = Ledger.new(100.0, "2026-08-28")
+    led.positions = {"GONE": 1.0}
+    with pytest.raises(RuntimeError, match="GONE"):
+        led.rebase(cw)
+
+
+def test_mark_refuses_a_held_name_with_no_print():
+    cw, _ = market()
+    cw["DEAD"] = np.nan
+    led = Ledger.new(100.0, "2026-08-28")
+    led.positions = {"DEAD": 1.0}
+    with pytest.raises(RuntimeError, match="DEAD"):
+        led.mark(cw, "2026-09-04")
+
+
+def test_rebase_skips_a_transient_bad_print():
+    """A reference stored off a stale carry (Friday's row was Thursday's
+    close) implies a phantom 'adjustment' at one reference date but not the
+    other: units must not be rescaled. A real adjustment moves both."""
+    cw, _ = market()
+    led = Ledger.new(100.0, "2026-08-28")
+    led.positions = {"AAA": 10.0}
+    led.refs = {"AAA": ["2026-08-28", 13.0, "2026-08-27", 13.0]}   # 08-28 really closed 14.0
+    msgs = []
+    assert led.rebase(cw, log=msgs.append) == {}
+    assert led.positions["AAA"] == 10.0
+    assert led.refs["AAA"] == ["2026-08-28", 13.0, "2026-08-27", 13.0]
+    assert msgs and "AAA" in msgs[0]
+    led.refs = {"AAA": ["2026-08-28", 14.0, "2026-08-27", 13.0]}   # true refs
+    cw2 = cw.copy()
+    cw2["AAA"] *= 0.5                                              # a real vendor readjustment
+    factors = led.rebase(cw2)
+    assert factors["AAA"] == pytest.approx(2.0)
+    assert led.refs["AAA"] == ["2026-08-28", 7.0, "2026-08-27", 6.5]
+
+
+def test_rebase_catches_an_adjustment_published_weeks_after_the_fill():
+    """References anchor at the fill date and stay there through marks, so a
+    dividend the vendor posts two marks after its ex-date still rescales
+    units (the old mark-refreshed reference lost it for good)."""
+    cw, _ = market()
+    led = Ledger.new(100.0, "2026-08-24")
+    led.positions = {"BBB": 5.0}
+    led.refs = {"BBB": ["2026-08-25", 20.0, "2026-08-24", 20.0]}
+    led.mark(cw, "2026-08-28")
+    led.mark(cw, "2026-09-04")
+    assert led.refs["BBB"] == ["2026-08-25", 20.0, "2026-08-24", 20.0]
+    cw2 = cw.copy()
+    cw2["BBB"] *= 0.98                                             # published after two marks
+    factors = led.rebase(cw2)
+    assert factors["BBB"] == pytest.approx(1 / 0.98)
+    assert led.positions["BBB"] == pytest.approx(5.0 / 0.98)
+
+
+def test_dead_names_are_never_bought():
+    """A buy needs a live open. The close fallback used to 'buy' a name that
+    had stopped trading at its final print: a phantom position and a fee."""
+    cw, ow = market()
+    cw.loc["2026-08-25":, "BBB"] = np.nan                          # last print 08-24
+    ow.loc["2026-08-25":, "BBB"] = np.nan
+    led = Ledger.new(100.0, "2026-08-28")
+    led.pending = {"decision_date": "2026-08-28", "weights": {"BBB": 0.5, "AAA": 0.5}}
+    fills = led.fill_pending(cw, ow, "2026-09-04")
+    assert [f[1] for f in fills] == ["AAA"]
+    assert "BBB" not in led.positions
+    assert led.cash == pytest.approx(100.0 - 50.0 * (1 + 5.0 / 1e4) * 1.0, rel=1e-6)
+
+
+def test_a_dead_name_still_exits_at_its_last_print():
+    cw, ow = market()
+    cw.loc["2026-08-25":, "BBB"] = np.nan
+    ow.loc["2026-08-25":, "BBB"] = np.nan
+    led = Ledger.new(100.0, "2026-08-24")
+    led.cash, led.positions = 50.0, {"BBB": 2.0}
+    led.pending = {"decision_date": "2026-08-24", "weights": {"AAA": 1.0}}
+    fills = led.fill_pending(cw, ow, "2026-08-28")
+    assert fills[0][1] == "BBB" and fills[0][2] == -2.0 and fills[0][3] == 20.0
+
+
+def test_new_positions_get_fill_anchored_references():
+    cw, ow = market()
+    led = Ledger.new(100.0, "2026-08-28")
+    led.pending = {"decision_date": "2026-08-28", "weights": {"AAA": 1.0}}
+    led.fill_pending(cw, ow, "2026-09-04")                         # fills at 08-31
+    assert led.refs["AAA"] == ["2026-08-31", 15.0, "2026-08-28", 14.0]
+    assert led.bench["ref"] == ["2026-08-31", 500.0, "2026-08-28", 500.0]
+
+
+def test_nav_history_stays_sorted():
+    cw, _ = market()
+    led = Ledger.new(100.0, "2026-08-24")
+    led.mark(cw, "2026-09-04")
+    led.mark(cw, "2026-08-28")
+    assert [r[0] for r in led.nav_history] == ["2026-08-28", "2026-09-04"]
+
+
+def test_rotation_ages_count_weeks_not_days():
+    """Sleeve 3 catches up (empty fill) on Friday 2026-12-18; Thursday
+    2026-12-24 (Christmas Friday) is the next rank week and sleeve 3 is due.
+    Day arithmetic said age 0 (6 days // 7) and swallowed the rotation."""
+    fri, thu = D("2026-12-18"), D("2026-12-24")
+    assert due_sleeve(thu, 4) == 3
+    sleeves = {str(k): {"names": ["A1"], "since": "2026-12-18"} for k in range(4)}
+    out, rotated = rotate_sleeves(sleeves, thu, RANKED, SMAP, 4, 6, 2)
+    assert rotated == [3]
+    assert out["3"]["since"] == "2026-12-24"
+    assert out["0"]["since"] == "2026-12-18"
+
+
+def test_rebase_skips_when_the_store_lacks_the_reference_date():
+    """A stale or vintage-mismatched store (no print on the reference date
+    itself) must not book price drift against another day's close as a
+    vendor adjustment."""
+    cw, _ = market()
+    led = Ledger.new(100.0, "2026-08-28")
+    led.positions = {"AAA": 10.0}
+    led.refs = {"AAA": ["2026-09-11", 25.0, "2026-09-10", 24.0]}   # beyond the store's last print
+    msgs = []
+    assert led.rebase(cw, log=msgs.append) == {}
+    assert led.positions["AAA"] == 10.0
+    assert msgs and "AAA" in msgs[0]

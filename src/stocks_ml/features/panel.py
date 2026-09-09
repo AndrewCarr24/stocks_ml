@@ -397,7 +397,11 @@ def build_panel(store, cfg) -> pd.DataFrame:
 
     cal = trading_calendar(prices)
     warmup_start = cfg.backtest_start - pd.Timedelta(days=450)
-    dates = rebalance_dates(cal, max(warmup_start, cal.min()), cal.max(),
+    # extend the end to the running week's anchor so a holiday-Friday week
+    # (store ends Thursday) still gets its row; rebalance_dates maps each
+    # anchor to the last trading day at or before it
+    panel_end = cal.max() + pd.Timedelta(days=(cfg.rebalance_weekday - cal.max().weekday()) % 7)
+    dates = rebalance_dates(cal, max(warmup_start, cal.min()), panel_end,
                             cfg.rebalance_weekday)
 
     base_rows = []

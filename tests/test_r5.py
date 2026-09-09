@@ -104,3 +104,55 @@ def test_live_spec_mirrors_the_champion_spec():
     assert r5.SPEC["horizon"] == "4w" and spec["horizon"]["label"] == "label_4w"
     assert r5.SPEC["floor"] == int(spec["ballast"]["mix"].split("%")[0]) / 100
     assert list(r5.SPEC["features"]) == list(spec["features"])
+
+
+# ---- freshness: holiday Fridays and --as-of (2026-09 bug hunt) ----
+def test_nyse_friday_holiday_calendar():
+    cases = {"2026-12-25": True,    # Christmas on a Friday
+             "2027-01-01": True,    # New Year on a Friday
+             "2027-03-26": True,    # Good Friday
+             "2026-04-03": True,    # Good Friday
+             "2021-12-24": True,    # Christmas Saturday, observed Friday
+             "2020-07-03": True,    # July 4 Saturday, observed Friday
+             "2026-06-19": True,    # Juneteenth on a Friday
+             "2015-06-19": False,   # Juneteenth before it was a holiday
+             "2021-12-31": False,   # Jan 1 Saturday: NYSE stays open over year end
+             "2020-11-27": False,   # day after Thanksgiving: open (half day)
+             "2026-12-24": False,   # a Thursday, whatever else it is
+             "2026-09-04": False}
+    for d, want in cases.items():
+        assert r5.nyse_friday_holiday(d) is want, d
+
+
+def test_latest_complete_week_accepts_a_holiday_thursday(monkeypatch):
+    monkeypatch.setattr(r5, "last_friday", lambda today=None: D("2026-12-25"))
+    weeks = pd.DatetimeIndex(["2026-12-11", "2026-12-18", "2026-12-24"])
+    assert r5._latest_complete_week(weeks) == D("2026-12-24")
+
+
+def test_latest_complete_week_rejects_a_stale_store(monkeypatch):
+    monkeypatch.setattr(r5, "last_friday", lambda today=None: D("2026-12-11"))
+    with pytest.raises(RuntimeError, match="not refreshed"):
+        r5._latest_complete_week(pd.DatetimeIndex(["2026-12-04", "2026-12-10"]))
+    # a Thursday row on an ordinary week is stale, not a holiday
+    monkeypatch.setattr(r5, "last_friday", lambda today=None: D("2026-12-18"))
+    with pytest.raises(RuntimeError, match="not refreshed"):
+        r5._latest_complete_week(pd.DatetimeIndex(["2026-12-11", "2026-12-17"]))
+
+
+def test_latest_complete_week_skips_a_partial_midweek_row(monkeypatch):
+    monkeypatch.setattr(r5, "last_friday", lambda today=None: D("2026-12-11"))
+    weeks = pd.DatetimeIndex(["2026-12-04", "2026-12-11", "2026-12-15"])   # Tuesday: partial week
+    assert r5._latest_complete_week(weeks) == D("2026-12-11")
+
+
+def test_guard_as_of_refuses_history_rewrites():
+    from stocks_ml.ledger import Ledger
+    led = Ledger.new(100.0, "2026-08-28")
+    led.nav_history = [["2026-09-04", 100.0, 100.0]]
+    led.pending = {"decision_date": "2026-09-04", "weights": {}}
+    with pytest.raises(RuntimeError, match="as-of"):
+        r5._guard_as_of(led, D("2026-08-28"), "2026-08-28", False)
+    r5._guard_as_of(led, D("2026-08-28"), "2026-08-28", True)      # dry runs may look back
+    r5._guard_as_of(led, D("2026-09-04"), "2026-09-04", False)     # same-week rerun is fine
+    r5._guard_as_of(led, D("2026-09-11"), None, False)             # the scheduled run

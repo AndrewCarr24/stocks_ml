@@ -9,9 +9,11 @@ of NAV, then marks NAV at the last close on or before each week's label.
 The backtest and the live job differ only in where the picks come from.
 
 Units are on Sharadar's total-return price basis (closeadj): dividends and
-splits arrive as retroactive rescalings of the whole history, so every mark
-stores a reference close per position and `rebase` rescales units by
-old/new reference close before the next run touches the book.
+splits arrive as retroactive rescalings of the whole history, so each
+position stores two reference closes anchored at its fill date and `rebase`
+rescales units by old/new reference close before the next run touches the
+book — the factor must agree at both reference dates, so a transient bad
+print is skipped (and logged) rather than booked as a split.
 """
 from __future__ import annotations
 
@@ -74,10 +76,12 @@ def rotate_sleeves(sleeves: dict, t, ranked: list[str], smap: dict, n_sleeves: i
     out, rotated = {}, []
     for k in range(n_sleeves):
         s = sleeves.get(str(k), {"names": [], "since": None})
-        age = (t - pd.Timestamp(s["since"])).days // 7 if s.get("since") else None
+        age = week_index(t) - week_index(s["since"]) if s.get("since") else None
         if age is not None and age <= 0 and s["names"]:
-            # already rotated on this signal date: a rerun of the same
-            # Friday must not rotate it again (once per week)
+            # already rotated in this signal's week: a rerun of the same week
+            # must not rotate it again (once per week). Ages count rank weeks
+            # (week_index), not calendar days, so a holiday Thursday is a
+            # week older than the previous Friday, never the same age.
             out[str(k)] = {"names": list(s["names"]), "since": s["since"]}
         elif k == due_sleeve(t, n_sleeves) or not s["names"] \
                 or (age is not None and age >= STALE_WEEKS):
@@ -129,15 +133,32 @@ def close_asof(closes: pd.DataFrame, ticker: str, date) -> tuple[float, pd.Times
 
 
 def fill_price(closes: pd.DataFrame, opens: pd.DataFrame, ticker: str,
-               fill_date) -> tuple[float, pd.Timestamp | None]:
+               fill_date, for_buy: bool = False) -> tuple[float, pd.Timestamp | None]:
     """Open on the fill date, else the first open within five sessions, else
     the last close before it (a name that stopped trading is closed out at
-    its final print)."""
+    its final print). Buys need a live open: `for_buy` disables the close
+    fallback so a dead name is never "bought" at its last print."""
     if ticker in opens.columns:
         s = opens[ticker].loc[pd.Timestamp(fill_date):].iloc[:5].dropna()
         if len(s):
             return float(s.iloc[0]), s.index[0]
+    if for_buy:
+        return np.nan, None
     return close_asof(closes, ticker, fill_date)
+
+
+def _ref_points(closes: pd.DataFrame, ticker: str, date) -> list:
+    """Two reference closes on or before `date` (the fill date), newest
+    first: [d1, c1, d2, c2]. `rebase` requires the vendor's implied
+    adjustment factor to agree at both dates before rescaling units."""
+    if ticker not in closes.columns:
+        return []
+    s = closes[ticker].loc[:pd.Timestamp(date)].dropna().iloc[-2:]
+    if not len(s):
+        return []
+    d1, c1 = s.index[-1], float(s.iloc[-1])
+    d2, c2 = (s.index[0], float(s.iloc[0])) if len(s) == 2 else (d1, c1)
+    return [str(d1.date()), c1, str(d2.date()), c2]
 
 
 # ---- the ledger ----
@@ -145,7 +166,7 @@ def fill_price(closes: pd.DataFrame, opens: pd.DataFrame, ticker: str,
 class Ledger:
     cash: float = 0.0
     positions: dict = field(default_factory=dict)    # ticker -> units (closeadj basis)
-    refs: dict = field(default_factory=dict)         # ticker -> [date, close] at last mark
+    refs: dict = field(default_factory=dict)         # ticker -> [d1, c1, d2, c2] at fill (legacy: [date, close])
     sleeves: dict = field(default_factory=dict)      # "0".."K-1" -> {names, since}
     pending: dict | None = None                       # {decision_date, weights}
     nav_history: list = field(default_factory=list)  # [date, nav, spy_nav]
@@ -174,25 +195,85 @@ class Ledger:
             os.fsync(fh.fileno())
         tmp.replace(path)
 
-    def rebase(self, closes: pd.DataFrame) -> dict[str, float]:
+    def rename(self, mapping: dict[str, str]) -> dict[str, str]:
+        """Apply the vendor's symbol renames (world.detect_renames) to the
+        book: positions, references, sleeve names and pending weights move
+        to the new symbol before any price lookup happens. Without this a
+        renamed holding has no price column: unsellable and worth $0 in NAV.
+        Returns the renames that touched the ledger."""
+        hit = {}
+        for old, new in mapping.items():
+            if old in self.positions:
+                self.positions[new] = self.positions.pop(old) + self.positions.get(new, 0.0)
+                hit[old] = new
+            if old in self.refs:
+                self.refs[new] = self.refs.pop(old)
+                hit[old] = new
+            for s in self.sleeves.values():
+                if old in s.get("names", []):
+                    s["names"] = [new if n == old else n for n in s["names"]]
+                    hit[old] = new
+            w = (self.pending or {}).get("weights") or {}
+            if old in w:
+                w[new] = w.pop(old) + w.get(new, 0.0)
+                hit[old] = new
+        return hit
+
+    def rebase(self, closes: pd.DataFrame, log=None) -> dict[str, float]:
         """Rescale units where the vendor re-adjusted a held name's history
-        since the last mark (value-preserving). Returns the factors applied."""
+        (value-preserving). References anchor at the position's fill date and
+        stay there, so an adjustment published any number of weeks after its
+        ex-date is still caught. The implied factor must agree at both
+        reference dates or the rescale is skipped (and logged): a transient
+        bad print is not a split. Returns the factors applied."""
+        missing = [tk for tk in self.positions if tk not in closes.columns]
+        if missing:
+            raise RuntimeError(
+                f"held names have no price column (vendor rename or dropped series): {missing}; "
+                "apply the world's symbol renames to the ledger before rebasing")
+
+        def factor_of(ref, tk):
+            d1, c1 = ref[0], ref[1]
+            d2, c2 = (ref[2], ref[3]) if len(ref) == 4 else (ref[0], ref[1])
+            n1, w1 = close_asof(closes, tk, d1)
+            n2, w2 = close_asof(closes, tk, d2)
+            if (w1, w2) != (pd.Timestamp(d1), pd.Timestamp(d2)):
+                # a stale or reshaped store has no print on the reference
+                # date itself: comparing another day's close would book price
+                # drift as an adjustment
+                if log:
+                    log(f"rebase: {tk} has no print at its reference dates {d1}/{d2} "
+                        f"(store ends earlier?); units not rescaled")
+                return None, ref
+            if not (np.isfinite(n1) and n1 > 0 and np.isfinite(n2) and n2 > 0) or not c1 or not c2:
+                return None, ref
+            f1, f2 = c1 / n1, c2 / n2
+            if abs(f1 - 1.0) <= 1e-9:
+                return None, [d1, n1, d2, n2]
+            if abs(f1 / f2 - 1.0) > 1e-6:
+                if log:
+                    log(f"rebase: {tk} adjustment disagrees at {d1} ({f1:.6f}) vs {d2} "
+                        f"({f2:.6f}); units not rescaled")
+                return None, ref
+            return f1, [d1, n1, d2, n2]
+
         factors = {}
-        for tk, (d, c_old) in list(self.refs.items()):
-            if tk not in self.positions or not c_old:
+        for tk in sorted(self.positions):
+            ref = self.refs.get(tk)
+            if not ref:
                 continue
-            c_new, _ = close_asof(closes, tk, d)
-            if np.isfinite(c_new) and c_new > 0 and abs(c_new / c_old - 1.0) > 1e-9:
-                factors[tk] = c_old / c_new
-                self.positions[tk] *= factors[tk]
-                self.refs[tk] = [d, c_new]
+            f, newref = factor_of(ref, tk)
+            self.refs[tk] = newref
+            if f is not None:
+                factors[tk] = f
+                self.positions[tk] *= f
         ref = self.bench.get("ref")
         if ref and self.bench.get("units"):
-            c_new, _ = close_asof(closes, "SPY", ref[0])
-            if np.isfinite(c_new) and c_new > 0 and abs(c_new / ref[1] - 1.0) > 1e-9:
-                factors["SPY(bench)"] = ref[1] / c_new
-                self.bench["units"] *= factors["SPY(bench)"]
-                self.bench["ref"] = [ref[0], c_new]
+            f, newref = factor_of(ref, "SPY")
+            self.bench["ref"] = newref
+            if f is not None:
+                factors["SPY(bench)"] = f
+                self.bench["units"] *= f
         return factors
 
     def fill_pending(self, closes: pd.DataFrame, opens: pd.DataFrame, t,
@@ -234,21 +315,30 @@ class Ledger:
             self.cash += units * p - f
             self._add_units(tk, -units)
             fills.append([str(when.date()), tk, -units, p, f])
-        buys = {tk: v for tk, v in delta.items() if v >= floor}
+        buy_px = {tk: fill_price(closes, opens, tk, fd, for_buy=True)
+                  for tk, v in delta.items() if v >= floor}
+        buys = {tk: v for tk, v in delta.items()
+                if v >= floor and np.isfinite(buy_px[tk][0]) and buy_px[tk][0] > 0}
         total = sum(buys.values())
         scale = min(1.0, self.cash / (total * (1 + fee))) if total > 0 else 0.0
         for tk in sorted(buys):
-            p, when = px[tk]
+            p, when = buy_px[tk]
             dollars = buys[tk] * scale
             if dollars <= 1e-9:
                 continue
             self.cash -= dollars * (1 + fee)
             self._add_units(tk, dollars / p)
             fills.append([str(when.date()), tk, dollars / p, p, dollars * fee])
+        for tk in self.positions:
+            if len(self.refs.get(tk) or []) != 4:
+                pts = _ref_points(closes, tk, fd)
+                if pts:
+                    self.refs[tk] = pts               # anchor at fill; rebase keeps it there
         if self.bench.get("cash", 0.0) > 0 and not self.bench.get("units"):
             p, when = px.get("SPY") or fill_price(closes, opens, "SPY", fd)
             self.bench["units"] = self.bench["cash"] / (p * (1 + fee))
             self.bench["cash"] = 0.0
+            self.bench["ref"] = _ref_points(closes, "SPY", when or fd) or None
         self.trades.extend(fills)
         self.pending = None
         return fills
@@ -261,21 +351,32 @@ class Ledger:
             self.positions[tk] = new
 
     def mark(self, closes: pd.DataFrame, t) -> tuple[float, float]:
-        """NAV at the last close on or before t; refresh the reference closes."""
+        """NAV at the last close on or before t. References stay anchored at
+        the fill date (see rebase); mark only prunes refs of exited names and
+        backfills one that is missing, legacy, or degenerate."""
         t = pd.Timestamp(t)
-        nav, refs = self.cash, {}
+        nav, missing = self.cash, []
         for tk, u in self.positions.items():
             c, when = close_asof(closes, tk, t)
-            if np.isfinite(c):
-                nav += u * c
-                refs[tk] = [str(when.date()), c]
-        self.refs = refs
+            if not np.isfinite(c):
+                missing.append(tk)
+                continue
+            nav += u * c
+            ref = self.refs.get(tk) or []
+            if len(ref) != 4 or ref[0] == ref[2]:
+                self.refs[tk] = _ref_points(closes, tk, when)
+        if missing:
+            raise RuntimeError(
+                f"held names have no price on or before {t.date()}: {missing} "
+                "(vendor rename or dropped series; NAV would silently shrink)")
+        self.refs = {tk: v for tk, v in self.refs.items() if tk in self.positions}
         spy, when = close_asof(closes, "SPY", t)
         bench = self.bench.get("cash", 0.0) + self.bench.get("units", 0.0) * spy
-        if self.bench.get("units"):
-            self.bench["ref"] = [str(when.date()), spy]
+        ref = self.bench.get("ref") or []
+        if self.bench.get("units") and (len(ref) != 4 or ref[0] == ref[2]):
+            self.bench["ref"] = _ref_points(closes, "SPY", when)
         row = [str(t.date()), nav, bench]
-        self.nav_history = [r for r in self.nav_history if r[0] != row[0]] + [row]
+        self.nav_history = sorted([r for r in self.nav_history if r[0] != row[0]] + [row])
         return nav, bench
 
     def value_of(self, closes: pd.DataFrame, t) -> dict[str, float]:

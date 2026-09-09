@@ -66,6 +66,70 @@ def last_friday(today=None) -> pd.Timestamp:
     return d - pd.Timedelta(days=(d.weekday() - 4) % 7)
 
 
+def _easter(year: int) -> pd.Timestamp:
+    """Easter Sunday (anonymous Gregorian computus)."""
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    g = (8 * b + 13) // 25
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month, day = divmod(h + l - 7 * m + 114, 31)
+    return pd.Timestamp(year, month, day + 1)
+
+
+def nyse_friday_holiday(d) -> bool:
+    """Fridays the NYSE is closed: Good Friday, and holidays that fall on
+    (or are observed on) a Friday. A Saturday holiday moves to Friday except
+    over a year end (Rule 7.2: Dec 31 stays open, as on 2021-12-31)."""
+    d = pd.Timestamp(d).normalize()
+    if d.weekday() != 4:
+        return False
+    if d == _easter(d.year) - pd.Timedelta(days=2):
+        return True
+    md = (d.month, d.day)
+    if md in {(1, 1), (7, 4), (12, 25)}:                  # the holiday itself on a Friday
+        return True
+    if md in {(7, 3), (12, 24)}:                          # Saturday holiday observed Friday
+        return True
+    if md in {(6, 19), (6, 18)} and d.year >= 2022:       # Juneteenth (and its observance)
+        return True
+    return False
+
+
+def _latest_complete_week(weeks) -> pd.Timestamp:
+    """The newest panel week that is ready to trade: this week's Friday row,
+    or its Thursday when that Friday is a market holiday. A partial week
+    (store refreshed mid-week) is skipped; a store a session behind on an
+    ordinary week fails loudly rather than signalling on stale prices."""
+    lf = last_friday()
+    done = [w for w in weeks if w <= lf]
+    if not done:
+        raise RuntimeError("panel has no completed week yet")
+    t = done[-1]
+    if t == lf or (friday_of(t) == lf and nyse_friday_holiday(lf) and (lf - t).days == 1):
+        return t
+    raise RuntimeError(f"panel ends {t.date()} but the last trading Friday was "
+                       f"{lf.date()}: prices are not refreshed yet")
+
+
+def _guard_as_of(ledger: Ledger, t, as_of, dry_run: bool) -> None:
+    """Refuse a signal dated before the book's last mark or pending decision
+    unless dry_run: it would rewrite NAV history out of order and re-date the
+    pending orders so the next run fills them a week early."""
+    if as_of is None or dry_run:
+        return
+    marks = [r[0] for r in ledger.nav_history]
+    if ledger.pending:
+        marks.append(ledger.pending["decision_date"])
+    last = max(marks, default=None)
+    if last and str(pd.Timestamp(t).date()) < last:
+        raise RuntimeError(f"--as-of {pd.Timestamp(t).date()} is before the ledger's last "
+                           f"mark/decision {last}; use --dry-run to look back")
+
+
 def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
                capital=100.0, out_dir="signals_r5", ledger_path="ledger_r5.json",
                log=_log) -> dict:
@@ -83,12 +147,9 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     if missing:
         raise RuntimeError(f"panel_sf lacks the champion's bundle columns {missing[:3]}...: "
                            "rebuild it (build_world_panel computes the g_ columns)")
-    t = pd.Timestamp(as_of) if as_of else ctx.weeks[-1]
+    t = pd.Timestamp(as_of) if as_of else _latest_complete_week(ctx.weeks)
     if t not in ctx.members:
         raise RuntimeError(f"{t.date()} is not a panel date; latest is {ctx.weeks[-1].date()}")
-    if as_of is None and friday_of(t) < last_friday():       # holiday Fridays: Thursday is fine
-        raise RuntimeError(f"panel ends {t.date()} but the last Friday was "
-                           f"{last_friday().date()}: prices are not refreshed yet")
     log(f"signal date {t.date()} (sleeve {due_sleeve(t, N_SLEEVES)} due); fitting {SPEC}")
     t1 = time.time()
     preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"])
@@ -99,7 +160,13 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         f"top-{SPEC['top_n']}: {', '.join(ranked.index[:SPEC['top_n']])}")
 
     ledger = Ledger.load(ledger_path) or Ledger.new(capital, t)
-    factors = ledger.rebase(ctx.closes)
+    renames = ((report.get("refresh") or {}).get("sharadar") or {}).get("renames") or {}
+    if renames:
+        hit = ledger.rename(renames)
+        if hit:
+            log(f"vendor renames applied to the ledger: {hit}")
+    _guard_as_of(ledger, t, as_of, dry_run)
+    factors = ledger.rebase(ctx.closes, log=log)
     fills = ledger.fill_pending(ctx.closes, ctx.opens, t)
     nav, bench = ledger.mark(ctx.closes, t)
     sleeves, rotated = rotate_sleeves(ledger.sleeves, t, list(ranked.index), ctx.smap,
