@@ -43,7 +43,7 @@ import pandas as pd
 
 from stocks_ml.feature_screen import label_span_days
 from stocks_ml.ledger import (COST_BPS, Ledger, ballast_state, close_asof,  # noqa: F401
-                              pick_capped, rotate_sleeves, target_weights)
+                              pick_capped, rotate_sleeves, target_weights, week_index)
 
 MODEL_PARAMS = dict(max_depth=3, learning_rate=0.02, n_estimators=1500,
                     min_child_weight=20, subsample=0.85, colsample_bytree=0.8,
@@ -187,12 +187,33 @@ def slice_row(ctx, t, horizon, preds):
     return row
 
 
-def _stage_loop(ctx, todo, out_path, fn, checkpoint=25):
+def _stage_spec(extra=()):
+    """What a stage cache's rows depend on beyond the file name: the
+    ensemble recipe and the feature set. Written beside each cache file so a
+    resume after a recipe change refuses instead of mixing rows."""
+    return {"k_copies": K_COPIES, "model_params": MODEL_PARAMS,
+            "features": sorted(extra)}
+
+
+def _stage_loop(ctx, todo, out_path, fn, checkpoint=25, spec=None):
     done, rows = set(), []
+    sp = Path(str(out_path) + ".spec.json")
     if Path(out_path).exists():
+        if spec is not None:
+            if not sp.exists():
+                raise RuntimeError(
+                    f"{out_path} predates recipe stamping: verify it was written under "
+                    f"{spec} and write that to {sp.name}, or move the file aside")
+            old = json.loads(sp.read_text())
+            if old != json.loads(json.dumps(spec)):
+                raise RuntimeError(f"{out_path} was written under {old}; the current recipe "
+                                   f"is {spec} — resuming would mix rows. Use a fresh out dir.")
         old = pd.read_parquet(out_path)
         rows = old.to_dict("records")
         done = set(pd.to_datetime(old["week"]))
+    if spec is not None and not sp.exists():
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        sp.write_text(json.dumps(spec, indent=1, sort_keys=True))
     todo = [t for t in todo if t not in done]
     for i, t in enumerate(todo):
         row = fn(t)
@@ -212,7 +233,8 @@ def stage_grid(ctx, out, lo, hi, shard=(0, 1)):
         _stage_loop(ctx, weeks, f"{out}/grid_{h}_s{shard[0]}.parquet",
                     lambda t, h=h: (lambda p: slice_row(ctx, t, h, p)
                                     if p is not None else None)(
-                        ensemble_preds(ctx, t, h, REF_WINDOW)))
+                        ensemble_preds(ctx, t, h, REF_WINDOW)),
+                    spec=_stage_spec(ctx.extra))
 
 
 def sample_weeks(weeks, lo, hi, spacing=28, seed=11):
@@ -253,7 +275,8 @@ def stage_holdings(ctx, out, horizon, train_years, lo, hi, shard=(0, 1)):
                 f"{out}/{holdings_name(horizon, train_years, ctx.extra)}_s{shard[0]}.parquet",
                 lambda t: (lambda p: slice_row(ctx, t, horizon, p)
                            if p is not None else None)(
-                    ensemble_preds(ctx, t, horizon, train_years)))
+                    ensemble_preds(ctx, t, horizon, train_years)),
+                spec=_stage_spec(ctx.extra))
 
 
 def stage_screen(ctx, out, horizon, train_years, lo, hi, end, shard=(0, 1),
@@ -337,9 +360,12 @@ def compounded_pct(df, col, kweeks, lo, hi):
     [lo, hi]: the non-overlapping chain from each of the kweeks phases,
     averaged (a single phase would leave three weeks in four unread)."""
     g = df[(df.week >= lo) & (df.week <= hi)].sort_values("week")
-    out = []
+    slots = g["week"].map(week_index)      # calendar phase: a missing week
+    out = []                               # cannot re-phase the chains
     for phase in range(kweeks):
-        r = g[col].iloc[phase::kweeks] - COST
+        r = g.loc[slots % kweeks == phase, col] - COST
+        if not len(r):
+            continue
         yrs = len(r) * kweeks / 52
         out.append((float(np.prod(1 + r)) ** (1 / yrs) - 1) * 100)
     return float(np.mean(out))

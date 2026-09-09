@@ -380,3 +380,40 @@ def test_holdout_start_is_the_exclusive_grade_bound():
     r = pd.Series([0.01, 0.02, 99.0], index=idx)       # a holdout label to be excluded
     m = metrics(r, pd.Timestamp("2024-01-01"), HOLDOUT_START)
     assert m["n_weeks"] == 2 and m["terminal_100"] == pytest.approx(103.0, rel=1e-3)
+
+
+def test_compounded_pct_chains_do_not_rephase_at_a_gap():
+    """Chains stride by calendar week (week_index), so a missing rank week
+    leaves the other chains intact; positional striding shifted every later
+    week into the wrong chain."""
+    from stocks_ml.selection import COST, compounded_pct
+    weeks = pd.date_range("2024-01-05", periods=12, freq="W-FRI")
+    df = pd.DataFrame({"week": weeks, "top6": np.where(np.arange(12) % 4 == 0, 0.04, 0.0)})
+    # every 4th week earns 4%: those weeks share one calendar chain, the other
+    # three chains are flat. Annualised chain rates don't depend on length, so
+    # dropping a flat week must leave the statistic exactly unchanged.
+    x, z = (1 + 0.04 - COST) ** 13 - 1, (1 - COST) ** 13 - 1
+    expect = (x + 3 * z) / 4 * 100
+    assert compounded_pct(df, "top6", 4, weeks[0], weeks[-1]) == pytest.approx(expect)
+    gapped = compounded_pct(df.drop(index=1), "top6", 4, weeks[0], weeks[-1])
+    assert gapped == pytest.approx(expect)     # positional striding re-phased here
+
+
+def test_stage_loop_refuses_a_cache_from_another_recipe(tmp_path):
+    from stocks_ml import selection as sel
+    out = tmp_path / "holdings_4w_5y_s0.parquet"
+    calls = []
+    weeks = list(pd.date_range("2024-01-05", periods=3, freq="W-FRI"))
+    fn = lambda t: calls.append(t) or {"week": t, "top6": 0.0}
+    sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
+    assert (tmp_path / "holdings_4w_5y_s0.parquet.spec.json").exists()
+    # resuming under the same recipe is fine and re-runs nothing
+    sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
+    assert len(calls) == 3
+    # a different bundle, K, or params must refuse rather than mix rows
+    with pytest.raises(RuntimeError, match="different|recipe"):
+        sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_99",)))
+    # a legacy cache without a stamp is not silently trusted
+    (tmp_path / "holdings_4w_5y_s0.parquet.spec.json").unlink()
+    with pytest.raises(RuntimeError, match="predates"):
+        sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
