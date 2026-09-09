@@ -112,13 +112,17 @@ def _ret_between(close: pd.DataFrame, base: pd.DataFrame, d0: pd.Series, d1: pd.
 
 
 # ----------------------------------------------------------------------------- price features
-def price_features(close: pd.DataFrame, base: pd.DataFrame) -> pd.DataFrame:
+def price_features(close: pd.DataFrame, base: pd.DataFrame,
+                   level_close: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Returns from `close` (total-return basis); the PRICE LEVEL from
+    `level_close` when given (closeunadj under the nominal basis — a
+    closeadj level encodes future splits)."""
     dates = pd.DatetimeIndex(sorted(base["date"].unique()))
     r = close.pct_change(fill_method=None)
     out = pd.DataFrame(index=base.index)
     out["x_jump_dn_4w"] = _lookup(_asof_wide(r.rolling(20, min_periods=15).min(), dates), base)
     out["x_jump_up_4w"] = _lookup(_asof_wide(r.rolling(20, min_periods=15).max(), dates), base)
-    px = _lookup(_asof_wide(close, dates), base)
+    px = _lookup(_asof_wide(close if level_close is None else level_close, dates), base)
     out["x_price_level"] = np.log(np.where(px > 0, px, np.nan))
     seas = np.vstack([_ret_between(close, base, d0, d0 + pd.Timedelta(days=28))
                       for d0 in (base["date"] - pd.Timedelta(days=365 * k) for k in (1, 2, 3))])
@@ -365,15 +369,26 @@ def peer_features(close: pd.DataFrame, base: pd.DataFrame, revenue_yoy: pd.Serie
 
 
 # ----------------------------------------------------------------------------- assembly
-def candidate_features(world, base: pd.DataFrame, log=None) -> pd.DataFrame:
+def candidate_features(world, base: pd.DataFrame, log=None,
+                       price_basis: str = "closeadj") -> pd.DataFrame:
     """Raw candidates on base rows (date, ticker); base.index kept. `world` is
     the DataStore holding prices, fundamentals, sec8k and form4."""
     log = log or (lambda msg: None)
     prices = world.read("prices").sort_values("date")
     close = prices.pivot(index="date", columns="ticker", values="close").sort_index()
     dates = pd.DatetimeIndex(sorted(base["date"].unique()))
-    px = pd.Series(_lookup(_asof_wide(close, dates), base), index=base.index).replace(0, np.nan)
-    parts = [price_features(close, base)]
+    nominal = price_basis == "nominal"
+    if nominal and not {"closeunadj", "close_split"} <= set(prices.columns):
+        raise RuntimeError("price_basis='nominal' needs closeunadj/close_split in the "
+                           "prices table (world.prices_from_sep)")
+    # ratio denominators use the split-adjusted close (cancels the per-share
+    # restatement exactly); the level uses the nominal close
+    ratio_close = (prices.pivot(index="date", columns="ticker", values="close_split").sort_index()
+                   if nominal else close)
+    level_close = (prices.pivot(index="date", columns="ticker", values="closeunadj").sort_index()
+                   if nominal else None)
+    px = pd.Series(_lookup(_asof_wide(ratio_close, dates), base), index=base.index).replace(0, np.nan)
+    parts = [price_features(close, base, level_close=level_close)]
     log("candidates: prices")
     sf = sf1_features(world.read("fundamentals"), base, px)
     parts.append(sf.drop(columns=["revenue_yoy", "lev", "mcap"]))
@@ -388,12 +403,13 @@ def candidate_features(world, base: pd.DataFrame, log=None) -> pd.DataFrame:
     return out.replace([np.inf, -np.inf], [BIG, -BIG])
 
 
-def add_candidates(panel: pd.DataFrame, world, log=None) -> pd.DataFrame:
+def add_candidates(panel: pd.DataFrame, world, log=None,
+                   price_basis: str = "closeadj") -> pd.DataFrame:
     """The panel plus every candidate as a ranked, neutral-filled ``x_`` column
     (existing ``x_`` columns are rebuilt). Row order and the other columns are
     untouched."""
     base = panel[["date", "ticker"]]
-    feats = candidate_features(world, base, log=log)
+    feats = candidate_features(world, base, log=log, price_basis=price_basis)
     out = panel.drop(columns=candidate_cols(panel))
     out = pd.concat([out, feats], axis=1)
     return rank_normalize(out, list(CANDIDATES))

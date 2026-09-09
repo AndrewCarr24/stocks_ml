@@ -136,12 +136,17 @@ def membership_from_sp500(sp500: pd.DataFrame, sectors: dict) -> pd.DataFrame:
 
 
 def prices_from_sep(raw: pd.DataFrame) -> pd.DataFrame:
-    """SEP/SFP rows -> the project's price schema on the total-return basis:
-    close = closeadj, open scaled by the same factor, volume as is."""
+    """SEP/SFP rows -> the project's price schema. open/close are the
+    total-return basis (close = closeadj, open scaled by the same factor):
+    returns and the ledger's units live there. closeunadj (nominal — what the
+    tape actually showed that day) and close_split (SEP's split-adjusted
+    close) ride along for LEVEL features under price_basis='nominal':
+    closeadj levels encode future splits (the 2026-09 leak finding)."""
     factor = raw["closeadj"] / raw["close"]
     out = pd.DataFrame({"date": pd.to_datetime(raw["date"]), "ticker": raw["ticker"],
                         "open": raw["open"] * factor, "close": raw["closeadj"],
-                        "volume": raw["volume"]})
+                        "volume": raw["volume"],
+                        "closeunadj": raw["closeunadj"], "close_split": raw["close"]})
     # Sharadar occasionally serves a row twice (249 exact duplicates in the
     # research SEP pull); the research prices table has none
     return (out.dropna(subset=["close"]).drop_duplicates(["ticker", "date"], keep="last")
@@ -426,6 +431,12 @@ def refresh_sharadar(store: DataStore, key: str, fetch_fn=None, log=_log,
     lo = (lo - pd.Timedelta(days=14)).normalize()
     raw_sf2 = _fetch("insiders", key, fetch_fn,
                      **{"from": lo.date().isoformat(), "to": today.date().isoformat()})
+    if len(raw_sf2) == 0 and ((old_ins["date"] >= lo).any()
+                              or (len(bridge_old) and (bridge_old["filed"] >= lo).any())):
+        # an empty SF2 page (outage, bad key) must not erase the stored
+        # window: the replace below would delete every row in [lo, today]
+        raise RuntimeError(f"SF2 returned no rows for {lo.date()} -> {today.date()} but the "
+                           "store has rows in that window; refusing to erase them")
     ins_new = insiders_from_sf2(raw_sf2, set(universe))
     ins = _concat([old_ins[old_ins["date"] < lo], ins_new], old_ins.columns)
     ins = ins.sort_values(["ticker", "date"]).reset_index(drop=True)
@@ -546,7 +557,16 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     prices = store.read("prices")
     fund = store.read("fundamentals")
     ins = store.read("insiders")
-    cw = prices.pivot(index="date", columns="ticker", values="close").sort_index().ffill()
+    # f_sf ratios divide split-restated per-share values by this close; the
+    # SPLIT-adjusted close (close_split) cancels the restatement exactly and
+    # equals the live computation, where the future factor is 1 for every
+    # name. The closeadj basis (status quo) keeps the deployed behavior.
+    nominal = getattr(cfg, "price_basis", "closeadj") == "nominal"
+    if nominal and "close_split" not in prices.columns:
+        raise RuntimeError("price_basis='nominal' needs close_split in the prices table: "
+                           "regenerate it from sharadar_prices (world.prices_from_sep)")
+    px_field = "close_split" if nominal else "close"
+    cw = prices.pivot(index="date", columns="ticker", values=px_field).sort_index().ffill()
     wk = cw.reindex(pd.Index(sorted(panel["date"].unique())), method="ffill")
     close = pd.Series(wk.stack().reindex(
         pd.MultiIndex.from_frame(panel[["date", "ticker"]])).values, index=panel.index)
@@ -556,7 +576,8 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     panel_sf = rank_normalize(pd.concat([panel, ff, fi], axis=1), SF_RAW_COLS + SFI_RAW_COLS)
     # the screen's candidates ride along as x_ columns: invisible to feature_cols,
     # used only when a spec/screen admits them (features/candidates.py)
-    panel_sf = add_candidates(panel_sf, store, log=log)
+    panel_sf = add_candidates(panel_sf, store, log=log,
+                              price_basis=getattr(cfg, "price_basis", "closeadj"))
     # the champion's generated bundle rides along as g_ columns the same way (features/bundle.py):
     # the formulas on the raw inputs, ranked within the week — the research walks' recipe
     panel_sf = add_generated(panel_sf, raw_inputs(live_dir, cfg, log=log), FORMULAS)

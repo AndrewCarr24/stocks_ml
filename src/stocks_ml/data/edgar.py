@@ -31,14 +31,24 @@ def extract_facts(cf_json: dict, ticker: str, concept_map: dict) -> pd.DataFrame
     rows = []
     for concept, tags in concept_map.items():
         unit = SHARE_UNIT if concept == "shares" else MONEY_UNIT
+        # UNION of every tag that yields data: companies migrate tags
+        # (Revenues -> RevenueFromContractWithCustomer...) and "first tag
+        # wins" froze a concept at the old tag's last filing (MSFT revenues
+        # stuck at 2011; 152/478 members stale > 400 days). Duplicate
+        # (end, filed) facts across tags dedupe below, earliest tag winning
+        # the tie deterministically.
+        seen = set()
         for tag in tags:
             node = gaap.get(tag) or dei.get(tag)
             if not node or unit not in node.get("units", {}):
                 continue
-            n_before = len(rows)
             for item in node["units"][unit]:
                 if item.get("val") is None or not item.get("filed"):
                     continue
+                key = (item.get("start"), item["end"], item["filed"])
+                if key in seen:
+                    continue
+                seen.add(key)
                 rows.append({
                     "ticker": ticker, "concept": concept,
                     "start": pd.to_datetime(item.get("start")) if item.get("start") else pd.NaT,
@@ -46,8 +56,6 @@ def extract_facts(cf_json: dict, ticker: str, concept_map: dict) -> pd.DataFrame
                     "filed": pd.to_datetime(item["filed"]),
                     "val": float(item["val"]), "form": item.get("form", ""),
                 })
-            if len(rows) > n_before:
-                break  # first tag that yields data wins
     return pd.DataFrame(rows, columns=EDGAR_COLS)
 
 
@@ -76,8 +84,12 @@ def ingest_edgar(store, tickers, concept_map, user_agent,
             failed.append(t)
             continue
         try:
-            frames.append(extract_facts(fetch_facts(cik, user_agent), t, concept_map))
-            refetched.add(t)
+            got = extract_facts(fetch_facts(cik, user_agent), t, concept_map)
+            if got.empty:
+                failed.append(t)   # an empty payload must not wipe the stored rows
+            else:
+                frames.append(got)
+                refetched.add(t)
         except Exception:
             failed.append(t)
         if fetch_facts_fn is None:

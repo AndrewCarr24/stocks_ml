@@ -25,9 +25,16 @@ def _asof_join(base: pd.DataFrame, facts: pd.DataFrame, colname: str) -> pd.Seri
     facts["filed"] = pd.to_datetime(facts["filed"]).dt.normalize() + pd.Timedelta(days=1)
     facts = (facts.sort_values(["filed", "end"])
                   .drop_duplicates(subset=["ticker", "filed"], keep="last"))
+    # A later filing carrying only an OLDER period (an amendment's
+    # comparative) must not supersede the newer value already filed.
+    facts = facts.sort_values(["ticker", "filed", "end"])
+    facts = facts[facts["end"] >= facts.groupby("ticker")["end"].cummax()]
     left = base[["date", "ticker"]].reset_index().sort_values("date")
+    # 400-day staleness bound (as the f_sf block has): a company whose tag
+    # went quiet years ago reads NaN (rank-neutral), not a fossil value.
     merged = pd.merge_asof(left, facts[["filed", "ticker", "val"]].sort_values("filed"),
-                           left_on="date", right_on="filed", by="ticker")
+                           left_on="date", right_on="filed", by="ticker",
+                           tolerance=pd.Timedelta(days=400))
     return merged.set_index("index")["val"].reindex(base.index).rename(colname)
 
 

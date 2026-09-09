@@ -210,7 +210,11 @@ def test_prices_from_sep_scales_open_by_the_adjustment_factor():
     px = world.prices_from_sep(raw)
     assert len(px) == 1                                    # NaN adjusted close dropped
     assert px.iloc[0]["close"] == 5.0 and px.iloc[0]["open"] == pytest.approx(9.5 * 0.5)
-    assert list(px.columns) == ["date", "ticker", "open", "close", "volume"]
+    assert list(px.columns) == ["date", "ticker", "open", "close", "volume",
+                                "closeunadj", "close_split"]
+    # the level columns pass through unscaled: closeunadj is the tape's print,
+    # close_split is SEP's split-adjusted close (their ratio is the split factor)
+    assert px.iloc[0]["closeunadj"] == 10.0 and px.iloc[0]["close_split"] == 10.0
 
 
 def test_prices_from_sep_drops_rows_sharadar_served_twice():

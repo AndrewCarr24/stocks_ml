@@ -174,3 +174,37 @@ def test_failed_refetch_keeps_the_stored_rows(tmp_path):
                      fetch_facts_fn=failing, cik_map={"AAA": 1})
     assert s["failed_tickers"] == ["AAA"]
     assert len(store.read("edgar")) == 2
+
+
+def test_extract_facts_unions_every_tag_that_yields_data():
+    """First-tag-wins froze a concept at the old tag's last filing (MSFT
+    revenues stuck at 2011): tags are unioned, duplicate facts deduped."""
+    cf = {"facts": {"us-gaap": {
+        "Revenues": {"units": {"USD": [
+            {"start": "2010-01-01", "end": "2010-12-31", "filed": "2011-02-01",
+             "val": 60.0, "form": "10-K"}]}},
+        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+            {"start": "2010-01-01", "end": "2010-12-31", "filed": "2011-02-01",
+             "val": 61.0, "form": "10-K"},                     # duplicate period: first tag wins
+            {"start": "2023-01-01", "end": "2023-12-31", "filed": "2024-02-01",
+             "val": 200.0, "form": "10-K"}]}},
+    }}}
+    df = extract_facts(cf, "MSFT", {"revenues": [
+        "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax"]})
+    assert len(df) == 2
+    assert df["val"].tolist() == [60.0, 200.0]
+    assert str(df["filed"].max().date()) == "2024-02-01"
+
+
+def test_empty_payload_does_not_wipe_stored_rows(tmp_path):
+    store = DataStore(tmp_path)
+    ingest_edgar(store, ["AAA"], {"net_income": ["NetIncomeLoss"]}, "ua",
+                 fetch_facts_fn=lambda cik, ua: CF_JSON, cik_map={"AAA": 1},
+                 refresh_days=0)
+    n = len(store.read("edgar"))
+    assert n > 0
+    summary = ingest_edgar(store, ["AAA"], {"net_income": ["NetIncomeLoss"]}, "ua",
+                           fetch_facts_fn=lambda cik, ua: {"facts": {}}, cik_map={"AAA": 1},
+                           refresh_days=0)
+    assert len(store.read("edgar")) == n                     # rows kept
+    assert summary["failed_tickers"] == ["AAA"]

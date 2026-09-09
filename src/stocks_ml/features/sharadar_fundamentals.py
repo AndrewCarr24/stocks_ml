@@ -24,9 +24,19 @@ SF_RAW_COLS = [
 SFI_RAW_COLS = ["f_sfi_net_13w", "f_sfi_buyers_13w"]
 
 
+def _monotone(facts):
+    """Drop rows whose reportperiod is older than one already filed for the
+    ticker: a comparative for an OLDER period filed later (an amendment's
+    prior-year column, ~0.7% of rows) must not supersede the newer period's
+    value at the as-of join."""
+    f = facts.sort_values(["ticker", "date", "reportperiod"])
+    keep = f["reportperiod"] >= f.groupby("ticker")["reportperiod"].cummax()
+    return f[keep]
+
+
 def _asof(base, facts, cols):
     """Latest filed fact per (ticker) at each base date (filed + 1 day)."""
-    f = facts.copy()
+    f = _monotone(facts).copy()
     f["filed"] = f["date"].dt.normalize() + pd.Timedelta(days=1)
     f = f.sort_values("filed").drop_duplicates(["ticker", "filed"], keep="last")
     left = base[["date", "ticker"]].reset_index().sort_values("date")
@@ -43,8 +53,11 @@ def sharadar_fundamental_features(fund: pd.DataFrame, base: pd.DataFrame,
     art = fund[fund.dimension == "ART"].copy()
 
     # YoY comparisons on ARQ (prior-year quarter filed long before -> knowable
-    # at the current row's filing date)
-    arq = arq.sort_values(["ticker", "reportperiod"])
+    # at the current row's filing date). Duplicate (ticker, reportperiod) rows
+    # (re-filings) misalign shift(4): keep the last filed.
+    arq = (arq.sort_values(["ticker", "date", "reportperiod"])
+              .drop_duplicates(["ticker", "reportperiod"], keep="last")
+              .sort_values(["ticker", "reportperiod"]))
     g = arq.groupby("ticker")
     gap = g["reportperiod"].diff(4).dt.days
     ok = (gap > 330) & (gap < 400)

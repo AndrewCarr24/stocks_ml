@@ -214,3 +214,54 @@ def test_dedup_skips_near_copies_and_stops_at_n():
     assert [k for k, _ in gen.dedup(["a_copy", "b", "b_copy", "d"], held, ranked.__getitem__, n=1)] == ["b"]
     # nothing held: the first candidate is always kept
     assert gen.dedup(["a_copy"], np.empty((n, 0)), ranked.__getitem__, n=1) == [("a_copy", 0.0)]
+
+
+# ----------------------------------------------------------------------------- nominal basis (2026-09)
+def _leak_prices():
+    """AAA splits 4:1 between 2020 and the download: closeadj/close carry the
+    restated history (nominal 40 stored as 10), closeunadj the tape."""
+    dates = pd.date_range("2019-12-30", "2020-07-03", freq="B")
+    rows = []
+    for d in dates:
+        rows.append({"date": d, "ticker": "AAA", "open": 10.0, "close": 10.0,
+                     "volume": 100.0, "closeunadj": 40.0, "close_split": 10.0})
+        rows.append({"date": d, "ticker": "BBB", "open": 20.0, "close": 20.0,
+                     "volume": 100.0, "closeunadj": 20.0, "close_split": 20.0})
+    return pd.DataFrame(rows)
+
+
+def test_close_input_nominal_reads_the_tape():
+    base = pd.DataFrame({"date": pd.to_datetime(["2020-02-07"] * 2), "ticker": ["AAA", "BBB"]})
+    adj = gen.close_input(_leak_prices(), base)
+    nom = gen.close_input(_leak_prices(), base, field="closeunadj")
+    assert adj.tolist() == [10.0, 20.0]        # the leak: AAA reads a quarter of its price
+    assert nom.tolist() == [40.0, 20.0]
+
+
+def test_sf1_per_share_levels_are_restored_by_the_split_factor():
+    rows = []
+    for q, rp in enumerate(pd.date_range("2018-12-31", periods=5, freq="QE")):
+        rows.append({"ticker": "AAA", "dimension": "ART", "reportperiod": rp,
+                     "date": rp + pd.Timedelta(days=40),
+                     "bvps": 1.9, "revenue": 100.0 + q})    # bvps stored split-restated (true 7.6)
+    fund = pd.DataFrame(rows)
+    base = pd.DataFrame({"date": pd.to_datetime(["2020-02-07"]), "ticker": ["AAA"]})
+    factor = gen.split_factor_input(_leak_prices(), base)
+    assert factor.tolist() == [4.0]
+    out = gen.sf1_inputs(fund, base, split_factor=factor)
+    assert out["r_sf_bvps"].iloc[0] == pytest.approx(7.6)   # the as-of-2020 book value
+    assert out["r_sf_revenue"].iloc[0] == 103.0   # dollar totals untouched (Q4 files 02-09: not yet visible)
+    # yoy is a same-basis ratio: untouched by the factor
+    plain = gen.sf1_inputs(fund, base)
+    assert plain["r_sf_bvps"].iloc[0] == pytest.approx(1.9)
+
+
+def test_store_inputs_nominal_requires_the_level_columns():
+    class FakeStore:
+        def read(self, name):
+            if name == "prices":
+                return _leak_prices().drop(columns=["closeunadj", "close_split"])
+            raise AssertionError(name)
+    base = pd.DataFrame({"date": pd.to_datetime(["2020-02-07"]), "ticker": ["AAA"]})
+    with pytest.raises(RuntimeError, match="closeunadj"):
+        gen.store_inputs(FakeStore(), base, price_basis="nominal")

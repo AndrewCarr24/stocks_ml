@@ -174,8 +174,14 @@ def _wide(prices: pd.DataFrame, field: str) -> pd.DataFrame:
     return prices.pivot(index="date", columns="ticker", values=field).sort_index()
 
 
-def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex,
+                   level_field: str = "close") -> pd.DataFrame:
+    """Returns/vol/momentum from the total-return close; DOLLAR quantities
+    (dollar volume, Amihud) from `level_field` — 'closeunadj' under the
+    nominal basis, since closeadj x raw volume mixes bases and encodes
+    future splits."""
     close, volume = _wide(prices, "close"), _wide(prices, "volume")
+    level = close if level_field == "close" else _wide(prices, level_field)
     open_ = _wide(prices, "open")
     ret = close.pct_change(fill_method=None)
     weeks = {"1w": 5, "4w": 20, "12w": 60, "26w": 130, "52w": 252}
@@ -186,7 +192,7 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
     out["f_vol_4w"] = ret.rolling(20).std() * ANNUALIZER
     out["f_vol_12w"] = ret.rolling(60).std() * ANNUALIZER
     out["f_downside_dev"] = ret.clip(upper=0).rolling(60).std() * ANNUALIZER
-    dollar = (close * volume).rolling(20).mean()
+    dollar = (level * volume).rolling(20).mean()
     out["f_dollar_vol"] = np.log(dollar.where(dollar > 0))
     out["f_abn_volume"] = volume.rolling(20).mean() / volume.rolling(120).mean() - 1
     out["f_hi_52w"] = close / close.rolling(252).max() - 1
@@ -234,7 +240,7 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFram
 
     # Amihud illiquidity: absolute daily return per dollar traded. Scale by 1e6
     # for numerical readability; cross-sectional ranking makes the scale neutral.
-    dollar_volume = close * volume
+    dollar_volume = level * volume
     amihud_daily = ret.abs().div(dollar_volume.where(dollar_volume > 0)) * 1e6
     out["f_amihud_4w"] = amihud_daily.rolling(20, min_periods=15).mean()
     out["f_amihud_12w"] = amihud_daily.rolling(60, min_periods=40).mean()
@@ -412,10 +418,17 @@ def build_panel(store, cfg) -> pd.DataFrame:
     if corrupt:
         base = base[~base["ticker"].isin(corrupt)]
 
-    pfeats = price_features(prices, dates)
+    nominal = getattr(cfg, "price_basis", "closeadj") == "nominal"
+    if nominal and not {"closeunadj", "close_split"} <= set(prices.columns):
+        raise RuntimeError("price_basis='nominal' needs closeunadj/close_split in the "
+                           "prices table: regenerate it from sharadar_prices "
+                           "(world.prices_from_sep)")
+    level_field = "closeunadj" if nominal else "close"
+
+    pfeats = price_features(prices, dates, level_field=level_field)
     panel = base.merge(pfeats, on=["date", "ticker"], how="left")
 
-    close_wide = _wide(prices, "close").reindex(dates)
+    close_wide = _wide(prices, level_field).reindex(dates)
     close_wide.index.name = "date"
     close = close_wide.stack(future_stack=True).rename("close")
     close_df = close.reset_index()
@@ -431,7 +444,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     # reindexed to `dates`: insider_features needs the full trading calendar
     # (via this wide frame's index) to size its trading-day event window.
     volume_wide = _wide(prices, "volume")
-    dollar_wide = (_wide(prices, "close") * volume_wide).rolling(20).mean()
+    dollar_wide = (_wide(prices, level_field) * volume_wide).rolling(20).mean()
     panel = panel.merge(insider_features(form4, dates, dollar_wide), on=["date", "ticker"], how="left")
     # Short-interest features (FINRA data begins 2017-12): absence before the
     # source exists is structural (measured in feature_coverage), neutral-filled

@@ -63,13 +63,28 @@ def fundamental_fields(fund: pd.DataFrame) -> list[str]:
     return sorted(c for c in fund.columns if c not in ID_COLS and pd.api.types.is_numeric_dtype(fund[c]))
 
 
-def sf1_inputs(fund: pd.DataFrame, base: pd.DataFrame) -> pd.DataFrame:
+PER_SHARE_FIELDS = ("bvps", "dps", "eps", "epsdil", "epsusd", "sps", "fcfps",
+                    "ncfps", "tbvps", "sharesbas", "shareswa", "shareswadil")
+
+
+def sf1_inputs(fund: pd.DataFrame, base: pd.DataFrame,
+               split_factor: pd.Series | None = None) -> pd.DataFrame:
     """Every numeric SF1 field, trailing-12-month dimension: the latest filed
     level (``r_sf_<field>``) and its year-over-year change (``r_sf_<field>_yoy``:
     x / prev - 1 against the row four quarters earlier, report-period gap
-    330-400 days, prior value > 0)."""
+    330-400 days, prior value > 0).
+
+    `split_factor` (nominal basis): closeunadj/close_split per base row —
+    the cumulative splits between the row's date and the download. Sharadar
+    restates per-share fields through the download date, so the stored LEVEL
+    at t encodes future splits; multiplying by the factor restores the
+    as-of-t value. YoY fields are same-basis ratios and stay untouched."""
+    from stocks_ml.features.sharadar_fundamentals import _monotone
     fields = fundamental_fields(fund)
-    art = fund[fund["dimension"] == "ART"].sort_values(["ticker", "reportperiod"]).copy()
+    art = (_monotone(fund[fund["dimension"] == "ART"])
+           .sort_values(["ticker", "date", "reportperiod"])
+           .drop_duplicates(["ticker", "reportperiod"], keep="last")   # last filed wins
+           .sort_values(["ticker", "reportperiod"]).copy())
     g = art.groupby("ticker")
     gap = g["reportperiod"].diff(4).dt.days
     ok = (gap > 330) & (gap < 400)
@@ -81,6 +96,11 @@ def sf1_inputs(fund: pd.DataFrame, base: pd.DataFrame) -> pd.DataFrame:
     cols = fields + [f + "_yoy" for f in fields]
     out = _asof(base, art, cols)
     out.columns = [f"{STORE_PREFIX}sf_{c}" for c in cols]
+    if split_factor is not None:
+        for f in PER_SHARE_FIELDS:
+            col = f"{STORE_PREFIX}sf_{f}"
+            if col in out.columns:
+                out[col] = out[col] * split_factor
     return out
 
 
@@ -117,22 +137,42 @@ def sec8k_inputs(sec8k: pd.DataFrame, base: pd.DataFrame, min_filings: int = MIN
     return out
 
 
-def close_input(prices: pd.DataFrame, base: pd.DataFrame) -> pd.Series:
-    """``r_close``: the nominal close as of the rank date (non-positive -> NaN)."""
-    close = prices.pivot(index="date", columns="ticker", values="close").sort_index()
+def close_input(prices: pd.DataFrame, base: pd.DataFrame,
+                field: str = "close") -> pd.Series:
+    """``r_close``: the close level as of the rank date (non-positive -> NaN).
+    field='close' is the store's closeadj basis (the pre-2026-09 behavior,
+    which encodes future splits); 'closeunadj' is the true nominal close."""
+    close = prices.pivot(index="date", columns="ticker", values=field).sort_index()
     dates = pd.DatetimeIndex(sorted(base["date"].unique()))
     px = _lookup(_asof_wide(close, dates), base)
     return pd.Series(np.where(px > 0, px, np.nan), index=base.index, name=f"{STORE_PREFIX}close")
 
 
-def store_inputs(store, base: pd.DataFrame, log=None) -> pd.DataFrame:
+def split_factor_input(prices: pd.DataFrame, base: pd.DataFrame) -> pd.Series:
+    """closeunadj/close_split as of each base row: the cumulative split
+    restatement Sharadar applied between the row's date and the download."""
+    p = prices.copy()
+    p["_sf"] = p["closeunadj"] / p["close_split"]
+    wide = p.pivot(index="date", columns="ticker", values="_sf").sort_index()
+    dates = pd.DatetimeIndex(sorted(base["date"].unique()))
+    return pd.Series(_lookup(_asof_wide(wide, dates), base), index=base.index)
+
+
+def store_inputs(store, base: pd.DataFrame, log=None,
+                 price_basis: str = "closeadj") -> pd.DataFrame:
     """The store-derived inputs on base rows (date, ticker); base.index kept."""
     log = log or (lambda msg: None)
-    parts = [sf1_inputs(store.read("fundamentals"), base)]
+    prices = store.read("prices")
+    nominal = price_basis == "nominal"
+    if nominal and not {"closeunadj", "close_split"} <= set(prices.columns):
+        raise RuntimeError("price_basis='nominal' needs closeunadj/close_split in the "
+                           "prices table (world.prices_from_sep)")
+    factor = split_factor_input(prices, base) if nominal else None
+    parts = [sf1_inputs(store.read("fundamentals"), base, split_factor=factor)]
     log("inputs: sf1")
     parts.append(sec8k_inputs(store.read("sec8k"), base))
     log("inputs: 8-K")
-    parts.append(close_input(store.read("prices"), base).to_frame())
+    parts.append(close_input(prices, base, field="closeunadj" if nominal else "close").to_frame())
     log("inputs: close")
     return pd.concat(parts, axis=1)
 
@@ -194,7 +234,8 @@ def raw_inputs(live_dir, cfg, log=None) -> pd.DataFrame:
     """date, ticker, the raw base features, the store inputs — every panel row."""
     from stocks_ml.data.world import _PanelStore
     base = base_raw_features(live_dir, cfg, log)
-    extra = store_inputs(_PanelStore(live_dir), base[["date", "ticker"]], log)
+    extra = store_inputs(_PanelStore(live_dir), base[["date", "ticker"]], log,
+                         price_basis=getattr(cfg, "price_basis", "closeadj"))
     return pd.concat([base, extra], axis=1)
 
 

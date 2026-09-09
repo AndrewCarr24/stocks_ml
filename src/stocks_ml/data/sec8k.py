@@ -114,7 +114,10 @@ def ingest_sec8k(store, tickers, user_agent: str, fetch_submissions_fn=None,
     if not combined.empty:
         # Existing rows come first and win: once an accession has entered the
         # point-in-time store, later source revisions may not rewrite history.
-        combined = (combined.drop_duplicates("accession", keep="first")
+        # Keyed by (ticker, accession), NOT accession alone: dual-class
+        # listings share filings (GOOGL/GOOG) and the bare-accession key
+        # deleted every second listing's rows.
+        combined = (combined.drop_duplicates(["ticker", "accession"], keep="first")
                             .sort_values(["ticker", "filed", "accession"])
                             .reset_index(drop=True))
     store.write("sec8k", combined)

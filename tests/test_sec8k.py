@@ -75,3 +75,22 @@ def test_existing_accession_is_immutable_against_source_revision(tmp_path):
     ingest_sec8k(store, ["AAA"], "ua", fetch_submissions_fn=lambda cik: revised,
                   **kwargs)
     assert store.read("sec8k").iloc[0]["items"] == "2.02"
+
+
+def test_dual_class_listings_keep_their_shared_accessions(tmp_path):
+    """GOOGL/GOOG share every filing; deduping on the bare accession deleted
+    the second listing's rows (GOOGL had 0 to GOOG's 114)."""
+    rows = [{"ticker": t, "accession": "0001-24-000001", "accepted": "2024-01-05T09:00:00",
+             "filed": "2024-01-05", "items": "2.02", "primary_document": "d.htm",
+             "is_amendment": False} for t in ("GOOG", "GOOGL")]
+    df = pd.DataFrame(rows)
+    df["filed"] = pd.to_datetime(df["filed"])
+    store = DataStore(tmp_path)
+    store.write("sec8k", df)
+    ingest_sec8k(store, ["GOOG", "GOOGL"], "ua",
+                 fetch_submissions_fn=lambda cik: {"cik": cik, "filings": {"recent": {
+                     "accessionNumber": [], "acceptanceDateTime": [], "filingDate": [],
+                     "form": [], "items": [], "primaryDocument": []}}},
+                 cik_map={"GOOG": 1, "GOOGL": 1})
+    got = store.read("sec8k")
+    assert sorted(got["ticker"]) == ["GOOG", "GOOGL"]

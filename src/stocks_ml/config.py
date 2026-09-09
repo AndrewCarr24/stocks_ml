@@ -18,6 +18,10 @@ class Config:
     backtest_start: pd.Timestamp
     cv_train_years: int
     train_sample_rows: int | None
+    # "closeadj" (status quo: level features on the total-return basis) or
+    # "nominal" (levels from closeunadj/close_split; the split-leak fix,
+    # reports/nominal_basis_registration.md). Returns are closeadj either way.
+    price_basis: str = "closeadj"
     fred_series: dict = field(default_factory=dict)
     edgar_concepts: dict = field(default_factory=dict)
 
@@ -34,6 +38,7 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         backtest_start=pd.Timestamp(raw["backtest_start"]),
         cv_train_years=int(raw.get("cv_train_years", 2)),
         train_sample_rows=raw.get("train_sample_rows"),
+        price_basis=str(raw.get("price_basis", "closeadj")),
         fred_series=dict(raw["fred_series"]),
         edgar_concepts={k: list(v) for k, v in raw["edgar_concepts"].items()},
     )
