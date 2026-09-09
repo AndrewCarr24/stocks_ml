@@ -249,6 +249,13 @@ their original file references on purpose.
   seven are a fixed list in `ops/openfe_arm_v2.py`, not the spec's features).
 - **The holdout (2024-07-19 onward) is a single-use exam.** It has not been
   graded for r5 and nothing may touch it without the owner's explicit go.
+- **One grade-window convention (2026-09-09):** every pre-holdout window ends
+  at `selection.HOLDOUT_START` (2024-07-19) as an EXCLUSIVE bound, so the
+  label credited at the first holdout close is never counted. Before this,
+  some graders used `Timestamp("2025")` (967/447-week grades crediting that
+  label; the $4,256/$900 record rows) and the nested verdicts used
+  07-19-exclusive (966/446): numbers from the two bases differ by one week
+  and must not be compared without saying so.
 - **Live:** `.github/workflows/champion.yml` is the only workflow; it runs
   `stocks-ml r5-weekly --commit` every Saturday (see "r5 weekly job"). The
   paper record is `ledger_r5.json` + `signals_r5/<friday>.{md,json}`. The

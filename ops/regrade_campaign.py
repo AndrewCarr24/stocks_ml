@@ -41,6 +41,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from stocks_ml.selection import HOLDOUT_START
 
 CACHE = Path("data/experiments/r4w_campaign_cache")
 NEW = Path("data/experiments/champion_2006_2024")
@@ -49,8 +50,8 @@ REPORT = Path("reports/rank_date_regrade.md")
 LEDGER = Path("models/trials_ledger.json")
 PRE_FIX = "dccca9a^"  # last commit with the .asof join
 CHART_NOTE = "fixed rank-date join"  # the chart titles' basis (fill_basis_regrade overrides)
-LO, HI = pd.Timestamp("2006-01-01"), pd.Timestamp("2024-07-18")  # holdout starts 2024-07-19
-NESTED_LO, NESTED_HI = pd.Timestamp("2016-01-01"), pd.Timestamp("2024-07-19")
+LO, HI = pd.Timestamp("2006-01-01"), HOLDOUT_START - pd.Timedelta(days=1)
+NESTED_LO, NESTED_HI = pd.Timestamp("2016-01-01"), HOLDOUT_START
 CHAMPION = dict(book=6, cap=2, stop=None, floor="70/30")
 # (ledger key, label, simulate kwargs); the first five keys are r5_layers.py's
 PKG_VARIANTS = (
@@ -66,6 +67,8 @@ PKG_VARIANTS = (
 )
 # r5_layers.py keyed its 2006-2024 and 2006-2012 rows both as r5pkg_2006_*; the
 # 2006-2012 numbers won. Those keys keep their window; the full span gets its own.
+# PKG_WINDOWS predates the one-convention rule (2026-09-09): "2025" credits the
+# first holdout label. Kept for the archived report; do not copy into new graders.
 PKG_WINDOWS = (("2006-2024", "2006", "2025"), ("2006", "2006", "2013"),
                ("2013", "2013", "2025"), ("2021", "2021", "2025"))
 PY, STRIDE = {"1w": 52, "4w": 13}, {"1w": 1, "4w": 4}
@@ -357,9 +360,9 @@ def report():
                         "notes": f"{span}: {grade_line(mn)} | before the rank-date fix (dccca9a): {grade_line(mo)}"})
         md.append("")
     # headline and selection inflation
-    champ = {j: eng.metrics(series[j]["70/30 + cap2 champ"], LO, pd.Timestamp("2024-07-19"))
+    champ = {j: eng.metrics(series[j]["70/30 + cap2 champ"], LO, HOLDOUT_START)
              for j, eng in (("old", old), ("new", sel))}
-    spy = {j: eng.metrics(series[j]["sp500"], LO, pd.Timestamp("2024-07-19"))
+    spy = {j: eng.metrics(series[j]["sp500"], LO, HOLDOUT_START)
            for j, eng in (("old", old), ("new", sel))}
     nested_old = {"terminal_100": 497.0, "cagr_pct": 21.4}
     from stocks_ml.models.trials import load_ledger

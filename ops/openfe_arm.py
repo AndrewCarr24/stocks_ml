@@ -40,6 +40,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from stocks_ml.selection import HOLDOUT_START
 
 STORE = "data/sharadar_world2000"
 OUT = Path("data/experiments/openfe_2006_2015")
@@ -47,10 +48,11 @@ REPORT = Path("reports/openfe_arm.md")
 RECORD = Path("data/experiments/champion_2006_2024/champion_bundle_grades.json")
 FIT_LO, FIT_HI = pd.Timestamp("2006-01-01"), pd.Timestamp("2015-12-31")
 LABEL_DAYS = 35                                   # label_4w's span plus the purge margin
-WALK_LO, WALK_HI = pd.Timestamp("2006-01-01"), pd.Timestamp("2024-07-18")
-HI = pd.Timestamp("2024-07-18")                   # holdout starts 2024-07-19
+WALK_LO, WALK_HI = pd.Timestamp("2006-01-01"), HOLDOUT_START - pd.Timedelta(days=1)
+HI = HOLDOUT_START - pd.Timedelta(days=1)         # last pre-holdout session
 CHAMPION = dict(horizon="4w", book=6, cap=2, stop=None, floor="70/30")
-WINDOWS = {"2016_2024": ("2016", "2025"), "2006_2015": ("2006", "2016"), "pre_holdout": ("2006", "2025")}
+WINDOWS = {"2016_2024": ("2016", HOLDOUT_START), "2006_2015": ("2006", "2016"),
+           "pre_holdout": ("2006", HOLDOUT_START)}
 SPAN = {"2016_2024": "2016-01 -> 2024-07 (the number)", "2006_2015": "2006-2015 (in-sample)",
         "pre_holdout": "2006-01 -> 2024-07"}
 BLOCK_WEEKS, FOLDS, PURGE_DAYS = 26, 5, 35

@@ -22,14 +22,15 @@ import pandas as pd
 import stocks_ml.selection as sel
 from stocks_ml.ledger import COST_BPS, close_asof, fill_price
 from stocks_ml.models.trials import record_trials
+from stocks_ml.selection import HOLDOUT_START
 
 HOLD = Path("data/experiments/champion_2006_2024/holdings_4w_5y_s0.parquet")
 REPORT = Path("reports/live_emulation.md")
-LO, HI = pd.Timestamp("2006-01-01"), pd.Timestamp("2024-07-18")
-WINDOWS = (("2006-01 -> 2024-06 (pre-holdout)", "2006", "2025"),
+LO, HI = pd.Timestamp("2006-01-01"), HOLDOUT_START - pd.Timedelta(days=1)
+WINDOWS = (("2006-01 -> 2024-06 (pre-holdout)", "2006", HOLDOUT_START),
            ("2006 -> 2012", "2006", "2013"),
-           ("2013 -> 2024-06", "2013", "2025"),
-           ("2021 -> 2024-06", "2021", "2025"))
+           ("2013 -> 2024-06", "2013", HOLDOUT_START),
+           ("2021 -> 2024-06", "2021", HOLDOUT_START))
 CHAMPION = dict(horizon="4w", book=6, cap=2, stop=None, floor="70/30")
 
 
@@ -114,7 +115,7 @@ def run():
         for name, s in series.items():
             lines.append(f"| {name} | {grade_line(window_metrics(s, lo, hi))} |")
         lines.append("")
-    full = {name: window_metrics(s, "2006", "2025") for name, s in series.items()}
+    full = {name: window_metrics(s, "2006", HOLDOUT_START) for name, s in series.items()}
     dep, cl = full["as deployed (fills at the next open)"], full["fills at the decision close"]
     g_in, g_out = gaps["gap_in"].mean(), gaps["gap_out"].mean()
     lines += ["## Fill timing, 2006-01 -> 2024-06", "",

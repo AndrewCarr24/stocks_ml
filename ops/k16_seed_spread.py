@@ -33,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from stocks_ml.selection import HOLDOUT_START
 
 STORE = "data/sharadar_world2000"
 OUT = Path("data/experiments/k16_seed_spread_2016_2024")
@@ -40,8 +41,8 @@ REPORT = Path("reports/k16_seed_spread.md")
 V3 = Path("data/experiments/openfe_v3_2006_2015")
 V3_HOLDINGS = V3 / "holdings_4w_5y_x724d05_s0.parquet"
 RECORD = Path("data/experiments/champion_2006_2024/champion_bundle_grades.json")
-LO, HI = pd.Timestamp("2016-01-01"), pd.Timestamp("2024-07-18")   # holdout starts 2024-07-19
-GRADE = (pd.Timestamp("2016"), pd.Timestamp("2025"))              # the arm's 2016_2024 window
+LO, HI = pd.Timestamp("2016-01-01"), HOLDOUT_START - pd.Timedelta(days=1)   # last pre-holdout rank date
+GRADE = (pd.Timestamp("2016"), HOLDOUT_START)                     # the arm's 2016_2024 window (exclusive)
 K = 16
 CHAMPION = dict(horizon="4w", book=6, cap=2, stop=None, floor="70/30")
 ENSEMBLES = {"copies 1-4 (v3, K=4)": range(1, 5), "copies 5-8 (K=4)": range(5, 9),

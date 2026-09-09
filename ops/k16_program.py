@@ -37,6 +37,7 @@ import pandas as pd
 from ops.k16_seed_spread import (CHAMPION, CHECKPOINT, K, RECORD, STORE, V3, V3_HOLDINGS, agreement,
                                  copy_preds, ensemble_rows, gl, log)
 from ops.k16_seed_spread import OUT as SPREAD
+from stocks_ml.selection import HOLDOUT_START
 
 CLEAN_WALK = Path("data/experiments/champion_2006_2024/holdings_4w_5y_s0.parquet")   # the clean walk of record
 ENSEMBLES = {"copies 1-4 (record, K=4)": range(1, 5), "copies 5-8 (K=4)": range(5, 9),
@@ -44,8 +45,8 @@ ENSEMBLES = {"copies 1-4 (record, K=4)": range(1, 5), "copies 5-8 (K=4)": range(
              "copies 1-8 (K=8)": range(1, 9), "copies 9-16 (K=8)": range(9, 17),
              "copies 1-16 (K=16)": range(1, 17)}
 WINDOWS = {"2006_2015": (pd.Timestamp("2006"), pd.Timestamp("2016")),
-           "2016_2024": (pd.Timestamp("2016"), pd.Timestamp("2025")),
-           "pre_holdout": (pd.Timestamp("2006"), pd.Timestamp("2025"))}
+           "2016_2024": (pd.Timestamp("2016"), HOLDOUT_START),
+           "pre_holdout": (pd.Timestamp("2006"), HOLDOUT_START)}
 SELECT = (pd.Timestamp("2006-01-01"), pd.Timestamp("2015-12-31"))      # the cascade's window (nested3)
 RUNS = {
     "clean_2016_2024": dict(arm="clean", lo=pd.Timestamp("2016-01-01"), hi=pd.Timestamp("2024-07-18"),

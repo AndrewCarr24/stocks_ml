@@ -56,6 +56,12 @@ BOOKS = (3, 6, 10)
 FLOORS = ("none", "halfgate", "80/20", "70/30", "60/40")
 COST = 0.0010
 K_COPIES = 16          # 4 until 2026-09-07 (ledger k16_champion_2006_2015_verdict)
+# The holdout's first session. Every pre-holdout grade window ends here as an
+# EXCLUSIVE bound (metrics slices index < hi), so the label credited at
+# 2024-07-19 — the first holdout close — is never counted. Before 2026-09-09
+# some graders used Timestamp("2025") (967/447 weeks, crediting that label)
+# and others 07-19-exclusive (966/446): one convention now, this one.
+HOLDOUT_START = pd.Timestamp("2024-07-19")
 REF_WINDOW = 2
 
 

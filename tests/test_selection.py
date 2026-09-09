@@ -367,3 +367,16 @@ def test_run_cascade_names_its_ledger_row_after_the_run(tmp_path, monkeypatch):
     sel.run_cascade(None, tmp_path, lo, hi)
     assert [r["name"] for r in rows] == ["select3_2006_2024", "select3_2006_2024_x",
                                          f"select_{lo.date()}_{hi.date()}"]
+
+
+def test_holdout_start_is_the_exclusive_grade_bound():
+    """One convention (2026-09-09): every pre-holdout window ends at
+    HOLDOUT_START exclusive, so the label credited at the first holdout close
+    is never counted. Two conventions coexisted before (967- vs 966-week
+    pre-holdout grades)."""
+    from stocks_ml.selection import HOLDOUT_START, metrics
+    assert str(HOLDOUT_START.date()) == "2024-07-19"
+    idx = pd.DatetimeIndex(["2024-07-05", "2024-07-12", "2024-07-19"])
+    r = pd.Series([0.01, 0.02, 99.0], index=idx)       # a holdout label to be excluded
+    m = metrics(r, pd.Timestamp("2024-01-01"), HOLDOUT_START)
+    assert m["n_weeks"] == 2 and m["terminal_100"] == pytest.approx(103.0, rel=1e-3)

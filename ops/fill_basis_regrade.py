@@ -42,6 +42,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+from stocks_ml.selection import HOLDOUT_START
 
 HERE = Path(__file__).resolve().parent
 NEW = Path("data/experiments/champion_2006_2024")
@@ -49,8 +50,8 @@ CLOSE = Path("data/experiments/champion_2006_2024_closebasis")
 REPORT = Path("reports/fill_basis_regrade.md")
 LEDGER = Path("models/trials_ledger.json")
 PRE_LEDGER = "bb3c523"  # last commit whose simulate filled at the rank date's close
-LO, HI = pd.Timestamp("2006-01-01"), pd.Timestamp("2024-07-18")  # holdout starts 2024-07-19
-NESTED_LO, NESTED_HI = pd.Timestamp("2016-01-01"), pd.Timestamp("2024-07-19")
+LO, HI = pd.Timestamp("2006-01-01"), HOLDOUT_START - pd.Timedelta(days=1)
+NESTED_LO, NESTED_HI = pd.Timestamp("2016-01-01"), HOLDOUT_START
 CHAMPION = dict(book=6, cap=2, stop=None, floor="70/30")
 BASES = ("record", "close", "fill")
 BASIS_LABEL = {"record": "close basis (campaign engine)", "close": "ledger, fills at the decision close",
@@ -337,9 +338,9 @@ def report():
                                  + (f" | before the rank-date fix (dccca9a): {pre}" if pre else "")})
         md.append("")
     # headline and selection inflation against the nested honest procedure
-    champ = {b: eng.metrics(series[b]["70/30 + cap2 champ"], LO, pd.Timestamp("2024-07-19"))
+    champ = {b: eng.metrics(series[b]["70/30 + cap2 champ"], LO, HOLDOUT_START)
              for b, eng in (("record", old), ("fill", sel))}
-    spy = sel.metrics(series["fill"]["sp500"], LO, pd.Timestamp("2024-07-19"))
+    spy = sel.metrics(series["fill"]["sp500"], LO, HOLDOUT_START)
     nested_old = ledger["nested2_verdict_amended"]
     nested_new, nested_spy = nested_replay()
     infl = {}

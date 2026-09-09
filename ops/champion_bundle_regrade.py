@@ -29,15 +29,17 @@ import json
 from pathlib import Path
 
 import pandas as pd
+from stocks_ml.selection import HOLDOUT_START
 
 HERE = Path(__file__).resolve().parent
 NEW = Path("data/experiments/champion_2006_2024")
 SPEC = Path("models/champion_spec.json")
 REPORT = Path("reports/champion_bundle_regrade.md")
-HI = pd.Timestamp("2024-07-18")                       # holdout starts 2024-07-19
+HI = HOLDOUT_START - pd.Timedelta(days=1)             # last pre-holdout session
 CHAMPION = dict(horizon="4w", book=6, cap=2, stop=None, floor="70/30")
-WINDOWS = {"pre_holdout": ("2006", "2025"), "2006_2015": ("2006", "2016"), "2016_2024": ("2016", "2025"),
-           "2006_2012": ("2006", "2013"), "2013_2024": ("2013", "2025"), "2021_2024": ("2021", "2025")}
+WINDOWS = {"pre_holdout": ("2006", HOLDOUT_START), "2006_2015": ("2006", "2016"),
+           "2016_2024": ("2016", HOLDOUT_START), "2006_2012": ("2006", "2013"),
+           "2013_2024": ("2013", HOLDOUT_START), "2021_2024": ("2021", HOLDOUT_START)}
 SPAN = {"pre_holdout": "2006-01 -> 2024-07 (pre-holdout)", "2006_2015": "2006-2015", "2016_2024": "2016-01 -> 2024-07",
         "2006_2012": "2006-2012", "2013_2024": "2013-01 -> 2024-07", "2021_2024": "2021-01 -> 2024-07"}
 
