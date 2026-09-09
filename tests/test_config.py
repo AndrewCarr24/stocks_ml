@@ -26,3 +26,19 @@ def test_config_is_frozen():
     except Exception:
         raised = True
     assert raised
+
+
+def test_price_basis_precedence(tmp_path, monkeypatch):
+    """yaml explicit > STOCKS_ML_PRICE_BASIS env > closeadj default. The env
+    hook is how the nominal research drivers pick the basis without touching
+    the global config the live job reads."""
+    import shutil
+    from stocks_ml.config import load_config
+    p = tmp_path / "config.yaml"
+    shutil.copy("config/config.yaml", p)
+    monkeypatch.delenv("STOCKS_ML_PRICE_BASIS", raising=False)
+    assert load_config(p).price_basis == "closeadj"
+    monkeypatch.setenv("STOCKS_ML_PRICE_BASIS", "nominal")
+    assert load_config(p).price_basis == "nominal"
+    p.write_text(p.read_text() + "\nprice_basis: closeadj\n")
+    assert load_config(p).price_basis == "closeadj"     # explicit yaml wins

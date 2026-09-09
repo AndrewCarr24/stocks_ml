@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,7 +39,11 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         backtest_start=pd.Timestamp(raw["backtest_start"]),
         cv_train_years=int(raw.get("cv_train_years", 2)),
         train_sample_rows=raw.get("train_sample_rows"),
-        price_basis=str(raw.get("price_basis", "closeadj")),
+        # precedence: explicit yaml > STOCKS_ML_PRICE_BASIS env (how the
+        # nominal research drivers select the basis without touching the
+        # global config the live job reads) > closeadj
+        price_basis=str(raw.get("price_basis",
+                                os.environ.get("STOCKS_ML_PRICE_BASIS", "closeadj"))),
         fred_series=dict(raw["fred_series"]),
         edgar_concepts={k: list(v) for k, v in raw["edgar_concepts"].items()},
     )
