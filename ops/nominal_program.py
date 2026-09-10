@@ -29,13 +29,16 @@ os.environ.setdefault("STOCKS_ML_PRICE_BASIS", "nominal")
 
 from stocks_ml.selection import HOLDOUT_START  # noqa: E402
 
-STORE = "data/sharadar_world2000_nominal"
+# STOCKS_ML_NOMINAL_STORE / STOCKS_ML_RUN_SUFFIX parameterize variant runs
+# (the delisting-honest world "_dl", 2026-09-10) without new driver code.
+STORE = os.environ.get("STOCKS_ML_NOMINAL_STORE", "data/sharadar_world2000_nominal")
+SUFFIX = os.environ.get("STOCKS_ML_RUN_SUFFIX", "")
 EXP = Path("data/experiments")
 SCREEN_OUT = EXP / "nominal_screen_2006_2015"
-OUTS = {("clean", "select"): EXP / "nominal_clean_2006_2015",
-        ("clean", "extend"): EXP / "nominal_clean_2016_2024",
-        ("bundle", "select"): EXP / "nominal_bundle_2006_2015",
-        ("bundle", "extend"): EXP / "nominal_bundle_2016_2024"}
+OUTS = {("clean", "select"): EXP / f"nominal_clean_2006_2015{SUFFIX}",
+        ("clean", "extend"): EXP / f"nominal_clean_2016_2024{SUFFIX}",
+        ("bundle", "select"): EXP / f"nominal_bundle_2006_2015{SUFFIX}",
+        ("bundle", "extend"): EXP / f"nominal_bundle_2016_2024{SUFFIX}"}
 SEGS = {"select": (pd.Timestamp("2006-01-01"), pd.Timestamp("2015-12-31")),
         "extend": (pd.Timestamp("2016-01-01"), HOLDOUT_START - pd.Timedelta(days=1))}
 WINDOWS = {"2006_2015": (pd.Timestamp("2006"), pd.Timestamp("2016")),
@@ -44,7 +47,7 @@ WINDOWS = {"2006_2015": (pd.Timestamp("2006"), pd.Timestamp("2016")),
 CHAMPION = dict(horizon="4w", book=6, cap=2, stop=None, floor="70/30")
 K = 16
 CHECKPOINT = 10
-REPORT = Path("reports/nominal_board.md")
+REPORT = Path(f"reports/nominal_board{os.environ.get('STOCKS_ML_RUN_SUFFIX', '')}.md")
 
 
 def log(msg):
@@ -75,7 +78,8 @@ def _guard_spec(out: Path, line, formulas):
     """preds.parquet resumes by week: refuse to resume under another recipe."""
     from stocks_ml.selection import K_COPIES, MODEL_PARAMS
     spec = {"k_copies": K_COPIES, "model_params": {k: str(v) for k, v in MODEL_PARAMS.items()},
-            "line": line, "features": sorted(formulas), "basis": "nominal", "store": STORE}
+            "line": line, "features": sorted(formulas), "basis": "nominal", "store": STORE,
+            "delist": os.environ.get("STOCKS_ML_DELIST_LABELS", "drop")}
     sp = out / "spec.json"
     if sp.exists():
         old = json.loads(sp.read_text())
@@ -186,7 +190,7 @@ def grade():
                     "notes": f"Nominal-basis {line} line, K=16 at the champion's settings "
                              f"(reports/nominal_basis_registration.md); windows end "
                              f"{HOLDOUT_START.date()} exclusive."})
-    out = EXP / "nominal_grades.json"
+    out = EXP / f"nominal_grades{SUFFIX}.json"
     out.write_text(json.dumps(res, indent=1, default=str))
     if led:
         record_trials(led)

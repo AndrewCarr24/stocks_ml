@@ -23,6 +23,9 @@ class Config:
     # "nominal" (levels from closeunadj/close_split; the split-leak fix,
     # reports/nominal_basis_registration.md). Returns are closeadj either way.
     price_basis: str = "closeadj"
+    # "drop" or "last_print": how labels and the backtest universe treat a
+    # name whose price series ends inside the label window (see load_config)
+    delist_labels: str = "drop"
     fred_series: dict = field(default_factory=dict)
     edgar_concepts: dict = field(default_factory=dict)
 
@@ -44,6 +47,13 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         # global config the live job reads) > closeadj
         price_basis=str(raw.get("price_basis",
                                 os.environ.get("STOCKS_ML_PRICE_BASIS", "closeadj"))),
+        # "drop" (status quo: a name leaving the tape inside the label window
+        # has no label and is excluded from the backtest universe) or
+        # "last_print" (delisting-honest: labels grade to the final print —
+        # the live ledger's exit — and the backtest universe uses live's
+        # traded-within-7-days rule). Same precedence pattern.
+        delist_labels=str(raw.get("delist_labels",
+                                  os.environ.get("STOCKS_ML_DELIST_LABELS", "drop"))),
         fred_series=dict(raw["fred_series"]),
         edgar_concepts={k: list(v) for k, v in raw["edgar_concepts"].items()},
     )

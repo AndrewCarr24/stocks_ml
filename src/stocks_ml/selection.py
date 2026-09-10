@@ -88,9 +88,11 @@ class Ctx:
         self.smap = dict(mem.dropna(subset=["sector"])
                          .drop_duplicates("ticker")[["ticker", "sector"]].values)
         daily = self.prices.sort_values("date")
+        self.delist_labels = getattr(self.cfg, "delist_labels", "drop")
         self.__dict__.update(price_frames(
             daily.pivot(index="date", columns="ticker", values="close").sort_index(),
-            daily.pivot(index="date", columns="ticker", values="open").sort_index()))
+            daily.pivot(index="date", columns="ticker", values="open").sort_index(),
+            delist=self.delist_labels))
         self.members = {d: list(g["ticker"])
                         for d, g in self.pan[["date", "ticker"]].groupby("date")}
         self.weeks = sorted(self.members)
@@ -132,20 +134,40 @@ def ensemble_preds(ctx, t, horizon, train_years):
     return p if p.nunique() >= 20 else None
 
 
-def price_frames(closes, opens):
+def price_frames(closes, opens, delist="drop"):
     """Everything the engine reads from daily closes and opens: the frames
     themselves (closes carried forward), weekly closes on the W-FRI grid,
     weekly returns, SPY's weekly closes, and per horizon the forward return
     on the fill basis — a pick dated in week t is bought at the first open
     after t and sold at the first open k weeks later (the training labels'
-    basis, and the live job's)."""
+    basis, and the live job's).
+
+    delist="last_print": a name whose series ends inside the k-week window
+    grades to its final close (the live ledger's exit fallback) instead of
+    NaN, so a held delisting is priced. Weeks entirely after the end stay
+    NaN; a series alive within a week of the data's edge is right-censored."""
+    last_date = {tk: closes[tk].last_valid_index() for tk in closes.columns}
+    last_close = {tk: (float(closes[tk].loc[d]) if d is not None else np.nan)
+                  for tk, d in last_date.items()}
     closes = closes.ffill()
     cw = closes.resample("W-FRI").last()
     fills = next_open(opens, cw.index)
-    return {"closes": closes, "opens": opens, "cw": cw,
-            "wret": cw.pct_change(fill_method=None), "spy_w": cw["SPY"],
-            "fwd": {h: fills.pct_change(c["kweeks"], fill_method=None).shift(-c["kweeks"])
-                    for h, c in HORIZONS.items()}}
+    fwd = {h: fills.pct_change(c["kweeks"], fill_method=None).shift(-c["kweeks"])
+           for h, c in HORIZONS.items()}
+    if delist == "last_print":
+        edge = closes.index[-1] - pd.Timedelta(days=7)
+        for h, c in HORIZONS.items():
+            k, f = c["kweeks"], fwd[h]
+            for tk, ld in last_date.items():
+                if ld is None or ld >= edge:
+                    continue
+                pos = int(f.index.searchsorted(ld))       # first label >= last print
+                for w in f.index[max(0, pos - k):pos]:    # windows crossing the end
+                    entry = fills.at[w, tk]
+                    if np.isfinite(entry) and entry > 0 and pd.isna(f.at[w, tk]):
+                        f.at[w, tk] = last_close[tk] / entry - 1.0
+    return {"closes": closes, "opens": opens, "cw": cw, "last_print": pd.Series(last_date),
+            "wret": cw.pct_change(fill_method=None), "spy_w": cw["SPY"], "fwd": fwd}
 
 
 def next_open(opens, labels):
@@ -175,6 +197,14 @@ def slice_row(ctx, t, horizon, preds):
         return None
     r = ctx.fwd[horizon].loc[wk]
     uni = [x for x in ctx.members[t] if x in r.index and not pd.isna(r[x])]
+    if getattr(ctx, "delist_labels", "drop") == "last_print":
+        # live's universe rule (r5.rank_members): a name must have traded
+        # within the last 7 days of t. With last-print labels this — not
+        # label finiteness — is what keeps dead names out, so the backtest
+        # can rank a name that will delist mid-hold, exactly as live can.
+        lp = ctx.last_print
+        cut = pd.Timestamp(t) - pd.Timedelta(days=7)
+        uni = [x for x in uni if lp.get(x) is not None and lp[x] > cut]
     if len(uni) < 100 or pd.isna(r.get("SPY")):
         return None
     p = preds.loc[preds.index.intersection(pd.Index(uni))]

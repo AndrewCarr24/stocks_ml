@@ -351,11 +351,27 @@ def calendar_features(dates: pd.DatetimeIndex) -> pd.DataFrame:
                          "f_woq": week_of_quarter.astype(float)})
 
 
-def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int) -> pd.DataFrame:
+def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int,
+                delist: str = "drop") -> pd.DataFrame:
+    """Forward open-to-open returns per (date, ticker), median-recentred.
+
+    delist="drop" (status quo): a name with no exit open inside the window
+    has a NaN label. delist="last_print": a name whose series ENDS inside
+    the window grades to its final close — the price the live ledger's exit
+    fallback books — so delistings (acquisition cash-outs, bankruptcies)
+    enter training and grading instead of vanishing. A series still alive
+    within a week of the data's edge is right-censored, not delisted."""
     open_ = _wide(prices, "open")
+    close_ = _wide(prices, "close")
     cal = open_.index
     entry_idx = cal.searchsorted(dates, side="right")        # first trading day after t
     exit_idx = entry_idx + horizon
+
+    alive = close_.notna().to_numpy()
+    has = alive.any(axis=0)
+    last_pos = np.where(has, len(cal) - 1 - alive[::-1].argmax(axis=0), -1)
+    last_close = close_.ffill().to_numpy()[last_pos, np.arange(close_.shape[1])]
+    censored = last_pos >= cal.searchsorted(cal[-1] - pd.Timedelta(days=7))
 
     rows = []
     for t, ei, xi in zip(dates, entry_idx, exit_idx):
@@ -366,6 +382,11 @@ def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int) -> 
         else:
             fwd = open_.iloc[xi] / open_.iloc[ei] - 1.0
             label_end_date = cal[xi]
+            if delist == "last_print":
+                entry = open_.iloc[ei].to_numpy()
+                dead = (last_pos < xi) & ~censored & np.isnan(fwd.to_numpy()) \
+                    & np.isfinite(entry) & (entry > 0)
+                fwd = fwd.where(~dead, last_close / entry - 1.0)
         grp = pd.DataFrame({"date": t, "ticker": fwd.index, "fwd_ret": fwd.values,
                             "label_end_date": label_end_date})
         rows.append(grp)
@@ -454,7 +475,8 @@ def build_panel(store, cfg) -> pd.DataFrame:
 
     panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
     panel = panel.merge(calendar_features(dates), on="date", how="left")
-    panel = panel.merge(make_labels(prices, dates, cfg.horizon_days),
+    panel = panel.merge(make_labels(prices, dates, cfg.horizon_days,
+                                delist=getattr(cfg, "delist_labels", "drop")),
                         on=["date", "ticker"], how="left")
     # make_labels computes raw returns for every stored price series. Recenter
     # after the point-in-time membership merge so departed/nonmember tickers
@@ -466,7 +488,8 @@ def build_panel(store, cfg) -> pd.DataFrame:
     # horizon, recentered on members like the 1-week label. It spans ~29
     # calendar days of future prices, so anything training or splitting on
     # label_4w purges at least that (selection.HORIZONS: 35 days).
-    labels_4w = make_labels(prices, dates, cfg.horizon_days * 4).rename(columns={
+    labels_4w = make_labels(prices, dates, cfg.horizon_days * 4,
+                        delist=getattr(cfg, "delist_labels", "drop")).rename(columns={
         "fwd_ret": "fwd_ret_4w", "label": "label_4w",
         "label_end_date": "label_end_date_4w"})
     panel = panel.merge(labels_4w, on=["date", "ticker"], how="left")

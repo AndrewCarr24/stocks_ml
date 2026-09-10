@@ -24525,5 +24525,11 @@
   "kind": "leak_audit",
   "name": "leak_audit_nominal_clean_k16",
   "notes": "The clean nominal challenger PASSES the pre-adoption leak audit on both segments: Spearman(score, adjustment factor) -0.011/-0.010 (t ~ -1), IC retention 1.03/1.04 (worst 1.03 >= 0.75), identity exact for the three largest in-window splitters (NVDA bvps 0.20 x 40 = 8.00; MNST x12; NFLX x70). Delisting-within-8w: top-15 0.39%/wk vs universe 0.75%/wk (slice_row's delisting gap remains a registered open owner decision, not a score leak)."
+ },
+ {
+  "date": "2026-09-10",
+  "kind": "preregistration",
+  "name": "nominal_clean_dl_2006_2024",
+  "notes": "Preregistered 2026-09-10 before any number (owner's go 'Sure' to the delisting-honest proposal). Question: what does the clean nominal challenger read when the backtest can bet on a name that delists mid-hold, as live can? Rule (gated, Config.delist_labels / STOCKS_ML_DELIST_LABELS, default 'drop' so the live job is untouched until adoption): (1) labels \u2014 a name whose series ends inside the 4w window grades to its FINAL PRINT (the live ledger's exit fallback; ~deal price for M&A, near-zero for collapses; no bankruptcy/acquisition classification needed), joins the member-median recentring, and enters TRAINING (the walk refits weekly, so terminal weeks are learned); right-censored within 7 days of the data edge; (2) universe \u2014 slice_row adopts live's traded-within-7-days rule (r5.rank_members) in place of label-finiteness, so soon-to-delist names are rankable. Run: rebuild the nominal panel with the new labels into data/sharadar_world2000_nominal_dl (symlinked tables, own panel); clean line ONLY (the bundle failed admission); K=16, replication.py seeding, select 2006-01-06 -> 2015-12-31 then extend 2016-01 -> 2024-07-12; graded at the champion's standing settings beside the standing clean line (same bar), windows at selection.HOLDOUT_START exclusive; ops/leak_audit.py per segment must PASS. Expectation stated in advance: small net change, worse 2008-2009 drawdowns; the point is pricing the tail, not the average. Holdout untouched."
  }
 ]

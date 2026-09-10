@@ -417,3 +417,79 @@ def test_stage_loop_refuses_a_cache_from_another_recipe(tmp_path):
     (tmp_path / "holdings_4w_5y_s0.parquet.spec.json").unlink()
     with pytest.raises(RuntimeError, match="predates"):
         sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
+
+
+def test_price_frames_grades_a_delisting_to_its_last_print():
+    """delist='last_print': a name acquired (flat at deal price, then gone)
+    grades to the deal; a collapse grades to its final near-zero print; weeks
+    entirely after the end stay NaN; the data edge is right-censored."""
+    from stocks_ml.selection import price_frames
+    days = pd.bdate_range("2024-01-01", "2024-06-28")
+    cl = pd.DataFrame({"DEAL": 50.0, "BUST": 40.0, "LIVE": 10.0, "SPY": 500.0}, index=days)
+    op = cl - 0.1
+    cl.loc["2024-02-20":, "DEAL"] = 65.0            # deal announced: jumps to offer
+    cl.loc["2024-03-08":, "DEAL"] = np.nan          # cashed out
+    op.loc["2024-02-20":, "DEAL"] = 64.9
+    op.loc["2024-03-08":, "DEAL"] = np.nan
+    bust_days = days[(days >= "2024-02-26") & (days <= "2024-03-05")]
+    cl.loc["2024-02-26":, "BUST"] = np.nan
+    op.loc["2024-02-26":, "BUST"] = np.nan
+    cl.loc[bust_days, "BUST"] = np.linspace(8.0, 0.4, len(bust_days))   # collapse to pennies
+    op.loc[bust_days, "BUST"] = np.linspace(8.1, 0.5, len(bust_days))
+    drop = price_frames(cl.copy(), op.copy())
+    hon = price_frames(cl.copy(), op.copy(), delist="last_print")
+    w = pd.Timestamp("2024-02-16")                  # 4w window crosses both endings
+    assert np.isnan(drop["fwd"]["4w"].at[w, "DEAL"])
+    assert np.isnan(drop["fwd"]["4w"].at[w, "BUST"])
+    entry_deal = hon["opens"].at[pd.Timestamp("2024-02-19"), "DEAL"]   # first fill after the label
+    assert entry_deal == pytest.approx(49.9)                            # bought before the deal pop
+    assert hon["fwd"]["4w"].at[w, "DEAL"] == pytest.approx(65.0 / entry_deal - 1)
+    entry_bust = hon["opens"].at[pd.Timestamp("2024-02-19"), "BUST"]
+    assert hon["fwd"]["4w"].at[w, "BUST"] == pytest.approx(0.4 / entry_bust - 1)
+    assert hon["fwd"]["4w"].at[w, "BUST"] < -0.9
+    # five weeks after both are gone: no label
+    late = pd.Timestamp("2024-04-19")
+    assert np.isnan(hon["fwd"]["4w"].at[late, "DEAL"])
+    # LIVE runs to the data edge: right-censored, never treated as delisted
+    assert np.isnan(hon["fwd"]["4w"].at[pd.Timestamp("2024-06-21"), "LIVE"])
+    assert hon["last_print"]["BUST"] == pd.Timestamp("2024-03-05")
+
+
+def test_make_labels_last_print_reaches_training():
+    from stocks_ml.features.panel import make_labels
+    days = pd.bdate_range("2024-01-01", "2024-06-28")
+    rows = []
+    for d in days:
+        rows.append({"date": d, "ticker": "AAA", "open": 10.0, "close": 10.0})
+        if d <= pd.Timestamp("2024-02-23"):
+            rows.append({"date": d, "ticker": "DEAD", "open": 20.0, "close": 20.0})
+    prices = pd.DataFrame(rows)
+    dates = pd.DatetimeIndex(["2024-02-02"])
+    drop = make_labels(prices, dates, 20)
+    hon = make_labels(prices, dates, 20, delist="last_print")
+    d_row = lambda df, tk: df[(df.ticker == tk)].iloc[0]
+    assert np.isnan(d_row(drop, "DEAD")["fwd_ret"])
+    assert d_row(hon, "DEAD")["fwd_ret"] == pytest.approx(0.0)      # exits flat at last print
+    assert d_row(hon, "AAA")["fwd_ret"] == pytest.approx(0.0)
+    # the terminal name now carries a LABEL (recentred), so training sees it
+    assert np.isfinite(d_row(hon, "DEAD")["label"])
+
+
+def test_slice_row_universe_uses_lives_traded_rule_under_last_print():
+    from stocks_ml.selection import price_frames, slice_row
+    days = pd.bdate_range("2023-06-01", "2024-06-28")
+    tickers = {f"T{i:02d}": 10.0 + i for i in range(120)}
+    cl = pd.DataFrame({**tickers, "STALE": 5.0, "SPY": 500.0}, index=days)
+    cl.loc["2024-01-20":, "STALE"] = np.nan                  # last print weeks before t
+    op = cl - 0.1
+    frames = price_frames(cl.copy(), op.copy(), delist="last_print")
+    ctx = SimpleNamespace(**frames, members={}, smap={}, delist_labels="last_print")
+    t = pd.Timestamp("2024-03-01")
+    ctx.members = {t: list(tickers) + ["STALE"]}
+    preds = pd.Series(1.0, index=list(tickers) + ["STALE"])
+    row = slice_row(ctx, t, "4w", preds)
+    assert row is not None and "STALE" not in row["top15"]
+    # drop mode keeps the old behavior byte for byte
+    frames0 = price_frames(cl.copy(), op.copy())
+    ctx0 = SimpleNamespace(**frames0, members={t: list(tickers)}, smap={}, delist_labels="drop")
+    assert slice_row(ctx0, t, "4w", preds.drop("STALE")) is not None
