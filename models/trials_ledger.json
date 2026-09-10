@@ -24447,5 +24447,71 @@
   "kind": "preregistration",
   "name": "nominal_2016_2024",
   "notes": "Preregistered 2026-09-09 before any number (owner's go 'proceed with what you are proposing' after the split-leak finding). Full text: reports/nominal_basis_registration.md. Basis: levels nominal (closeunadj; SF1 per-share x closeunadj/close_split at t; EDGAR mktcap = as-reported shares x closeunadj; dollar-vol/amihud on closeunadj), returns/labels unchanged on closeadj; data fixes riding along: EDGAR union-of-tags + 400d tolerance + empty-payload guards, 8-K (ticker,accession) dedupe, fundamentals monotone-end + ARQ dedupe. Gate before any performance number: r_close==closeunadj identity on 120 sampled weeks 2006-2015, NVDA-2015-bvps/AAPL-2013-mktcap spot restatements. K=16, replication.py seeding, recipe-stamped fresh dirs, grades end at selection.HOLDOUT_START exclusive, sp500 row always, holdout untouched, slice_row unchanged (delisting gap is a separate owner decision). This run: the 2006-2015 argmax line extends ONCE to 2016-01 -> 2024-07-12 (both lines may extend for the board; only the argmax line's extension decides anything). Board: clean and bundle lines at the champion's standing settings AND at the re-decided cascade, SPY beside each; the old record ($4,256/$900/$473 vs SPY $608/$310/$197) is contaminated-basis history only."
+ },
+ {
+  "date": "2026-09-09",
+  "kind": "r4w_strategy",
+  "name": "nominal_clean_k16",
+  "n_weeks": 967,
+  "windows": {
+   "2006_2015": {
+    "terminal_100": 262.2,
+    "cagr_pct": 10.12,
+    "sharpe": 0.51,
+    "max_dd": 0.604,
+    "n_weeks": 520
+   },
+   "2016_2024": {
+    "terminal_100": 560.0,
+    "cagr_pct": 22.25,
+    "sharpe": 0.903,
+    "max_dd": 0.387,
+    "n_weeks": 446
+   },
+   "pre_holdout": {
+    "terminal_100": 1468.3,
+    "cagr_pct": 15.56,
+    "sharpe": 0.695,
+    "max_dd": 0.604,
+    "n_weeks": 966
+   }
+  },
+  "notes": "Nominal-basis clean line, K=16 at the champion's settings (reports/nominal_basis_registration.md); windows end 2024-07-19 exclusive."
+ },
+ {
+  "date": "2026-09-09",
+  "kind": "r4w_strategy",
+  "name": "nominal_bundle_k16",
+  "n_weeks": 967,
+  "windows": {
+   "2006_2015": {
+    "terminal_100": 261.5,
+    "cagr_pct": 10.09,
+    "sharpe": 0.529,
+    "max_dd": 0.632,
+    "n_weeks": 520
+   },
+   "2016_2024": {
+    "terminal_100": 522.4,
+    "cagr_pct": 21.26,
+    "sharpe": 0.853,
+    "max_dd": 0.361,
+    "n_weeks": 446
+   },
+   "pre_holdout": {
+    "terminal_100": 1366.3,
+    "cagr_pct": 15.11,
+    "sharpe": 0.687,
+    "max_dd": 0.632,
+    "n_weeks": 966
+   }
+  },
+  "notes": "Nominal-basis bundle line, K=16 at the champion's settings (reports/nominal_basis_registration.md); windows end 2024-07-19 exclusive."
+ },
+ {
+  "date": "2026-09-09",
+  "kind": "verdict",
+  "name": "nominal_program_verdict",
+  "notes": "Nominal-basis rebuild graded 2026-09-09 (reports/nominal_board.md, preregistered before any number). Selection-window argmax (2006-2015 cost-adjusted compounded %/yr at the cascade's chosen book, calendar chains): CLEAN 8.14 (top-3) vs BUNDLE 5.93 (top-10) -> the screened bundle FAILS admission; the clean line (base features, no bundle) is the challenger. K=16 at the champion's standing settings, windows ending 2024-07-19 exclusive: clean 2006-2015 $262 (SR 0.51) | 2016-2024 $560 (+22.2%/yr, SR 0.90, DD 39%) | pre-holdout $1,468 (+15.6%/yr, SR 0.69, DD 60%) vs SPY $197/$316/$621. K=4 spread on 2016-2024: $481-$706, every draw above SPY. Old contaminated record on the same spans: $473/$900/$4,256 \u2014 roughly half the SPY-relative 2016-2024 edge was the split leak. Clean cascade re-decided on 2006-2015 picks top-3 / halfgate / no stop / cap 2 (book and floor differ from the standing top-6 / 70-30): per the K=16 precedent the standing settings stand and any change is the owner's decision. Holdout untouched. Open owner decisions: adopt the clean line as champion (spec + live job), settings at the new cascade argmax or standing, push, funding."
  }
 ]
