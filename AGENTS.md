@@ -249,6 +249,17 @@ their original file references on purpose.
   seven are a fixed list in `ops/openfe_arm_v2.py`, not the spec's features).
 - **The holdout (2024-07-19 onward) is a single-use exam.** It has not been
   graded for r5 and nothing may touch it without the owner's explicit go.
+- **Leak audit before adoption (owner's mandate 2026-09-10):** no candidate
+  becomes champion until `ops/leak_audit.py` PASSES on its saved preds —
+  run PER WALK SEGMENT, gated on the worst, the selection window always in
+  the set (pooling windows dilutes: the leaky champion failed 2006-2015 at
+  retention 0.49 yet passed with 2016-2024 pooled in):
+  scores tested against future-information proxies (the vendor adjustment
+  factor closeadj/closeunadj — the split-leak channel; delisting-within-8w),
+  with the residual-IC retention gate (>= 75% after factor residualization;
+  the leaky 2026-09 champion retained ~47%) and per-share identity checks.
+  Pre-holdout weeks only. Born from the split-leak finding: an unusually
+  strong result triggers a leak audit, never a celebration.
 - **One grade-window convention (2026-09-09):** every pre-holdout window ends
   at `selection.HOLDOUT_START` (2024-07-19) as an EXCLUSIVE bound, so the
   label credited at the first holdout close is never counted. Before this,
