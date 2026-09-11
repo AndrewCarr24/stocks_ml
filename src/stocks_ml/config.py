@@ -42,18 +42,20 @@ def load_config(path: str | Path = "config/config.yaml") -> Config:
         backtest_start=pd.Timestamp(raw["backtest_start"]),
         cv_train_years=int(raw.get("cv_train_years", 2)),
         train_sample_rows=raw.get("train_sample_rows"),
-        # precedence: explicit yaml > STOCKS_ML_PRICE_BASIS env (how the
-        # nominal research drivers select the basis without touching the
-        # global config the live job reads) > closeadj
-        price_basis=str(raw.get("price_basis",
-                                os.environ.get("STOCKS_ML_PRICE_BASIS", "closeadj"))),
-        # "drop" (status quo: a name leaving the tape inside the label window
-        # has no label and is excluded from the backtest universe) or
-        # "last_print" (delisting-honest: labels grade to the final print —
-        # the live ledger's exit — and the backtest universe uses live's
+        # precedence: STOCKS_ML_PRICE_BASIS env (a research driver's explicit
+        # per-process choice — how the cross-grade drivers read the other
+        # world) > the yaml (the standing value; what the live job runs, which
+        # sets no STOCKS_ML_* env) > closeadj. Flipped from yaml-first on
+        # 2026-09-11 when config.yaml took the nominal basis.
+        price_basis=str(os.environ.get("STOCKS_ML_PRICE_BASIS",
+                                       raw.get("price_basis", "closeadj"))),
+        # "drop" (a name leaving the tape inside the label window has no
+        # label and is excluded from the backtest universe) or "last_print"
+        # (delisting-honest: labels grade to the final print — the live
+        # ledger's exit — and the backtest universe uses live's
         # traded-within-7-days rule). Same precedence pattern.
-        delist_labels=str(raw.get("delist_labels",
-                                  os.environ.get("STOCKS_ML_DELIST_LABELS", "drop"))),
+        delist_labels=str(os.environ.get("STOCKS_ML_DELIST_LABELS",
+                                         raw.get("delist_labels", "drop"))),
         fred_series=dict(raw["fred_series"]),
         edgar_concepts={k: list(v) for k, v in raw["edgar_concepts"].items()},
     )

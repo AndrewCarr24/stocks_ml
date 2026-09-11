@@ -13,10 +13,11 @@ week by week as a self-contained page.
             window (2006-01 -> 2024-07-18) under procedure v2, graded on that
             same window: in-sample for the selection, holdout untouched
                                                      -> reports/select_explorer.html
-  champion  the champion as deployed (models/champion_spec.json, the generated
-            bundle included) on its recorded basis: the OpenFE arm v3's walk
-            (2006-01-06 ->), ranks before the holdout, graded 2006-01 -> 2024-07
-                                                     -> reports/champion_explorer.html
+  champion  the champion as deployed (models/champion_spec.json: the clean
+            nominal line, no bundle, since 2026-09-11) on its recorded basis: the
+            K=16 ensemble of the delisting-honest world's walk (2006-01-06 ->,
+            ops/nominal_program.py), ranks before the holdout, graded
+            2006-01 -> 2024-07               -> reports/champion_explorer.html
 
 The replay goes through selection.simulate itself (with its trace hook), so
 the app's curve is the engine's curve — the live ledger's rules, fills at
@@ -43,7 +44,13 @@ TICKERS = ROOT / "data/r5_live/sharadar_tickers.parquet"
 TEMPLATE = Path(__file__).with_name("app.html")
 NESTED = ROOT / "data/experiments/nested3_v2"        # v1's caches plus the v3.1 screen and the bundle walk
 CHAMPION = ROOT / "data/experiments/champion_2006_2024"
-GENERATED = ROOT / "data/experiments/openfe_v3_2006_2015"   # the generated bundle's walk (the champion's since 2026-09-06)
+GENERATED = ROOT / "data/experiments/openfe_v3_2006_2015"   # the retired generated bundle's walk (champion 2026-09-06..11)
+# the clean nominal line on the delisting-honest world (the champion since 2026-09-11):
+# K=16 copies' predictions per week, averaged here into one holdings file
+CLEAN_WORLD = ROOT / "data/sharadar_world2000_nominal_dl"
+CLEAN_PREDS = [ROOT / "data/experiments/nominal_clean_2006_2015_dl/preds.parquet",
+               ROOT / "data/experiments/nominal_clean_2016_2024_dl/preds.parquet"]
+CLEAN = ROOT / "data/experiments/nominal_clean_dl_k16"
 FROZEN = CHAMPION / "frozen_config.json"
 SPEC = ROOT / "models/champion_spec.json"
 BUNDLE_PAGE = "oos_x_explorer.html"
@@ -64,26 +71,29 @@ NESTED_X_VERDICT = ("Ledger rows nested3_features_v2_frozen_config and nested3_f
                     "evidence 14.7 / 11.5 / 8.6 %/yr for top-3 / 6 / 10) and the half-gate "
                     "ballast; graded once: $1,379 against the clean page's $521 and SPY's $316. "
                     "The champion carried this bundle from 2026-09-05 to 2026-09-06, when the "
-                    "generated bundle replaced it (champion_explorer.html); its book and ballast "
-                    "stayed top-6, 70/30.")
+                    "generated bundle replaced it; both were retired 2026-09-11 with the "
+                    "split-leak audit (champion_explorer.html); its book and ballast stayed "
+                    "top-6, 70/30.")
 SELECTED = ("Ledger row select_2006-01-01_2024-07-18 (2026-09-03), a procedure v2 cascade: its "
             "window and book layers read samples, and it has not been re-run under v3 (every "
             "week). The campaign's record is reports/fill_basis_regrade.md. The owner-declared "
             "champion is a different configuration (top-6, 70/30 ballast, sector cap 2, no "
-            "stop): $1,553 on this window as deployed before any bundle; with the generated "
-            "bundle, champion_explorer.html.")
+            "stop): $1,553 on this window as deployed before any bundle on the old basis; on "
+            "the clean nominal basis, champion_explorer.html.")
 CHAMPION_VERDICT = ("The champion as deployed (models/champion_spec.json, PROCEDURE.md): top-6 in "
                     "four sleeves, 70/30 trend ballast, sector cap 2, no stop, the model trained on "
-                    "the panel's f_ columns plus the generated bundle of forty features (formulas "
-                    "over the panel's raw inputs, chosen on 2006–2015 alone by the OpenFE arm v3; "
-                    "adopted 2026-09-06 in place of the screened bundle of seven ideas, whose "
-                    "candidates had been written after reading the whole record). In-sample: the "
-                    "book, ballast and cap were chosen after reading these years (the 4-week "
-                    "rebuild campaign, AGENTS.md), and the bundle's selection read 2006–2015; the "
-                    "holdout (2024-07-19 →) is untouched. Before any bundle the same configuration "
-                    "graded $1,553 (+15.9%/yr, SR 0.72, DD 62%); with the seven ideas $3,058 "
-                    "(+20.2%/yr, SR 0.85, DD 59%)*. The nested test's cascade, given the ideas, "
-                    f"preferred top-3 and the half-gate ballast ({BUNDLE_PAGE}); not adopted.")
+                    "the panel's f_ columns alone on the nominal price basis, sixteen copies "
+                    "averaged, labels that grade a delisting to its final print (the live rules). "
+                    "Adopted 2026-09-11 after the split-leak audit: the closeadj-basis level "
+                    "features and the SF1 per-share fields carried future splits, and both earlier "
+                    "bundles (the seven ideas, the generated forty) were built on them; their "
+                    "nominal replacement failed admission on 2006–2015. On the same weeks the "
+                    "retired champion read $4,256 — roughly half of its 2016–2024 edge over SPY was "
+                    "the leak. In-sample: the book, ballast and cap were chosen after reading these "
+                    "years (the 4-week rebuild campaign, AGENTS.md); the holdout (2024-07-19 →) is "
+                    "untouched. Path band: four disjoint K=4 draws read $484–$676 on 2016–2024, all "
+                    "above SPY; 95% nested CI on the excess CAGR vs SPY −3.5..+16.3 (2016–2024), "
+                    "−2.4..+10.6 (2006–2024): reports/clean_line_confidence.md.")
 
 
 def spec_config(spec=SPEC):
@@ -133,29 +143,32 @@ VARIANTS = {
              "window (ledger select_2006-01-01_2024-07-18) graded on it by selection.simulate: "
              "{s} vs SPY {y}; in-sample for the selection. {out} (app/oos/build.py select)"),
     "champion": dict(
-        # the generated bundle's walk (the stem's hash names the spec's features); the seven
-        # ideas' record stays on CHAMPION / holdings_4w_5y_xeeaf48_s0 (ledger
-        # champion_bundle_2006_2024_graded), history since 2026-09-06
-        rankings=GENERATED / f"{holdings_name(_spec['horizon'], _spec['train_years'], _spec['features'])}_s0.parquet",
+        # the clean line's K=16 ensemble on the delisting-honest world (clean_holdings builds
+        # the file from the copies' predictions). History: the generated bundle's walk,
+        # GENERATED / holdings_4w_5y_x724d05_s0 (ledger champion_generated_2006_2024_graded,
+        # 2026-09-06..11), and the seven ideas', CHAMPION / holdings_4w_5y_xeeaf48_s0
+        # (champion_bundle_2006_2024_graded, 2026-09-05..06) — both on the split-leaky basis
+        rankings=CLEAN / f"{holdings_name(_spec['horizon'], _spec['train_years'], _spec['features'])}_k16.parquet",
+        ensemble="k16", world=CLEAN_WORLD, delist="last_print", prepare=lambda: clean_holdings(),
         config=_spec, train_years=_spec["train_years"], screen=None,
-        # the recorded basis (ops/live_emulation.py): ranks before the holdout, every credited
-        # week from 2006 counted — including the one the last pre-holdout rank date earns
-        lo="2006-01-01", hi="2025-01-01", ranks_before="2024-07-18",
+        # ranks before the holdout; credited weeks end at the holdout EXCLUSIVE (the one
+        # grade-window convention, 2026-09-09 — the label credited at the first holdout
+        # close is not counted; the retired record's pages counted it, hi 2025-01-01)
+        lo="2006-01-01", hi="2024-07-19", ranks_before="2024-07-18",
         out=ROOT / "reports/champion_explorer.html",
         title="Champion Explorer", crumb="Champion chart", scale="log",
-        intro="The champion as deployed — {config} — graded on {span} against the S&P 500 "
+        intro="The champion as deployed — {config}, sixteen copies averaged, on the nominal "
+              "price basis with delisting-honest labels — graded on {span} against the S&P 500 "
               "(SPY), costs included, $100 start. In-sample: its book, ballast and cap were "
-              "chosen after reading these years and its bundle was chosen on 2006–2015; the "
-              "holdout (2024-07-19 →) is untouched.",
+              "chosen after reading these years; the holdout (2024-07-19 →) is untouched.",
         verdict=CHAMPION_VERDICT,
-        ledger="champion_generated_2006_2024_graded",
+        ledger="champion_clean_2006_2024_graded",
         note="{span}, the champion as deployed (models/champion_spec.json: top-6, 70/30, sector "
-             "cap 2, no stop, the generated bundle adopted 2026-09-06) graded by selection.simulate "
-             "on its recorded basis (the OpenFE arm v3's walk from 2006-01-06, ranks before the "
-             "holdout): {s} vs SPY {y}; before any bundle $1,553 (+15.9%/yr, SR 0.72, DD 62%), "
-             "with the seven ideas $3,058 (+20.2%/yr, SR 0.85, DD 59%)* "
-             "(champion_bundle_2006_2024_graded). In-sample for the book/ballast/cap choices and "
-             "for the bundle's selection window; the holdout is untouched. {out} "
+             "cap 2, no stop, the clean nominal line adopted 2026-09-11, K=16) graded by "
+             "selection.simulate on its recorded basis (the delisting-honest world's walk from "
+             "2006-01-06, ops/nominal_program.py, ranks before the holdout): {s} vs SPY {y}. The "
+             "retired split-leak champion read $4,256 on these weeks (champion_generated_2006_2024_graded). "
+             "In-sample for the book/ballast/cap choices; the holdout is untouched. {out} "
              "(app/oos/build.py champion)"),
 }
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 8: "eight", 10: "ten"}
@@ -172,7 +185,8 @@ def load_config(v):
     assert c.get("train_years", v["train_years"]) == v["train_years"], c
     features = list(c.get("features") or [])
     stem = holdings_name(c["horizon"], v["train_years"], features)
-    assert v["rankings"].name == f"{stem}_s0.parquet", (v["rankings"].name, stem, features)
+    tag = v.get("ensemble", "s0")           # one seed's walk, or the K=16 mean (champion)
+    assert v["rankings"].name == f"{stem}_{tag}.parquet", (v["rankings"].name, stem, features)
     return dict(horizon=c["horizon"], book=c["book"], cap=c["cap"], stop=c["stop"],
                 floor=c["floor"], features=features)
 
@@ -309,18 +323,41 @@ def stopped(rec):
     return sorted({n for sl in rec["sleeves"] for n in sl if n not in rec["weights"]})
 
 
+def clean_holdings(out=None):
+    """The champion's holdings file: the clean line's sixteen copies averaged
+    per week and sliced as the engine ranks them (ops.k16_seed_spread
+    .ensemble_rows on the delisting-honest world), cached once."""
+    out = out or VARIANTS["champion"]["rankings"]
+    if out.exists():
+        return out
+    import os
+    import stocks_ml.selection as sel
+    from ops.k16_seed_spread import ensemble_rows
+    os.environ["STOCKS_ML_DELIST_LABELS"] = "last_print"
+    ctx = sel.Ctx(CLEAN_WORLD)
+    ctx.extra = []
+    preds = pd.concat([pd.read_parquet(p) for p in CLEAN_PREDS], ignore_index=True)
+    preds["week"] = pd.to_datetime(preds["week"])
+    rows, _ = ensemble_rows(sel, ctx, preds.sort_values(["week", "ticker"]), range(1, 17))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    rows.sort_values("week").reset_index(drop=True).to_parquet(out, index=False)
+    return out
+
+
 def replay(v, config):
     """The engine's trace over the page's window: rank dates before
     `ranks_before` (default: the window's end) drive the book, and the
-    credited weeks in [lo, hi) are kept."""
+    credited weeks in [lo, hi) are kept. `world` / `delist` are the page's
+    price world and delisting rule (the champion's: nominal_dl, last_print)."""
     from stocks_ml.data.store import DataStore
-    world = DataStore(WORLD)
+    world = DataStore(v.get("world", WORLD))
     prices, mem = world.read("prices"), world.read("membership")
     smap = dict(mem.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)
     daily = prices.sort_values("date")
-    ctx = SimpleNamespace(smap=smap, members={}, **price_frames(
+    delist = v.get("delist", "drop")
+    ctx = SimpleNamespace(smap=smap, members={}, delist_labels=delist, **price_frames(
         daily.pivot(index="date", columns="ticker", values="close").sort_index(),
-        daily.pivot(index="date", columns="ticker", values="open").sort_index()))
+        daily.pivot(index="date", columns="ticker", values="open").sort_index(), delist=delist))
     h = pd.read_parquet(v["rankings"]).rename(columns={"tickers": "top15"})
     h["week"] = pd.to_datetime(h.week)
     lo, hi = pd.Timestamp(v["lo"]), pd.Timestamp(v["hi"])
@@ -388,6 +425,8 @@ def render(data, out, template=TEMPLATE):
 
 def build(name):
     v = VARIANTS[name]
+    if v.get("prepare"):
+        v["prepare"]()
     config = load_config(v)
     trace, rets, spy, smap = replay(v, config)
     t = pd.read_parquet(TICKERS).drop_duplicates("ticker").set_index("ticker")

@@ -16,8 +16,18 @@ commit before the prune): `git show legacy-final:<path>` or
 `git worktree add ../legacy legacy-final`. The history sections below keep
 their original file references on purpose.
 
-## Current state (2026-09-02)
+## Current state (2026-09-11)
 
+- **Champion since 2026-09-11: the clean nominal line, no bundle** (the
+  split-leak rebuild; details in the dated bullet "Champion switched to the
+  clean nominal line" below and in the spec's `provenance`). Record, K=16 on
+  the delisting-honest world, every window ending at the holdout exclusive:
+  **2006-2015 $229 | 2016-2024 $449 (+19.1%/yr, SR 0.80, DD 42%) |
+  2006-2024 $1,028 (+13.4%/yr, SR 0.62, DD 59%) vs SPY $197 / $316 / $621**;
+  standing world $262 / $560 / $1,468. 95% nested CI on the 2016-2024 excess
+  CAGR −3.5..+16.3 around +4.2%/yr (reports/clean_line_confidence.md). The
+  bullet that follows describes the retired split-leak champion; its numbers
+  are contaminated-basis history, quoted for scale only.
 - **Champion: r5** (`models/champion_spec.json`, rendered to PROCEDURE.md by
   `stocks-ml procedure-card`), declared 2026-09-01 after the month-horizon
   rebuild on the Sharadar world: depth-3 XGBoost (MODEL_PARAMS in
@@ -28,8 +38,9 @@ their original file references on purpose.
   top-6 equal weight in four staggered sleeves (one rotates per week, every
   name held four weeks), sector cap 2; 70% book / 30% ballast, the ballast
   SPY shifting to IEF one third per breached SPY trailing mean (30/40/52
-  weeks); fills at the next session's open, 5 bp a side. **Since 2026-09-06
-  the model also trains on the generated bundle of 40 features**
+  weeks); fills at the next session's open, 5 bp a side. **From 2026-09-06
+  to 2026-09-11 the model also trained on the generated bundle of 40 features
+  (retired: built on split-leaky inputs)**
   (`features/bundle.py`: formulas over the panel's raw inputs, chosen on
   2006-2015 alone by the OpenFE arm's v3 — see "Feature engineering"; the
   spec's `features` + `formulas`, the `g_` columns `build_world_panel`
@@ -261,8 +272,8 @@ their original file references on purpose.
   Pre-holdout weeks only. Born from the split-leak finding: an unusually
   strong result triggers a leak audit, never a celebration.
 - **Delisting-honest world (2026-09-10, reports/delisting_honest_verdict.md):**
-  `Config.delist_labels = "last_print"` (env `STOCKS_ML_DELIST_LABELS`; default
-  `drop` until the owner adopts it) makes training and backtesting match live
+  `Config.delist_labels = "last_print"` (env `STOCKS_ML_DELIST_LABELS`; the
+  checked-in config.yaml since 2026-09-11) makes training and backtesting match live
   on delistings: a name whose series ends inside the label window grades to
   its final print (the ledger's exit fallback) and enters training, and
   `slice_row` uses live's traded-within-7-days universe so the backtest can buy
@@ -274,6 +285,30 @@ their original file references on purpose.
   weekly t 1.67. **A 6-name book's terminal wealth carries a ~±30% path
   band**; comparisons inside it are not comparisons — use the K=4 spread and
   paired weekly tests, never one terminal figure. Leak audit PASS per segment.
+- **Champion switched to the clean nominal line (2026-09-11, owner's go):**
+  the Saturday job now runs `models/champion_spec.json` with `features: []`
+  (`features/bundle.py` is empty — the 40 split-leak formulas live in git
+  history; their nominal-basis replacement failed admission, 5.93 vs 8.14
+  %/yr on 2006-2015, ledger `nominal_program_verdict`), `config.yaml`
+  `price_basis: nominal` and `delist_labels: last_print` (the spec records
+  both with notes). Strategy layers unchanged (top-6 / cap 2 / no stop /
+  70-30, K=16, 5y, 4w — "do not scrap the champion"; the clean cascade's own
+  argmax reads book 6 / 60-40 on the honest world, 3 / half-gate on the
+  standing one, inside the path band; re-deciding them is a registered
+  research item). Config precedence flipped to env > yaml > default so the
+  research drivers can still read the other world (`STOCKS_ML_PRICE_BASIS`,
+  `STOCKS_ML_DELIST_LABELS`); the live workflow sets no such env. Live's
+  `prices` frame gains closeunadj/close_split from `refresh_sharadar`
+  (`prices_from_sep`) on the next run; `build_world_panel` refuses a nominal
+  build without them. Local dry run under the new spec (`--as-of 2026-08-28`)
+  ranked 502 names in 20 s, ledger untouched. reports/champion_explorer.html
+  (app/oos/build.py champion) now replays the clean K=16 line on the honest
+  world (`data/experiments/nominal_clean_dl_k16/holdings_4w_5y_k16.parquet`,
+  built from the copies' predictions) and reproduces the grade exactly
+  ($1,028 vs $621, 966 weeks; ledger `champion_clean_2006_2024_graded`).
+  Transition on the paper ledger: the due sleeve rotates into clean picks on
+  the first Saturday, the other three over the following three weeks; NAV
+  continues; each signal file records the spec it ran.
 - **One grade-window convention (2026-09-09):** every pre-holdout window ends
   at `selection.HOLDOUT_START` (2024-07-19) as an EXCLUSIVE bound, so the
   label credited at the first holdout close is never counted. Before this,
@@ -407,8 +442,8 @@ What it does, in order:
 3. `selection.ensemble_preds` ranks the Friday's members exactly as the
    research did (K=16 week-bootstrap copies since 2026-09-07, K=4 before;
    label_4w, 5-year window, purge
-   35 d; `ctx.extra = SPEC["features"]`, the generated bundle since
-   2026-09-06 (the screened ideas 2026-09-05 → 2026-09-06) — the panel
+   35 d; `ctx.extra = SPEC["features"]`, empty since 2026-09-11 (the
+   generated bundle 2026-09-06 → 09-11, the screened ideas 09-05 → 09-06) — the panel
    carries every `x_` candidate and every `g_` bundle column, computed by
    `build_world_panel` on each run, and the job refuses a panel that lacks
    a bundle column, never a silent neutral fill). A
@@ -512,8 +547,9 @@ src/stocks_ml/
   feature_screen.py  the feature screen (probe + bundle exam), a stage of
                    select: rules in its docstring; screen.json / screen.md
                    under the experiment, `_x` holdings = the with-bundle arm
-  features/bundle.py  the champion's generated bundle: 40 formulas (FORMULAS)
-                   and the g_ column names (FEATURES); provenance in its docstring
+  features/bundle.py  the champion's adopted bundle: FORMULAS and the g_ column
+                   names (FEATURES) — EMPTY since 2026-09-11 (the 40 split-leak
+                   formulas retired; docstring says why; git history has them)
   features/generated.py  raw_inputs (the formulas' inputs for every panel row)
                    and add_generated (evaluate, rank per week) — the one code
                    path behind the g_ columns, research walks and the live job

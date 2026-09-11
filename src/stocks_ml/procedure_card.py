@@ -28,6 +28,7 @@ not this file). Rationale and history: AGENTS.md.
 | Prediction target | {horizon_label}: stock's {hold_weeks}-week return minus that week's median member's ({purge_days}-day purge) |
 | Training | weekly refit on trailing {train_years} years; early stop on validation rank correlation |
 | Features | {features_summary} |
+| Price basis / labels | level features on the {price_basis} basis; a delisting's label grades to its {delist_labels} |
 | Ensemble | K={k_copies} copies (random_state + whole-week bootstrap), predictions averaged |
 | Book | top-{book_size}, equal weight, {sleeves} staggered sleeves rotating weekly, {hold_weeks}-week holds; weekly re-leveling; max {sector_cap}/sector (blocked slots to next-ranked other-sector name); no stop (audited: adds nothing over the ballast) |
 | Ballast | {mix}: ballast in SPY, shifted to IEF one-third per breached trailing MA (30/40/52w) |
@@ -70,7 +71,8 @@ def features_summary(s: dict) -> str:
     formulas) or a screened bundle of hand-written ideas (asterisk)."""
     feats = s.get("features") or []
     if not feats:
-        return "the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*); no screened bundle"
+        return ("the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*); no screened bundle "
+                "(the split-leak bundle retired 2026-09-11, features/bundle.py)")
     formulas = s.get("formulas") or {}
     if formulas and all(f in formulas for f in feats):
         return (f"the panel's f_ columns plus the generated bundle of {len(feats)} (features/bundle.py, "
@@ -91,6 +93,9 @@ def render(spec: dict, today: str | None = None) -> str:
         train_years=s["training_window_years"],
         k_copies=s["ensemble"]["k_copies"],
         features_summary=features_summary(s),
+        price_basis=s.get("price_basis", "closeadj"),
+        delist_labels={"last_print": "final print (last_print)"}.get(
+            s.get("delist_labels", "drop"), "no label; the name is dropped (drop)"),
         book_size=s["strategy"]["book_size"],
         sleeves=s["strategy"]["sleeves"],
         hold_weeks=s["strategy"]["hold_weeks"],

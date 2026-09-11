@@ -6,9 +6,9 @@ key and a fresh world store, neither of which belongs in Actions. Steps:
   1. data/world.py refreshes the live world and rebuilds panel_sf.parquet
   2. selection.ensemble_preds ranks this Friday's members exactly as the
      research pipeline did (K=16 week-bootstrap copies, 4w label, 5y window,
-     the panel's f_ columns plus the champion's generated bundle, the g_
-     columns build_world_panel computes from features/bundle.py's formulas;
-     SPEC["features"])
+     the panel's f_ columns on the nominal price basis; SPEC["features"] is
+     the adopted bundle beyond them — empty since 2026-09-11, when the
+     split-leak bundle was retired, features/bundle.py)
   3. the sleeve schedule rotates one of four 6-name sleeves (sector cap 2)
   4. the 70/30 trend ballast decides SPY vs IEF per moving-average third
   5. a paper ledger fills LAST week's orders at Monday's open, marks NAV at
@@ -37,7 +37,7 @@ from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds
 
 SPEC = {"horizon": "4w", "train_years": 5, "book": 6, "cap": 2, "floor": 0.7,
         "top_n": 15,                       # models/champion_spec.json (tests keep them equal)
-        "features": list(BUNDLE)}          # the generated bundle (features/bundle.py), adopted 2026-09-06
+        "features": list(BUNDLE)}          # features/bundle.py: empty since 2026-09-11 (clean line)
 N_SLEEVES = HORIZONS[SPEC["horizon"]]["kweeks"]
 MIN_UNIVERSE = 100                         # rankable names needed for a signal
 TRADABLE_DAYS = 7                          # a name must have a close this recent

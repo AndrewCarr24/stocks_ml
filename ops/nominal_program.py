@@ -31,6 +31,9 @@ from stocks_ml.selection import HOLDOUT_START  # noqa: E402
 
 # STOCKS_ML_NOMINAL_STORE / STOCKS_ML_RUN_SUFFIX parameterize variant runs
 # (the delisting-honest world "_dl", 2026-09-10) without new driver code.
+# Since 2026-09-11 config.yaml itself reads nominal / last_print (the "_dl"
+# recipe); the standing world's runs (delist=drop) need
+# STOCKS_ML_DELIST_LABELS=drop set explicitly to resume.
 STORE = os.environ.get("STOCKS_ML_NOMINAL_STORE", "data/sharadar_world2000_nominal")
 SUFFIX = os.environ.get("STOCKS_ML_RUN_SUFFIX", "")
 EXP = Path("data/experiments")
@@ -76,10 +79,11 @@ def context(line):
 
 def _guard_spec(out: Path, line, formulas):
     """preds.parquet resumes by week: refuse to resume under another recipe."""
+    from stocks_ml.config import load_config
     from stocks_ml.selection import K_COPIES, MODEL_PARAMS
     spec = {"k_copies": K_COPIES, "model_params": {k: str(v) for k, v in MODEL_PARAMS.items()},
             "line": line, "features": sorted(formulas), "basis": "nominal", "store": STORE,
-            "delist": os.environ.get("STOCKS_ML_DELIST_LABELS", "drop")}
+            "delist": load_config().delist_labels}
     sp = out / "spec.json"
     if sp.exists():
         old = json.loads(sp.read_text())
@@ -192,7 +196,7 @@ def grade():
                         w: entry["K=16"][w]["config"] for w in entry["K=16"]},
                     "notes": f"Nominal-basis {line} line{SUFFIX and f' (variant {SUFFIX})'}, "
                              f"store {STORE}, delist="
-                             f"{os.environ.get('STOCKS_ML_DELIST_LABELS', 'drop')}; "
+                             f"{ctx.delist_labels}; "
                              f"K=16 at the champion's settings "
                              f"(reports/nominal_basis_registration.md); windows end "
                              f"{HOLDOUT_START.date()} exclusive."})

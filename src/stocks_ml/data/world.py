@@ -17,9 +17,10 @@ on its own copy (`bootstrap_live_store`) and brings it up to date each week:
 Then `build_world_panel` reruns the research recipe: build_panel with the
 world's backtest_start, then the Sharadar fundamental/insider features and
 rank_normalize — reproduced bit-for-bit against the research panel_sf on
-2026-09-01 — then the screen's x_ candidates and the champion's generated
-bundle (features/bundle.py's formulas on generated.raw_inputs, the g_
-columns; 2026-09-06). Two rules that fidelity check taught:
+2026-09-01 — then the screen's x_ candidates and, when features/bundle.py
+carries formulas, the champion's generated bundle (generated.add_generated
+on generated.raw_inputs, the g_ columns; empty since 2026-09-11, the
+split-leak retirement). Two rules that fidelity check taught:
   * IEF (the ballast bond fund) must not be in the panel's price frame:
     f_mkt_dispersion is a cross-section over every price series, and the
     research panel was built before IEF was appended for ballast pricing.
@@ -580,7 +581,8 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
                               price_basis=getattr(cfg, "price_basis", "closeadj"))
     # the champion's generated bundle rides along as g_ columns the same way (features/bundle.py):
     # the formulas on the raw inputs, ranked within the week — the research walks' recipe
-    panel_sf = add_generated(panel_sf, raw_inputs(live_dir, cfg, log=log), FORMULAS)
+    if FORMULAS:
+        panel_sf = add_generated(panel_sf, raw_inputs(live_dir, cfg, log=log), FORMULAS)
     log(f"panel_sf: {len(FORMULAS)} generated columns")
     panel_sf.to_parquet(Path(live_dir) / "panel_sf.parquet", index=False)
     log(f"panel_sf: {panel_sf.shape[0]:,} x {panel_sf.shape[1]} ({time.time() - t0:.0f}s)")

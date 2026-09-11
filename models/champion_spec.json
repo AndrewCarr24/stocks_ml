@@ -1,205 +1,128 @@
 {
-  "name": "r5 monthly system \u2014 70/30 trend-ballast",
-  "selected": "2026-09-01 (declared); 2026-09-05 (the screened bundle added, features); 2026-09-06 (the generated bundle replaces it, features + formulas)",
-  "provenance": "Owner-declared champion after the 4-week rebuild campaign (AGENTS.md 9h and ledger r4w_*/r5pkg_* entries). Supersedes ext-t20 weekly champion (its edge was confined to 2001-2012). Pre-holdout record 2006-2024 as deployed (selection.simulate on the live ledger rules since 2026-09-03: fills at the next open, 5 bp a side; the walk from 2001-06, ranks before the holdout): with the screened bundle (adopted 2026-09-05, ledger champion_r5_7030_cap2_bundle) $3,058 (+20.2%/yr, SR 0.85, DD 59%) vs SPY $628 (+10.4%/yr, SR 0.64, DD 55%), 2006-01 -> 2024-07, 968 credited weeks \u2014 asterisk: the bundle's candidate ideas were written from the whole 2006-2024 record; before the bundle $1,553 (+15.9%/yr, SR 0.72, DD 62%) vs SPY $623 on the clean walk's 1195 rank weeks (2006-01 -> 2024-06; the bundle on those same weeks $3,092; ledger champion_r5_7030_cap2_regraded, reports/fill_basis_regrade.md); on the close basis with the fixed rank-date join (commit dccca9a; reports/rank_date_regrade.md) the clean line read $1,644 (+16.3%/yr), and before the fix $1,586 vs $563. 2024-07-19+ holdout deliberately unspent. 2026-09-06: the generated bundle (features_note) replaced the ideas bundle on the owner's decision; the champion's pre-holdout record with it is the v3 arm's grade (walk from 2006-01): $3,498 (+21.1%/yr, SR 0.88, DD 50%) vs SPY $608, 2006-01 -> 2024-07, 967 rank weeks; 2016-01 -> 2024-07 $863 vs clean $590 vs ideas $772 vs SPY $310. No asterisk.",
-  "model": {
-    "family": "TimeTailEarlyStopXGB",
-    "params": {
-      "max_depth": 3,
-      "learning_rate": 0.02,
-      "n_estimators": 1500,
-      "min_child_weight": 20,
-      "subsample": 0.85,
-      "colsample_bytree": 0.8,
-      "reg_alpha": 0.5,
-      "reg_lambda": 1.0,
-      "gamma": 0.01,
-      "max_bin": 256,
-      "tree_method": "hist"
-    },
-    "fixed": {
-      "n_jobs": -1,
-      "random_state": 0,
-      "eval_fraction": 0.1,
-      "early_stopping_rounds": 75,
-      "early_stop_purge_days": 35,
-      "early_stop_metric": "weekly_spearman"
-    },
-    "summary": "simple-DT: depth-3 gbtree, untuned by design (config search measured as noise)"
+ "name": "r5 monthly system — 70/30 trend-ballast",
+ "selected": "2026-09-01 (declared); 2026-09-05 (screened bundle added); 2026-09-06 (generated bundle replaced it); 2026-09-11 (the clean nominal line replaces the split-leak bundle: features [], price_basis nominal, delist_labels last_print)",
+ "provenance": "Owner-declared champion after the 4-week rebuild campaign (AGENTS.md 9h and ledger r4w_*/r5pkg_* entries); supersedes ext-t20 weekly champion. Rebuilt 2026-09-09..11 after the split-leak audit (reports/nominal_basis_registration.md, reports/delisting_honest_verdict.md): the closeadj-basis level features and the split-restated SF1 per-share fields carried future splits, and the 2026-09-06 generated bundle was built on them (the leaky champion failed ops/leak_audit.py at retention 0.49). The champion is now the clean line — the panel's f_ columns on the nominal basis, no bundle — at the standing strategy settings. Record, K=16, selection.simulate on the live ledger rules (fills at the next open, 5 bp a side), every window ending 2024-07-19 exclusive: on the delisting-honest world (data/sharadar_world2000_nominal_dl, the live rules: last-print labels, traded-within-7-days universe; ledger nominal_clean_dl_k16) 2006-2015 $229 (+8.6%/yr, SR 0.46, DD 59%) | 2016-2024 $449 (+19.1%/yr, SR 0.80, DD 42%) | pre-holdout 2006-2024 $1,028 (+13.4%/yr, SR 0.62, DD 59%) vs SPY $197 / $316 / $621 (+7.0 / +14.3 / +10.3%/yr; SR 0.46 / 0.87 / 0.64; DD 55 / 32 / 55%); on the standing nominal world (labels dropped at a delisting; ledger nominal_clean_k16) $262 / $560 / $1,468. The two worlds' ensembles agree at Spearman 0.915 (seed-halves of one walk: 0.72); the difference is path noise: disjoint K=4 draws on 2016-2024 read $484-$676 (honest) and $481-$706 (standing), all above SPY, and 2006-2015 draws straddle SPY in both worlds — a 6-name book's terminal wealth carries a ~+/-30% band. Leak audit (ops/leak_audit.py, shifted-feature retention per segment) PASS on both segments. 95% CI (reports/clean_line_confidence.md; ledger nominal_clean_dl_ci95): excess CAGR vs SPY 2016-2024 point +4.2%/yr, seed-only +3.4..+8.5, history bootstrap -5.1..+14.2, nested -3.5..+16.3; pre-holdout point +2.8%/yr, nested -2.4..+10.6; paired weekly t 0.8 / 0.8; ~90% of resampled histories beat SPY. Contaminated-basis history for scale only (git history of this file, ledger champion_r5_7030_cap2_* and openfe_arm_v3_*): the old champion read $4,256 / $900 / $473 on the same spans — roughly half of its 2016-2024 SPY-relative edge was the split leak, the rest is the clean line above. 2024-07-19+ holdout deliberately unspent.",
+ "model": {
+  "family": "TimeTailEarlyStopXGB",
+  "params": {
+   "max_depth": 3,
+   "learning_rate": 0.02,
+   "n_estimators": 1500,
+   "min_child_weight": 20,
+   "subsample": 0.85,
+   "colsample_bytree": 0.8,
+   "reg_alpha": 0.5,
+   "reg_lambda": 1.0,
+   "gamma": 0.01,
+   "max_bin": 256,
+   "tree_method": "hist"
   },
-  "horizon": {
-    "label": "label_4w",
-    "purge_days": 35,
-    "rationale": "feature probe + population exams: month-ahead signal real (t>2), week-ahead dead since ~2004"
+  "fixed": {
+   "n_jobs": -1,
+   "random_state": 0,
+   "eval_fraction": 0.1,
+   "early_stopping_rounds": 75,
+   "early_stop_purge_days": 35,
+   "early_stop_metric": "weekly_spearman"
   },
-  "training_window_years": 5,
-  "training_window_rationale": "style-cycle whipsaw protection; directionally better in both whipsaw eras, never worse; robustness pick within noise band",
-  "ensemble": {
-    "k_copies": 16,
-    "k_copies_note": "16 since 2026-09-07 (4 from 2026-08-20): four disjoint K=4 draws of the champion graded $2,218-$3,498 over 2006-2024 and K=16 $4,256, so the K=4 record was one draw's luck on top of the model; the record is the K=16 walk (ledger k16_champion_2006_2015_verdict, reports/k16_champion_record.md); selection.K_COPIES is pinned to this value by tests/test_r5.py",
-    "method": "WeekBootstrapEstimator: copy c = random_state c + whole-week bootstrap seeded by c; predictions averaged (replication.py)"
-  },
-  "strategy": {
-    "id": "top6-stagger",
-    "book_size": 6,
-    "sleeves": 4,
-    "hold_weeks": 4,
-    "weight": "equal, re-leveled weekly (drift-threshold in live trading)",
-    "stop_loss": null,
-    "stop_action": "none \u2014 audited 2026-09-01: stop measured mildly negative on dollars in the final configuration (as deployed, 2026-09-03: off $1,553 vs -25% $1,499, SR 0.72 vs 0.73, DD 62% vs 60%; close basis, fixed join: $1,644 vs $1,533, identical DD; before the rank-date fix, without the cap, $1,383 vs $1,296); removed for simplicity",
-    "sector_cap": 2,
-    "sector_cap_note": "max 2 of 6 per sector; blocked slots go to next-ranked name from another sector (adopted 2026-09-01: +0.9%/yr and better SR in every window on the champion, no DD effect; re-graded on the fixed join +0.3 to +1.9%/yr per window, +1.2%/yr and SR 0.67 -> 0.72 over 2006-2024; as deployed (2026-09-03) +1.1%/yr and SR 0.67 -> 0.72 over 2006-2024, per window +2.1 / +0.5 / -0.1%/yr for 2006-12 / 2013-24 / 2021-24 with SR up or level in each)"
-  },
-  "ballast": {
-    "mix": "70% book / 30% ballast",
-    "ballast_asset": "SPY, switched to IEF per trend state",
-    "trend_rule": "one third of ballast to IEF per breached SPY trailing MA (30/40/52 weeks), evaluated weekly, point-in-time"
-  },
-  "costs_assumed_bps_oneway": 5,
-  "panel": "data/sharadar_world2000/panel_sf.parquet (price/volume + Sharadar fundamentals f_sf_* + insiders f_sfi_* + the screen's candidates x_*, features/candidates.py + the champion's generated bundle g_*, features/bundle.py on generated.raw_inputs)",
-  "features": [
-    "g_00",
-    "g_01",
-    "g_02",
-    "g_03",
-    "g_04",
-    "g_05",
-    "g_06",
-    "g_07",
-    "g_08",
-    "g_09",
-    "g_10",
-    "g_11",
-    "g_12",
-    "g_13",
-    "g_14",
-    "g_15",
-    "g_16",
-    "g_17",
-    "g_18",
-    "g_19",
-    "g_20",
-    "g_21",
-    "g_22",
-    "g_23",
-    "g_24",
-    "g_25",
-    "g_26",
-    "g_27",
-    "g_28",
-    "g_29",
-    "g_30",
-    "g_31",
-    "g_32",
-    "g_33",
-    "g_34",
-    "g_35",
-    "g_36",
-    "g_37",
-    "g_38",
-    "g_39"
+  "summary": "simple-DT: depth-3 gbtree, untuned by design (config search measured as noise)"
+ },
+ "horizon": {
+  "label": "label_4w",
+  "purge_days": 35,
+  "rationale": "feature probe + population exams: month-ahead signal real (t>2), week-ahead dead since ~2004"
+ },
+ "training_window_years": 5,
+ "training_window_rationale": "style-cycle whipsaw protection; directionally better in both whipsaw eras, never worse; robustness pick within noise band",
+ "ensemble": {
+  "k_copies": 16,
+  "k_copies_note": "16 since 2026-09-07 (4 from 2026-08-20): four disjoint K=4 draws of the then-champion graded $2,218-$3,498 over 2006-2024 and K=16 $4,256 (contaminated basis), so a K=4 record was one draw's luck on top of the model; the record is always the K=16 walk, with the K=4 draws quoted as the path band (clean line 2016-2024: $484-$676 honest, $481-$706 standing). selection.K_COPIES is pinned to this value by tests/test_r5.py",
+  "method": "WeekBootstrapEstimator: copy c = random_state c + whole-week bootstrap seeded by c; predictions averaged (replication.py)"
+ },
+ "strategy": {
+  "id": "top6-stagger",
+  "book_size": 6,
+  "sleeves": 4,
+  "hold_weeks": 4,
+  "weight": "equal, re-leveled weekly (drift-threshold in live trading)",
+  "stop_loss": null,
+  "stop_action": "none — audited 2026-09-01: stop measured mildly negative on dollars in the final configuration (as deployed, 2026-09-03: off $1,553 vs -25% $1,499, SR 0.72 vs 0.73, DD 62% vs 60%; close basis, fixed join: $1,644 vs $1,533, identical DD; before the rank-date fix, without the cap, $1,383 vs $1,296); removed for simplicity",
+  "sector_cap": 2,
+  "sector_cap_note": "max 2 of 6 per sector; blocked slots go to next-ranked name from another sector (adopted 2026-09-01: +0.9%/yr and better SR in every window on the champion, no DD effect; re-graded on the fixed join +0.3 to +1.9%/yr per window, +1.2%/yr and SR 0.67 -> 0.72 over 2006-2024; as deployed (2026-09-03) +1.1%/yr and SR 0.67 -> 0.72 over 2006-2024, per window +2.1 / +0.5 / -0.1%/yr for 2006-12 / 2013-24 / 2021-24 with SR up or level in each)",
+  "settings_note": "Standing settings kept at the 2026-09-11 switch (owner: do not scrap the champion). The cascade re-run on the clean nominal line's own 2006-2015 record reads book 6 / 60-40 / no stop / cap 2 on the delisting-honest world and book 3 / half-gate / no stop / cap 2 on the standing world — floor and book move within the path band between worlds; re-deciding them is a registered research item, not a quiet override. The stop_action and sector_cap_note figures below are contaminated-basis history, kept for the reasoning."
+ },
+ "ballast": {
+  "mix": "70% book / 30% ballast",
+  "ballast_asset": "SPY, switched to IEF per trend state",
+  "trend_rule": "one third of ballast to IEF per breached SPY trailing MA (30/40/52 weeks), evaluated weekly, point-in-time"
+ },
+ "costs_assumed_bps_oneway": 5,
+ "panel": "data/sharadar_world2000_nominal_dl/panel_sf.parquet (nominal basis, delisting-honest labels; price/volume + Sharadar fundamentals f_sf_* + insiders f_sfi_*; the screen's x_ candidates and any g_ columns ride along unused). Live: build_world_panel under config.yaml.",
+ "features": [],
+ "features_note": "No bundle. The model's matrix is feature_cols (the panel's f_ columns: features/panel.py plus features/sharadar_fundamentals.py), research and live alike (walk.extra_features = []; r5.SPEC['features'] = features/bundle.py FEATURES = []). History: the screened ideas bundle (adopted 2026-09-05, asterisk: ideas written from the whole 2006-2024 record) and the generated bundle of 40 (adopted 2026-09-06, selected on 2006-2015 alone) were both built on split-leaky raw inputs and retired 2026-09-11; their nominal-basis replacement, screened under the same rule on 2006-2015 (ops/nominal_program.py screen), failed admission against the clean line at the cascade's own book (5.93 vs 8.14 %/yr, ledger nominal_program_verdict) and 2016-2024 read $522 vs the clean $560. A bundle re-enters only by passing the gate on 2006-2015 and the owner's go; the plumbing (generated.add_generated on bundle.FORMULAS) stays.",
+ "retune_policy": {
+  "cadence": "never on a calendar (nested experiment); structural triggers only",
+  "triggers": [
+   "new data source / feature family passes the gate",
+   "pre-registered kill-criterion breached",
+   "owner directive"
+  ]
+ },
+ "holdout_start": "2024-07-19",
+ "holdout_status": "UNSPENT — single-use exam, owner-gated",
+ "honest_expectation": "a few %/yr over SPY in expectation (2016-2024 excess CAGR +4.2%/yr, 95% nested CI -3.5..+16.3; 2006-2024 +2.8%/yr, -2.4..+10.6), a band that includes no edge, 40-60% drawdowns along the way; edge era-concentrated (2013-2020; index-matching in whipsaw/megacap regimes); pre-holdout numbers carry design-iteration shine; sizing should assume SPY-like outcomes in adverse regimes",
+ "deployed": false,
+ "selection_procedure": {
+  "note": "Mechanical cascade, run in this order on the selection window only; validated by the nested test (nested3_v1, 2026-09-04: select on every week of 2006-2015, grade 2016-2024; nested3_v2 re-ran it with the feature screen under rule v3.1, 2026-09-05; nested2_v1 was its sampled predecessor). Model config is NOT searched (simple-DT fixed; tuning measured as noise). Run programmatically: `stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] [--screen]` (stages cached & resumable under data/experiments/).",
+  "steps": [
+   {
+    "step": "horizon",
+    "menu": "1w vs 4w",
+    "metric": "cost-adjusted compounded return of the top-6 book (full population of the selection window)"
+   },
+   {
+    "step": "training window",
+    "menu": "1/2/3/4/5 years",
+    "metric": "top-6 edge vs random basket, paired on the weeks every window's population walk has (every week of the selection window since v3); all windows fully formed"
+   },
+   {
+    "step": "feature screen (--screen)",
+    "menu": "a candidate bundle over the nominal raw inputs (ops/nominal_program.py screen: generated formulas, or the x_ candidates of features/candidates.py)",
+    "metric": "screened on 2006-2015 alone; admitted iff the top-book cost-adjusted compounded return is higher with it than without at the cascade's own book (the paired HAC t reported, not the rule); every candidate passes ops/leak_audit.py per segment. No bundle is admitted as of 2026-09-11 (nominal screen 5.93 vs clean 8.14 %/yr)"
+   },
+   {
+    "step": "book size",
+    "menu": "top-3 / top-6 / top-10",
+    "metric": "cost-adjusted compounded return"
+   },
+   {
+    "step": "stagger",
+    "menu": "fixed on",
+    "metric": "mechanism (removes rotation-date luck); not searched"
+   },
+   {
+    "step": "floor",
+    "menu": "none / half-gate / 80-20 / 70-30 / 60-40 trend-ballast",
+    "metric": "Sharpe ratio"
+   },
+   {
+    "step": "stop-loss",
+    "menu": "off / -25%",
+    "metric": "Sharpe ratio (adopt only if higher)"
+   },
+   {
+    "step": "sector cap",
+    "menu": "off / 2-of-book",
+    "metric": "Sharpe ratio (adopt only if higher)"
+   }
   ],
-  "features_note": "The generated feature bundle (features/bundle.py; formulas above): 40 order-1 formulas over the raw inputs (the f_ columns before ranking, every SF1 field and its year-over-year change, the 8-K item counts, the nominal close), each ranked within the week. Selected mechanically on 2006-01 -> 2015-11 alone (ops/openfe_arm_v2.py --generated-only; preregistration openfe_arm_v3_generated_2006_2015): every candidate scored by the t statistic of its weekly Spearman IC with the 4-week demedianed return, then a greedy dedup in descending |t| against the 64 base features and each other (|corr| <= 0.9), the first 40 kept; no grading year read. Graded once out of sample with the champion's own walk (4w / 5y / K=4, from 2006-01): 2016-01 -> 2024-07 $863 (+28.5%/yr, SR 1.13, DD 36%) vs the clean line $590 (+23.2%/yr, SR 0.95, DD 42%), the ideas bundle $772 (+26.8%/yr, SR 1.06, DD 42%) and SPY $310; 2006-2015 in-sample $405 vs clean $263 vs ideas $396; 2006-01 -> 2024-07 $3,498 (+21.1%/yr, SR 0.88, DD 50%) vs SPY $608 (ledger openfe_arm_v3_generated_2016_2024, reports/openfe_arm_v3.md). Adopted by the owner 2026-09-06 in place of the screened ideas bundle (x_8k_distress_26w, x_cash_runway, x_dps_yoy, x_earn_react_mean4, x_earn_window, x_price_level, f_vol_chg_12w; adopted 2026-09-05, ledger champion_r5_7030_cap2_bundle, $772), whose thirty candidate ideas had been written after reading the whole 2006-2024 record \u2014 the asterisk this bundle does not carry (its one caveat: the input rule was written by someone who knows those ideas exist; the rule is generic \u2014 every field, one standard window). The model's matrix is feature_cols (the f_ columns) plus these forty, research and live alike (walk.extra_features; r5.SPEC['features']); build_world_panel computes the g_ columns from the formulas each week (generated.add_generated on generated.raw_inputs), the research panel_sf carries the same columns. Known about the bundle: its members are correlated with each other (mean |corr| 0.28; about a third of their variance is one factor \u2014 company size and nominal price), and one walk per arm measured no seed spread. Book, ballast, cap and stop are unchanged.",
-  "retune_policy": {
-    "cadence": "never on a calendar (nested experiment); structural triggers only",
-    "triggers": [
-      "new data source / feature family passes the gate",
-      "pre-registered kill-criterion breached",
-      "owner directive"
-    ]
-  },
-  "holdout_start": "2024-07-19",
-  "holdout_status": "UNSPENT \u2014 single-use exam, owner-gated",
-  "honest_expectation": "edge is era-concentrated (strong 2013-2020, index-matching in whipsaw/megacap regimes); pre-holdout numbers carry design-iteration shine; deployment sizing should assume SPY-like outcomes in adverse regimes",
-  "deployed": false,
-  "selection_procedure": {
-    "note": "Mechanical cascade, run in this order on the selection window only; validated by the nested test (nested3_v1, 2026-09-04: select on every week of 2006-2015, grade 2016-2024; nested3_v2 re-ran it with the feature screen under rule v3.1, 2026-09-05; nested2_v1 was its sampled predecessor). Model config is NOT searched (simple-DT fixed; tuning measured as noise). Run programmatically: `stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] [--screen]` (stages cached & resumable under data/experiments/).",
-    "steps": [
-      {
-        "step": "horizon",
-        "menu": "1w vs 4w",
-        "metric": "cost-adjusted compounded return of the top-6 book (full population of the selection window)"
-      },
-      {
-        "step": "training window",
-        "menu": "1/2/3/4/5 years",
-        "metric": "top-6 edge vs random basket, paired on the weeks every window's population walk has (every week of the selection window since v3); all windows fully formed"
-      },
-      {
-        "step": "feature screen (--screen)",
-        "menu": "the x_ candidates (features/candidates.py) as one bundle",
-        "metric": "probe: Newey-West t of 2 or more in size and the same IC sign in both halves of the window; the keepers ride a second population walk and enter iff the top-6 book's cost-adjusted compounded return is higher with them than without (v3.1, 2026-09-05; the paired HAC t is reported, not the rule). The champion carries the bundle nested3_v2 admitted (`features`, adopted 2026-09-05); a future screen's bundle enters the champion only on the owner's go"
-      },
-      {
-        "step": "book size",
-        "menu": "top-3 / top-6 / top-10",
-        "metric": "cost-adjusted compounded return"
-      },
-      {
-        "step": "stagger",
-        "menu": "fixed on",
-        "metric": "mechanism (removes rotation-date luck); not searched"
-      },
-      {
-        "step": "floor",
-        "menu": "none / half-gate / 80-20 / 70-30 / 60-40 trend-ballast",
-        "metric": "Sharpe ratio"
-      },
-      {
-        "step": "stop-loss",
-        "menu": "off / -25%",
-        "metric": "Sharpe ratio (adopt only if higher)"
-      },
-      {
-        "step": "sector cap",
-        "menu": "off / 2-of-book",
-        "metric": "Sharpe ratio (adopt only if higher)"
-      }
-    ],
-    "metric_convention": "engine choices (horizon, window, book) by cost-adjusted compounded return; risk layers (floor, stop, cap) by Sharpe \u2014 owner-ratified 2026-09-01, 'for now'; earlier campaigns ranked by pre-tax earnings",
-    "measured_selection_inflation": "champion vs the nested honest-procedure pick on 2016-2024, as deployed: clean $590 (+23.2%/yr) vs v3's $521 (+21.2%/yr), +1.9%/yr on dollars, ~0 on Sharpe (0.95 vs 1.00); with the bundle the nested cascade's own pick out-earns the champion's settings ($1,379 vs $772), so the champion's book/ballast carry no inflation there \u2014 the asterisk on the bundle's ideas is the caveat that remains. History: +3.4%/yr vs v2's $463 as deployed, +3.1 on the close basis with the fixed join, +3.8 as first graded",
-    "constraints": "No layer reads a sample (v3, 2026-09-04), and no layer reads a rank week whose forward label ends after the window (`selection.label_end`: 35 days for 4w, 14 for 1w; 2026-09-05) \u2014 at a window ending at the holdout's edge those weeks would be graded on holdout prices. A bundle the screen admits is graded as a separate \"+ engineered features\" line with an asterisk (the candidate ideas were written from the whole 2006-2024 record), beside the clean line, never in place of it; the owner adopted nested3_v2's bundle into the champion on 2026-09-05 (features_note), so the champion's own record now carries the asterisk."
-  },
-  "formulas": {
-    "g_00": "(r_close*r_sf_bvps)",
-    "g_01": "(f_sf_sales_to_price/r_sf_bvps)",
-    "g_02": "(r_close/r_sf_roe)",
-    "g_03": "max(f_dollar_vol,r_sf_bvps)",
-    "g_04": "(f_sf_sales_to_price-r_sf_bvps)",
-    "g_05": "(r_8k_2_02/r_sf_bvps)",
-    "g_06": "(f_sf_debt_ebitda+r_close)",
-    "g_07": "max(r_close,r_sf_bvps)",
-    "g_08": "(f_log_mktcap+r_8k_2_03)",
-    "g_09": "(f_sf_gross_prof/r_close)",
-    "g_10": "(r_sf_bvps*r_sf_grossmargin)",
-    "g_11": "(f_idio_vol_60d*r_close)",
-    "g_12": "(r_sf_bvps+r_sf_roe_yoy)",
-    "g_13": "(r_sf_bvps/r_sf_de)",
-    "g_14": "(r_8k_2_02/r_close)",
-    "g_15": "(f_log_mktcap+r_8k_1_01)",
-    "g_16": "(f_leverage-f_log_mktcap)",
-    "g_17": "(f_log_mktcap-r_sf_dps_yoy)",
-    "g_18": "(r_sf_bvps/r_sf_revenue)",
-    "g_19": "(r_close/r_sf_shareswa)",
-    "g_20": "(f_sf_sales_to_price/r_sf_eps)",
-    "g_21": "min(f_month,r_sf_bvps)",
-    "g_22": "(f_sfi_buyers_13w-r_sf_bvps)",
-    "g_23": "min(f_sf_fcf_yield,f_sf_gross_prof)",
-    "g_24": "(f_sf_roe/r_close)",
-    "g_25": "(f_sf_fcf_yield/r_sf_bvps)",
-    "g_26": "(f_log_mktcap-r_sf_fcf_yoy)",
-    "g_27": "(f_days_since_earnings_8k/r_sf_bvps)",
-    "g_28": "min(f_log_mktcap,r_sf_bvps)",
-    "g_29": "(r_sf_bvps-r_sf_divyield_yoy)",
-    "g_30": "(f_log_mktcap+r_sf_netinc_yoy)",
-    "g_31": "(f_book_to_market/r_sf_bvps)",
-    "g_32": "(f_log_mktcap+r_sf_epsusd)",
-    "g_33": "(f_sf_current_ratio*r_sf_bvps)",
-    "g_34": "(f_cf_to_price/r_8k_7_01)",
-    "g_35": "(f_sfi_buyers_13w+r_close)",
-    "g_36": "min(f_days_since_filing,r_sf_bvps)",
-    "g_37": "(f_log_mktcap-r_8k_2_02)",
-    "g_38": "(r_8k_9_01/r_sf_debt)",
-    "g_39": "min(f_days_since_earnings_8k,r_sf_bvps)"
-  }
+  "metric_convention": "engine choices (horizon, window, book) by cost-adjusted compounded return; risk layers (floor, stop, cap) by Sharpe — owner-ratified 2026-09-01, 'for now'; earlier campaigns ranked by pre-tax earnings",
+  "measured_selection_inflation": "champion vs the nested honest-procedure pick on 2016-2024 (contaminated basis, 2026-09-04/05): clean $590 vs v3's $521, +1.9%/yr on dollars, ~0 on Sharpe. On the clean nominal line the cascade's 2006-2015 argmax differs from the standing settings on book and floor (strategy.settings_note); a nested re-measurement on the nominal world is a registered research item",
+  "constraints": "No layer reads a sample (v3, 2026-09-04), and no layer reads a rank week whose forward label ends after the window (`selection.label_end`: 35 days for 4w, 14 for 1w; 2026-09-05) — at a window ending at the holdout's edge those weeks would be graded on holdout prices. Selection on 2006-2015 only; 2016-01 -> 2024-07-12 is the one out-of-sample look, read once per registered candidate; the holdout never feeds selection. Every candidate passes ops/leak_audit.py on both segments before it is believed (the split leak, 2026-09-09). A bundle the screen admits is graded as a separate line beside the clean line, never in place of it; none is admitted as of 2026-09-11."
+ },
+ "formulas": {},
+ "price_basis": "nominal",
+ "price_basis_note": "config.yaml price_basis (Config.price_basis; env STOCKS_ML_PRICE_BASIS for research drivers): level features from closeunadj (what the tape showed) and the SF1 per-share ratios over the split-only adjusted close; returns and labels stay on closeadj. Adopted 2026-09-11 with the clean line. The live job's prices frame carries closeunadj/close_split from refresh_sharadar (prices_from_sep); build_world_panel refuses a nominal build without them.",
+ "delist_labels": "last_print",
+ "delist_labels_note": "config.yaml delist_labels (Config.delist_labels; env STOCKS_ML_DELIST_LABELS): a name whose series ends inside the label window grades to its final print — the live ledger's exit — instead of losing its label; the backtest universe uses live's traded-within-7-days rule (r5.rank_members). Adopted 2026-09-11 on the delisting-honest verdict (reports/delisting_honest_verdict.md): same strategy within the path band, matches what the Saturday job does with a delisting."
 }

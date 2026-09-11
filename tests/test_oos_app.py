@@ -75,11 +75,14 @@ def test_variants_describe_their_configuration_and_write_separate_pages(tmp_path
     assert (v["select"]["lo"], v["select"]["hi"]) == ("2006-01-01", "2024-07-18")  # holdout untouched
     # the champion page reads the spec, on the recorded basis: ranks before the holdout
     assert v["champion"]["config"]["features"] == oos_build.spec_config()["features"]
-    assert v["champion"]["rankings"].parent.name == "openfe_v3_2006_2015"   # the generated bundle's walk
-    assert v["champion"]["rankings"].name == "holdings_4w_5y_x724d05_s0.parquet"
+    # the clean line's K=16 mean on the delisting-honest world (no bundle: bare stem, k16 tag)
+    assert v["champion"]["rankings"].parent.name == "nominal_clean_dl_k16"
+    assert v["champion"]["rankings"].name == "holdings_4w_5y_k16.parquet"
+    assert v["champion"]["world"].name == "sharadar_world2000_nominal_dl"
+    assert v["champion"]["delist"] == "last_print" and v["champion"]["ensemble"] == "k16"
     assert v["champion"]["screen"] is None                                  # no asterisk line: nothing screened
     assert oos_build.describe(oos_build.load_config(v["champion"]), 5).endswith(
-        "sector cap 2, 70/30 trend ballast, no stop-loss, the generated bundle of 40 features")
+        "sector cap 2, 70/30 trend ballast, no stop-loss")
     assert v["champion"]["ranks_before"] == "2024-07-18" and v["champion"]["lo"] == "2006-01-01"
     assert oos_build.load_config(v["champion"]) == dict(
         horizon="4w", book=6, cap=2, stop=None, floor="70/30", features=v["champion"]["config"]["features"])
