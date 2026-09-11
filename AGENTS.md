@@ -260,6 +260,20 @@ their original file references on purpose.
   the leaky 2026-09 champion retained ~47%) and per-share identity checks.
   Pre-holdout weeks only. Born from the split-leak finding: an unusually
   strong result triggers a leak audit, never a celebration.
+- **Delisting-honest world (2026-09-10, reports/delisting_honest_verdict.md):**
+  `Config.delist_labels = "last_print"` (env `STOCKS_ML_DELIST_LABELS`; default
+  `drop` until the owner adopts it) makes training and backtesting match live
+  on delistings: a name whose series ends inside the label window grades to
+  its final print (the ledger's exit fallback) and enters training, and
+  `slice_row` uses live's traded-within-7-days universe so the backtest can buy
+  a name that then dies. Research world `data/sharadar_world2000_nominal_dl`.
+  Finding: the simulator change is nearly free (+$4 / −$30 on 18 years for
+  the two models) — the clean line was not survivorship-flattered — and the
+  rest of the $1,468 → $1,028 gap is a model refit that agrees with the
+  standing one at Spearman 0.915 (seed-halves of one walk: 0.72), paired
+  weekly t 1.67. **A 6-name book's terminal wealth carries a ~±30% path
+  band**; comparisons inside it are not comparisons — use the K=4 spread and
+  paired weekly tests, never one terminal figure. Leak audit PASS per segment.
 - **One grade-window convention (2026-09-09):** every pre-holdout window ends
   at `selection.HOLDOUT_START` (2024-07-19) as an EXCLUSIVE bound, so the
   label credited at the first holdout close is never counted. Before this,

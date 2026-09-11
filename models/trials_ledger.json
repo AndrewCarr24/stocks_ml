@@ -24531,5 +24531,47 @@
   "kind": "preregistration",
   "name": "nominal_clean_dl_2006_2024",
   "notes": "Preregistered 2026-09-10 before any number (owner's go 'Sure' to the delisting-honest proposal). Question: what does the clean nominal challenger read when the backtest can bet on a name that delists mid-hold, as live can? Rule (gated, Config.delist_labels / STOCKS_ML_DELIST_LABELS, default 'drop' so the live job is untouched until adoption): (1) labels \u2014 a name whose series ends inside the 4w window grades to its FINAL PRINT (the live ledger's exit fallback; ~deal price for M&A, near-zero for collapses; no bankruptcy/acquisition classification needed), joins the member-median recentring, and enters TRAINING (the walk refits weekly, so terminal weeks are learned); right-censored within 7 days of the data edge; (2) universe \u2014 slice_row adopts live's traded-within-7-days rule (r5.rank_members) in place of label-finiteness, so soon-to-delist names are rankable. Run: rebuild the nominal panel with the new labels into data/sharadar_world2000_nominal_dl (symlinked tables, own panel); clean line ONLY (the bundle failed admission); K=16, replication.py seeding, select 2006-01-06 -> 2015-12-31 then extend 2016-01 -> 2024-07-12; graded at the champion's standing settings beside the standing clean line (same bar), windows at selection.HOLDOUT_START exclusive; ops/leak_audit.py per segment must PASS. Expectation stated in advance: small net change, worse 2008-2009 drawdowns; the point is pricing the tail, not the average. Holdout untouched."
+ },
+ {
+  "date": "2026-09-10",
+  "kind": "r4w_strategy",
+  "name": "nominal_clean_dl_k16",
+  "n_weeks": 967,
+  "windows": {
+   "2006_2015": {
+    "terminal_100": 229.0,
+    "cagr_pct": 8.64,
+    "sharpe": 0.459,
+    "max_dd": 0.587,
+    "n_weeks": 520
+   },
+   "2016_2024": {
+    "terminal_100": 449.0,
+    "cagr_pct": 19.14,
+    "sharpe": 0.798,
+    "max_dd": 0.419,
+    "n_weeks": 446
+   },
+   "pre_holdout": {
+    "terminal_100": 1028.1,
+    "cagr_pct": 13.36,
+    "sharpe": 0.621,
+    "max_dd": 0.587,
+    "n_weeks": 966
+   }
+  },
+  "notes": "Nominal-basis clean line (variant _dl), store data/sharadar_world2000_nominal_dl, delist=last_print; K=16 at the champion's settings (reports/nominal_basis_registration.md); windows end 2024-07-19 exclusive."
+ },
+ {
+  "date": "2026-09-10",
+  "kind": "leak_audit",
+  "name": "leak_audit_nominal_clean_dl_k16",
+  "notes": "Delisting-honest clean nominal line PASSES the pre-adoption leak audit per segment: Spearman(score, adjustment factor) -0.010/-0.010 (t ~ -0.9), IC -0.019 (t -1.7) / +0.028 (t +2.6), retention 1.005/1.038 (worst 1.005 >= 0.75), identity exact for CMG x50, NVDA x40, BKNG x25. Delisting-within-8w: top-15 0.58%/0.21% vs universe 0.80%/0.69% per week. Standing clean line reads IC -0.016/+0.028 on the same segments: the near-zero 2006-2015 whole-universe IC belongs to the clean line, not the delisting change."
+ },
+ {
+  "date": "2026-09-10",
+  "kind": "verdict",
+  "name": "nominal_clean_dl_verdict",
+  "notes": "Delisting-honest world graded 2026-09-10 against prereg nominal_clean_dl_2006_2024 (reports/delisting_honest_verdict.md). K=16 at the standing settings, windows 2024-07-19 exclusive: 2006-2015 $229 (SR 0.46, DD 59%) | 2016-2024 $449 (+19.1%/yr, SR 0.80, DD 42%) | pre-holdout $1,028 (+13.4%/yr, SR 0.62, DD 59%) vs standing world $262/$560/$1,468 vs SPY $197/$316/$621. Same-basis cross-grade: the simulator change (buyable delistings, last-print exits) moves the standing model +$4 and the honest model -$30 on the full span \u2014 the clean line's picks are not survivorship-flattered; the pre-stated expectation (small net change) holds for that mechanism, drawdown unchanged. The remaining gap is the model refit on 1,119 gained labels (ordinary in size: mean +0.2%, sd 7.8%) plus <=27 bp median shifts: the two K=16 ensembles agree at Spearman 0.915 / 4.35 of 6 top picks \u2014 more than seed-halves of one walk (0.72 / 2.95) \u2014 and the paired weekly difference is +3.8 bp/wk, t 1.67 (n 966); 73% of the log-wealth gap sits in 20 weeks (2009-03-20, 2008-10-17). Verdict: the faithful world reads the same strategy; a 6-name book's terminal wealth carries a ~+/-30% path band (K=4 draws 2016-2024: $481-$706 standing, $484-$676 honest, all above SPY; 2006-2015 draws straddle SPY in both worlds). Recommendation: the delisting-honest world becomes the research world (matches live); adoption of last_print for live training, the nominal basis, and the clean line remain the owner's decisions; holdout untouched; nothing pushed."
  }
 ]

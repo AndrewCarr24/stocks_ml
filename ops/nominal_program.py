@@ -165,6 +165,9 @@ def grade():
         except FileNotFoundError:
             log(f"grade: no {line} artifacts yet, skipping")
             continue
+        if not any((OUTS[(line, seg)] / "preds.parquet").exists() for seg in SEGS):
+            log(f"grade: no {line} preds under suffix {SUFFIX!r}, skipping")
+            continue
         preds = load_preds(line)
         entry = {"rank_weeks": int(preds.week.nunique()),
                  "first": str(preds.week.min().date()), "last": str(preds.week.max().date())}
@@ -184,10 +187,13 @@ def grade():
                 sp500 = spy
                 entry["cascade_2006_2015"] = cascade_at(sel, ctx, rows)
         res[line] = entry
-        led.append({"kind": "r4w_strategy", "name": f"nominal_{line}_k16",
+        led.append({"kind": "r4w_strategy", "name": f"nominal_{line}{SUFFIX}_k16",
                     "n_weeks": entry["rank_weeks"], "windows": {
                         w: entry["K=16"][w]["config"] for w in entry["K=16"]},
-                    "notes": f"Nominal-basis {line} line, K=16 at the champion's settings "
+                    "notes": f"Nominal-basis {line} line{SUFFIX and f' (variant {SUFFIX})'}, "
+                             f"store {STORE}, delist="
+                             f"{os.environ.get('STOCKS_ML_DELIST_LABELS', 'drop')}; "
+                             f"K=16 at the champion's settings "
                              f"(reports/nominal_basis_registration.md); windows end "
                              f"{HOLDOUT_START.date()} exclusive."})
     out = EXP / f"nominal_grades{SUFFIX}.json"
