@@ -42,8 +42,9 @@ import numpy as np
 import pandas as pd
 
 from stocks_ml.feature_screen import label_span_days
-from stocks_ml.ledger import (COST_BPS, Ledger, ballast_state, close_asof,  # noqa: F401
-                              pick_capped, rotate_sleeves, target_weights, week_index)
+from stocks_ml.ledger import (COST_BPS, FLOOR_FRACTION, FLOORS, Ledger, ballast_state,  # noqa: F401
+                              close_asof, floor_split, pick_capped, rotate_sleeves,
+                              target_weights, week_index)
 
 MODEL_PARAMS = dict(max_depth=3, learning_rate=0.02, n_estimators=1500,
                     min_child_weight=20, subsample=0.85, colsample_bytree=0.8,
@@ -51,9 +52,19 @@ MODEL_PARAMS = dict(max_depth=3, learning_rate=0.02, n_estimators=1500,
                     tree_method="hist")
 HORIZONS = {"1w": dict(label="label", purge=10, kweeks=1),
             "4w": dict(label="label_4w", purge=35, kweeks=4)}
+# The 4-week targets a walk (and the live job) can train on: the horizon's
+# own week-centred label and the sector-centred one (Stage E of the clean
+# program, adopted 2026-09-12; build_panel stores both, Ctx recomputes the
+# sector one for older panels). Same hold, same purge; only the recentring
+# differs. The horizon menu above is untouched: HORIZONS is what the grid
+# stage walks and what price_frames keys its forward returns on.
+LABELS_4W = {"label_4w": "the stock's 4-week return minus that week's median member's",
+             "label_4w_sector": "the stock's 4-week return minus the same-week median of its "
+                                "sector (the week's median where the sector is unknown)"}
 WINDOWS = (1, 2, 3, 4, 5)
 BOOKS = (3, 6, 10)
-FLOORS = ("none", "halfgate", "80/20", "70/30", "60/40")
+# FLOORS / FLOOR_FRACTION / floor_split: stocks_ml.ledger, the one rule the
+# backtest and the live job share (halfgate runs live since 2026-09-12).
 COST = 0.0010
 K_COPIES = 16          # 4 until 2026-09-07 (ledger k16_champion_2006_2015_verdict)
 # The holdout's first session. Every pre-holdout grade window ends here as an
@@ -87,6 +98,12 @@ class Ctx:
         mem = world.read("membership")
         self.smap = dict(mem.dropna(subset=["sector"])
                          .drop_duplicates("ticker")[["ticker", "sector"]].values)
+        if "label_4w_sector" not in self.pan.columns:
+            # Panels built before 2026-09-12 store label_4w only; the sector
+            # target is the same fwd_ret_4w recentred on build_panel's sector map.
+            from stocks_ml.features.panel import sector_label
+            self.pan["label_4w_sector"] = sector_label(
+                self.pan["fwd_ret_4w"], self.pan["date"], self.pan["ticker"].map(self.smap))
         daily = self.prices.sort_values("date")
         self.delist_labels = getattr(self.cfg, "delist_labels", "drop")
         self.__dict__.update(price_frames(
@@ -110,11 +127,15 @@ class Ctx:
         return c
 
 
-def ensemble_preds(ctx, t, horizon, train_years):
+def ensemble_preds(ctx, t, horizon, train_years, label=None):
+    """The K_COPIES-copy ensemble score at rank week t: copy c is the champion
+    model on the trailing `train_years` under whole-week bootstrap seed c,
+    trained on `label` (the horizon's own label unless given; LABELS_4W)."""
     from stocks_ml.models.walk import walk_forward_predictions
     from stocks_ml.models.xgb import TimeTailEarlyStopXGB
     from stocks_ml.models.replication import WeekBootstrapEstimator
     h = HORIZONS[horizon]
+    label = label or h["label"]
     cfg2 = ctx.world_cfg(train_years)
     copies = []
     for c in range(1, K_COPIES + 1):
@@ -122,7 +143,7 @@ def ensemble_preds(ctx, t, horizon, train_years):
             TimeTailEarlyStopXGB(**MODEL_PARAMS, **fixed(h["purge"])),
             bootstrap_seed=c)
         wf = walk_forward_predictions(ctx.pan, est, cfg2, start=t, end=t,
-                                      label_col=h["label"],
+                                      label_col=label,
                                       purge_days=h["purge"],
                                       extra_features=tuple(ctx.extra))
         p = wf.preds.get(t)
@@ -215,6 +236,24 @@ def slice_row(ctx, t, horizon, preds):
     for k in BOOKS:
         row[f"top{k}"] = float(r.loc[order[:k]].mean())
     return row
+
+
+def ensemble_holdings(ctx, preds, copies, horizon="4w"):
+    """slice_row at every week of a saved walk (columns week, ticker, c1..cK)
+    for the mean of the given copies, exactly as ensemble_preds ranks them
+    (mean over copies; a week with fewer than 20 distinct scores is skipped).
+    Returns the holdings frame the cascade grades and the per-week scores."""
+    cols = [f"c{c}" for c in copies]
+    rows, means = [], {}
+    for t, g in preds.groupby("week"):
+        p = g.set_index("ticker")[[c for c in cols if c in g.columns]].mean(axis=1)
+        if p.nunique() < 20:
+            continue
+        row = slice_row(ctx, t, horizon, p)
+        if row is not None:
+            rows.append(row)
+            means[t] = p
+    return pd.DataFrame(rows), means
 
 
 def _stage_spec(extra=()):
@@ -447,19 +486,6 @@ def load_windows(out, horizon, lo, hi, min_coverage=0.95):
     return frames
 
 
-def floor_split(floor, gates):
-    """The floor menu as (book fraction, ballast thirds) for ledger.target_weights.
-    `gates` is ballast_state's per-window SPY/IEF reading."""
-    if floor == "none":
-        return 1.0, {}
-    if floor == "halfgate":
-        # book exposure 1 - g/2, g the share of windows below their mean; the
-        # rest in IEF
-        below = {w: f for w, f in gates.items() if f == "IEF"}
-        return 1.0 - 0.5 * len(below) / len(gates), below
-    return {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}[floor], dict(gates)
-
-
 def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
     """Weekly returns of the configured book under the live job's rules
     (stocks_ml.ledger): each rank date's target weights are filled at the
@@ -561,6 +587,32 @@ def metrics(series, lo, hi):
             "n_weeks": len(x)}
 
 
+def decide_strategy(ctx, holdings, horizon, lo, hi):
+    """The strategy layers, book down, on the holdings frame the run grades,
+    over the selection window [lo, hi] only: book by cost-adjusted compounded
+    %/yr (decide_book); floor, stop and cap by Sharpe of the simulated weekly
+    series, each at the picks above it, a stop or cap adopted only if higher.
+    This is the whole of what decides the deployed strategy settings —
+    `stocks-ml procedure` writes its result into models/champion_spec.json."""
+    lo, hi = pd.Timestamp(lo), pd.Timestamp(hi)
+    hold = holdings[(holdings.week >= lo) & (holdings.week <= hi)]
+    book, bres = decide_book(hold, horizon, lo, hi)
+    fres = {f: sharpe(simulate(ctx, hold, horizon, book, None, None, f), lo, hi)
+            for f in FLOORS}
+    floor = max(fres, key=fres.get)
+    sres = {str(s): sharpe(simulate(ctx, hold, horizon, book, None, s, floor), lo, hi)
+            for s in (None, -0.25)}
+    stop = None if sres["None"] >= sres["-0.25"] else -0.25
+    cres = {str(c): sharpe(simulate(ctx, hold, horizon, book, c, stop, floor), lo, hi)
+            for c in (None, 2)}
+    cap = None if cres["None"] >= cres["2"] else 2
+    return {"book": int(book), "floor": floor, "stop": stop, "cap": cap,
+            "evidence": {"book": {str(k): round(v, 2) for k, v in bres.items()},
+                         "floor": {k: round(v, 3) for k, v in fres.items()},
+                         "stop": {k: round(v, 3) for k, v in sres.items()},
+                         "cap": {k: round(v, 3) for k, v in cres.items()}}}
+
+
 def run_cascade(ctx, out, lo, hi, features=(), name=None):
     """Horizon and window are decided on the standing features; from the book
     down every decision reads the holdings the run grades (the `_x` file of a
@@ -576,23 +628,12 @@ def run_cascade(ctx, out, lo, hi, features=(), name=None):
     holdings = _load(out, f"{holdings_name(horizon, window, features)}_s*.parquet")
     assert holdings is not None, \
         f"holdings stage not run for {horizon}/{window}y — run stage holdings"
-    book, bres = decide_book(holdings, horizon, lo, hi)
-    fres = {f: sharpe(simulate(ctx, holdings, horizon, book, None, None, f), lo, hi)
-            for f in FLOORS}
-    floor = max(fres, key=fres.get)
-    sres = {str(s): sharpe(simulate(ctx, holdings, horizon, book, None, s, floor), lo, hi)
-            for s in (None, -0.25)}
-    stop = None if sres["None"] >= sres["-0.25"] else -0.25
-    cres = {str(c): sharpe(simulate(ctx, holdings, horizon, book, c, stop, floor), lo, hi)
-            for c in (None, 2)}
-    cap = None if cres["None"] >= cres["2"] else 2
-    config = {"horizon": horizon, "train_years": int(window), "book": int(book),
-              "floor": floor, "stop": stop, "cap": cap, "features": list(features),
+    layers = decide_strategy(ctx, holdings, horizon, lo, hi)
+    config = {"horizon": horizon, "train_years": int(window), "book": layers["book"],
+              "floor": layers["floor"], "stop": layers["stop"], "cap": layers["cap"],
+              "features": list(features),
               "evidence": {"horizon": hres, "window": {str(k): round(v, 2) if isinstance(v, float) else v for k, v in wres.items()},
-                           "book": {str(k): round(v, 2) for k, v in bres.items()},
-                           "floor": {k: round(v, 3) for k, v in fres.items()},
-                           "stop": {k: round(v, 3) for k, v in sres.items()},
-                           "cap": {k: round(v, 3) for k, v in cres.items()}}}
+                           **layers["evidence"]}}
     record_trials([{"kind": "select_pipeline",
                     "name": f"{name or f'select_{lo.date()}_{hi.date()}'}{'_x' if features else ''}",
                     "notes": json.dumps({k: config[k] for k in

@@ -24600,5 +24600,26 @@
   "max_dd": 0.587,
   "n_weeks": 966,
   "notes": "2006-01 -> 2024-07, the champion as deployed (models/champion_spec.json: top-6, 70/30, sector cap 2, no stop, the clean nominal line adopted 2026-09-11, K=16) graded by selection.simulate on its recorded basis (the delisting-honest world's walk from 2006-01-06, ops/nominal_program.py, ranks before the holdout): $1,028 (+13.4%/yr, SR 0.62, DD 59%) vs SPY $621 (+10.3%/yr, SR 0.64, DD 55%). The retired split-leak champion read $4,256 on these weeks (champion_generated_2006_2024_graded). In-sample for the book/ballast/cap choices; the holdout is untouched. reports/champion_explorer.html (app/oos/build.py champion)"
+ },
+ {
+  "date": "2026-09-11",
+  "kind": "procedure",
+  "name": "procedure_2006-01-01_2015-12-31_nominal_clean_2006_2015_dl",
+  "pre_holdout_sharpe": 0.487,
+  "notes": "{\"decision\": {\"book_size\": 6, \"floor\": \"60/40\", \"stop_loss\": null, \"sector_cap\": 2}, \"evidence\": {\"book\": {\"3\": 2.32, \"6\": 3.15, \"10\": 1.99}, \"floor\": {\"none\": 0.348, \"halfgate\": 0.4, \"80/20\": 0.386, \"70/30\": 0.41, \"60/40\": 0.438}, \"stop\": {\"None\": 0.438, \"-0.25\": 0.391}, \"cap\": {\"None\": 0.438, \"2\": 0.487}}, \"preds_sha256\": \"1c35d580c9c2\", \"changed\": {}}"
+ },
+ {
+  "date": "2026-09-12",
+  "kind": "clean_program_stage_e",
+  "name": "stage_e_ls_w8_k16",
+  "pre_holdout_sharpe": 0.698,
+  "notes": "{\"recipe\": {\"label\": \"label_4w_sector\", \"train_years\": 8}, \"settings\": {\"book\": 10, \"floor\": \"halfgate\", \"stop\": null, \"cap\": null}, \"2016_2024\": {\"terminal_100\": 659.8, \"cagr_pct\": 24.61, \"sharpe\": 0.88, \"max_dd\": 0.334, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 1994.0, \"cagr_pct\": 17.48, \"sharpe\": 0.698, \"max_dd\": 0.628, \"n_weeks\": 966}, \"falsification_t\": 1.32, \"verdict\": \"not rejected\", \"leak\": \"PASS\", \"inflation\": {\"2006-2015\": 3.04, \"2016-2024\": 6.39, \"2006-2024\": 4.51}}"
+ },
+ {
+  "date": "2026-09-12",
+  "kind": "procedure",
+  "name": "procedure_2006-01-01_2015-12-31_clean_program_stage_e_ls_w8_select",
+  "pre_holdout_sharpe": 0.532,
+  "notes": "{\"decision\": {\"book_size\": 10, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": null}, \"evidence\": {\"book\": {\"3\": 2.14, \"6\": 7.86, \"10\": 8.11}, \"floor\": {\"none\": 0.455, \"halfgate\": 0.532, \"80/20\": 0.48, \"70/30\": 0.496, \"60/40\": 0.514}, \"stop\": {\"None\": 0.532, \"-0.25\": 0.482}, \"cap\": {\"None\": 0.532, \"2\": 0.523}}, \"preds_sha256\": \"94b2cf6042d9\", \"changed\": {\"book_size\": [6, 10], \"floor\": [\"60/40\", \"halfgate\"], \"sector_cap\": [2, null], \"label\": [\"label_4w\", \"label_4w_sector\"], \"train_years\": [5, 8]}}"
  }
 ]

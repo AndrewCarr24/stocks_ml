@@ -8,16 +8,23 @@ pre-holdout weeks only:
    date — the restatement a look-ahead basis leak rides on (the 2026-09
    split leak). Reported: mean weekly Spearman(score, factor); the score's
    weekly IC; the IC after residualizing score ranks on factor ranks per
-   week. GATE: the residual IC must retain >= 75% of the raw IC (the leaky
-   champion retained ~47%; true momentum correlates with the factor, so
-   some attenuation is legitimate).
+   week; the retention ratio. REPORT-ONLY since 2026-09-12 (owner's
+   ruling): a model that favours strong, rising companies favours future
+   splitters for legitimate reasons, so the correlation cannot separate a
+   leak from a proxy; and the future split factor is partly future return,
+   so residualizing it removes real skill too. Until then the retention
+   gate (>= 75%; the leaky champion retained 0.49) was the verdict — it
+   failed the clean-program package on 2006-2015 at retention -1.31, a
+   ratio of two zeros (IC 0.0002, t 0.02).
 2. DELISTING: names whose last print falls within 8 weeks after the rank
    date. Reported: their rate in the top-15 vs the member universe (the
    backtest's slice_row cannot rank them; a large gap flags survivorship
    pressure on the scores). Report-only.
 3. IDENTITY: the store's prices table must carry closeunadj/close_split,
    and for the three names with the largest in-window future-split factors
-   the nominal r_sf_bvps must equal stored x factor. GATE: exact.
+   the nominal r_sf_bvps must equal stored x factor — the mechanism by
+   which the leak was removed, checked where it matters most. GATE: exact;
+   the only gate.
 
 Usage:
   PYTHONPATH=src:. .venv/bin/python ops/leak_audit.py \
@@ -36,7 +43,7 @@ import pandas as pd
 
 from stocks_ml.selection import HOLDOUT_START
 
-RETENTION_GATE = 0.75
+RETENTION_GATE = 0.75   # report-only since 2026-09-12; kept so the number stays comparable
 DELIST_DAYS = 56
 
 
@@ -129,8 +136,8 @@ def audit(store: str, preds_paths: list[str]) -> dict:
         "ic": round(float(ic), 5), "ic_t": round(nw_t(t["ic"]), 2),
         "ic_resid_factor": round(float(ic_r), 5), "ic_resid_t": round(nw_t(t["ic_resid"]), 2),
         "ic_retention": round(retention, 3),
-        "retention_gate": f">= {RETENTION_GATE}",
-        "FACTOR": "PASS" if retention >= RETENTION_GATE else "FAIL",
+        "retention_reference": f">= {RETENTION_GATE} (report-only since 2026-09-12)",
+        "FACTOR": "report-only",
         "delist_within_8w_universe": round(float(t["delist_uni"].mean()), 5),
         "delist_within_8w_top15": round(float(t["delist_top15"].mean()), 5),
     }
@@ -157,20 +164,19 @@ def audit(store: str, preds_paths: list[str]) -> dict:
         ok &= good
     res["identity_top_splitters"] = ident
     res["IDENTITY"] = "PASS" if ok else "FAIL"
-    res["VERDICT"] = "PASS" if (res["FACTOR"] == "PASS" and ok) else "FAIL"
+    res["VERDICT"] = res["IDENTITY"]
     return res
 
 
 def audit_segments(store: str, preds_paths: list[str]) -> dict:
-    """One audit PER preds file, gated on the worst segment. Pooling dilutes:
-    the leaky 2026-09 champion fails its selection window (retention 0.49)
-    yet passes 2016-2024 pooled-in, because in that era the factor-correlated
-    component aligned with realized returns. The selection window is the
-    segment that must be in the set."""
+    """One audit PER preds file; the verdict is the identity check on every
+    segment. The factor numbers are reported per segment, never pooled:
+    the leaky 2026-09 champion showed retention 0.49 on its selection
+    window yet ~1 with 2016-2024 pooled in, because in that era the
+    factor-correlated component aligned with realized returns."""
     segs = {Path(p).parent.name: audit(store, [p]) for p in preds_paths}
-    worst = min(s["ic_retention"] for s in segs.values()
-                if np.isfinite(s["ic_retention"]))
-    out = {"segments": segs, "worst_retention": round(float(worst), 3),
+    finite = [s["ic_retention"] for s in segs.values() if np.isfinite(s["ic_retention"])]
+    out = {"segments": segs, "worst_retention": round(float(min(finite)), 3) if finite else None,
            "VERDICT": "PASS" if all(s["VERDICT"] == "PASS" for s in segs.values()) else "FAIL"}
     return out
 

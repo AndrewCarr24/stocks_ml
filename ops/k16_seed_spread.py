@@ -125,19 +125,9 @@ def gl(m):
 
 
 def ensemble_rows(sel, ctx, preds, copies):
-    """slice_row for the mean of the given copies at every week, as
-    ensemble_preds would rank them (mean over copies, >= 20 distinct)."""
-    cols = [f"c{c}" for c in copies]
-    rows, means = [], {}
-    for t, g in preds.groupby("week"):
-        p = g.set_index("ticker")[[c for c in cols if c in g.columns]].mean(axis=1)
-        if p.nunique() < 20:
-            continue
-        row = sel.slice_row(ctx, t, "4w", p)
-        if row is not None:
-            rows.append(row)
-            means[t] = p
-    return pd.DataFrame(rows), means
+    """selection.ensemble_holdings: slice_row for the mean of the given copies
+    at every week, as ensemble_preds would rank them."""
+    return sel.ensemble_holdings(ctx, preds, copies)
 
 
 def agreement(a: dict, b: dict):

@@ -13,87 +13,91 @@ places the orders.
 
 The production system is `r5` — declared 2026-09-01 after a month-horizon
 rebuild, specified in [models/champion_spec.json](models/champion_spec.json)
-and summarized in [PROCEDURE.md](PROCEDURE.md).
+and summarized in [PROCEDURE.md](PROCEDURE.md). Its current form is the
+package that came out of the clean-improvement program's Stage E, adopted
+2026-09-12 ([reports/clean_improvement.md](reports/clean_improvement.md)).
 
 | Component | Spec |
 |---|---|
 | Model | depth-3 XGBoost, untuned by design (hyperparameter search measured as noise) |
-| Target | the stock's 4-week open-to-open return minus that week's median member's; 35-day purge |
-| Training | weekly refit on the trailing 5 years; early stopping on a purged, time-ordered tail's weekly rank correlation |
+| Target | the stock's 4-week open-to-open return minus the same-week median of its sector; 35-day purge |
+| Training | weekly refit on the trailing 8 years; early stopping on a purged, time-ordered tail's weekly rank correlation |
 | Ensemble | K=16 copies (seed + whole-week bootstrap), predictions averaged (K=4 until 2026-09-07) |
-| Features | the point-in-time panel plus a generated bundle of 40 features (adopted 2026-09-06): formulas over the panel's raw inputs — book value per share, share price, market cap, sales-to-price, 8-K filing counts and the like — enumerated by a mechanical generator and chosen on 2006–2015 alone by their weekly rank correlation with the label ([src/stocks_ml/features/bundle.py](src/stocks_ml/features/bundle.py) lists them) |
-| Book | top-6, equal weight, four staggered sleeves — one rotates each week, so every name is held four weeks; max 2 per sector |
-| Ballast | 70% book / 30% ballast; ballast in SPY, shifted to IEF one third per breached SPY trailing mean (30/40/52 weeks) |
+| Features | the point-in-time panel's 64 standing columns (prices, fundamentals, filings, insider, short interest, macro) on the nominal per-share basis; no engineered bundle (the earlier bundles were retired 2026-09-11 when a split-adjustment leak was found in their inputs) |
+| Book | top-10, equal weight, four staggered sleeves — one rotates each week, so every name is held four weeks; no sector cap; no stop-loss |
+| Ballast | half-gate: the book holds 100 / 83 / 67 / 50% of NAV as 0 / 1 / 2 / 3 of SPY's trailing means (30 / 40 / 52 weeks) are breached; the rest sits in IEF |
 | Costs | 5 bp one-way, fills at Monday's open |
 
-**Record, 2006 → 2024-07 (selection window, graded as deployed, costs
-included):** $100 → **$4,256**, +22.4%/yr, Sharpe 0.92, max drawdown 55% — vs
-SPY $608, +10.2%/yr, Sharpe 0.63, drawdown 55%
-([reports/k16_champion_record.md](reports/k16_champion_record.md); on 2016 →
-2024-07, where the bundle is out of sample, $900 vs $666 for the same
-settings without it, both at K=16, and SPY $310). This is the sixteen-copy
-walk adopted 2026-09-07: the K=4 walk of record before it graded $3,498
-(+21.1%/yr, Sharpe 0.88, drawdown 50%;
-[reports/openfe_arm_v3.md](reports/openfe_arm_v3.md)), and three other
-independent K=4 draws of the same model graded $3,434, $2,493 and $2,218 —
-one draw's luck is worth about ±$600 on the K=4 record, which is why K went
-to 16. Before any bundle the same settings graded $1,553
-(+15.9%/yr, Sharpe 0.72, drawdown 62%) vs SPY $623 on 2006 → 2024-06. An
-earlier bundle of 7 hand-written features (adopted 2026-09-05, replaced
-2026-09-06) graded $3,058 with an asterisk: its candidate ideas were written
-after reading the whole 2006–2024 record
-([reports/champion_bundle_regrade.md](reports/champion_bundle_regrade.md));
-the generated bundle read no grading year. Read all of it with the
-spec's own caveat: the edge is era-concentrated (strong 2013–2020, index-like
-in whipsaw and mega-cap regimes), every number from the selection window
-carries design-iteration shine (measured at about +2%/yr on dollars,
-~0 on Sharpe), and sizing should assume SPY-like outcomes in adverse regimes.
-The holdout (2024-07-19 onward) has not been graded; it is a single-use exam.
-[reports/r5_package_2006_2024.png](reports/r5_package_2006_2024.png) shows the
-champion with and without the earlier bundle, its raw top-6 book and SPY over
-the same window. Every figure here
-is graded by the live job's own rules — orders fill at the next session's
-open, 5 bp a side on every trade
-([reports/fill_basis_regrade.md](reports/fill_basis_regrade.md) re-grades the
-whole campaign on that basis beside the earlier close-basis record of $1,644;
-[reports/rank_date_regrade.md](reports/rank_date_regrade.md) did the same for
-the corrected rank-date join; no selection changed either time).
+The model fields (label, window) and the strategy layers (book, ballast,
+stop, cap) are written into the spec by `stocks-ml procedure` from the
+walk that decided them; tests fail on a hand edit of either the spec or
+the live job.
+
+**Record, K=16, graded as deployed (costs included), 2006-01 → 2024-07-18:**
+$100 → **$1,994**, +17.5%/yr, Sharpe 0.70, max drawdown 63% — vs SPY $621
+on the same weeks, +10.4%/yr, Sharpe 0.65, drawdown 55%
+([reports/champion_vs_sp500_2006_2024.png](reports/champion_vs_sp500_2006_2024.png)).
+On 2016-01 → 2024-07, where the label and window were not chosen, $660,
++24.6%/yr, Sharpe 0.88, drawdown 33% vs SPY $316, +14.3%/yr, 0.87, 32%
+([reports/champion_vs_sp500_2016_2024.png](reports/champion_vs_sp500_2016_2024.png));
+on 2006–2015, the selection window, $302 vs SPY $197. The excess over SPY
+on 2016–2024 is +9.0%/yr with a 95% interval of −3.9 to +24.2 when both
+the model's seeds and the history are resampled; the chance the edge is
+real is about 0.91 ([reports/clean_improvement.md](reports/clean_improvement.md)).
+
+Read it with the spec's own caveat. The edge is era-concentrated: the book
+buys high-volatility, beaten-down names, so its good years are rebound
+years (2009, 2016, 2019–2021) and it is index-like in 2010–2015 and
+2022–2024; it fell further than SPY in 2008–09 (63% vs 55%). Every
+pre-holdout number carries design-iteration shine — the label and window
+were chosen among 15 candidates on 2006–2015, and 2016–2024 was read once,
+for this grade. Sizing should assume SPY-like outcomes in adverse regimes.
+The holdout (2024-07-19 onward) has not been graded; it is a single-use
+exam. Every figure is graded by the live job's own rules: orders fill at
+the next session's open, 5 bp a side on every trade.
+
+Before 2026-09-12 the champion was the same clean model with the
+week-centred label, a 5-year window, top-6, sector cap 2 and a fixed
+book/ballast split: $963 vs SPY $621 on 2006 → 2024-07, $420 vs $316 on
+2016 → 2024-07.
+Before 2026-09-11 it also trained on a generated bundle of 40 features
+whose record ($4,256 on 2006 → 2024-07) was contaminated by the
+split-adjustment leak; those numbers are history and are kept in
+[AGENTS.md](AGENTS.md) and the ledger for scale only.
 
 ### How it was chosen
 
-The procedure is a fixed cascade run on the selection window only, one
-decision per layer, each by a metric declared in advance:
+The procedure is a fixed cascade run on the selection window (2006–2015)
+only, one decision per layer, each by a metric declared in advance:
 
 | step | menu | decided by |
 |---|---|---|
 | horizon | 1w vs 4w | cost-adjusted compounded return of the top-6 book |
 | training window | 1–5 years | top-6 edge vs a random basket on identical weeks |
-| book size | top-3 / 6 / 10 | cost-adjusted compounded return |
+| label × window × fit (clean program, 2026-09-11) | 15 variants of the clean line — week-centred / sector-centred / gauss-rank labels, 3 / 5 / 8-year windows, fixed rounds, learning rate, depth, column and leaf settings — ranked on a 131-week sample; the top four plus their pairings walked on every week of 2006–2015 at K=4 | cost-adjusted compounded %/yr of the top-6 book (`ops/clean_program.py`) — the sector label on an 8-year window won, +7.57 vs the incumbent's +5.44 |
+| book size | top-3 / 6 / 10 | cost-adjusted compounded return — top-10 |
 | stagger | always on | mechanism, not searched |
-| ballast | none / half-gate / 80-20 / 70-30 / 60-40 | Sharpe |
+| ballast | none / half-gate / 80-20 / 70-30 / 60-40 | Sharpe — half-gate |
 | stop-loss | off / −25% | Sharpe (adopt only if higher) — off |
-| sector cap | off / 2-of-book | Sharpe (adopt only if higher) — on |
-| feature screen | 48 candidate columns, probed on the selection window | keepers examined as one bundle; admitted iff the top-6 book compounds faster with it (`--screen`) |
+| sector cap | off / 2-of-book | Sharpe (adopt only if higher) — off |
+| feature screen | candidate columns probed on the selection window | keepers examined as one bundle; admitted iff the top-6 book compounds faster with it — the clean program's 16 admitted features were dropped by the owner after the 2016–2024 read, so the champion carries none |
 
-`stocks-ml select` runs it end to end. The cascade was validated by a nested
-test ([reports/nested_selection_protocol.md](reports/nested_selection_protocol.md)):
-run on 2006–2015 alone it chose a near-champion configuration, whose frozen
-grade on 2016 → 2024-07 is $521 (+21.2%/yr, Sharpe 1.00, drawdown 34%) vs
-SPY $316 (+14.3%/yr, 0.87, 32%) — the champion's clean settings on the same
-span give $590, which is where the inflation estimate comes from. The same
-nested run with the feature screen admitted the bundle and chose a
-concentrated top-3 book with a half-gate ballast, graded once at $1,379
-(+35.8%/yr, Sharpe 1.14, drawdown 40%) on those weeks; the champion kept its
-own top-6 / 70-30 settings and took only the features — until the generated
-bundle, chosen on 2006–2015 by a mechanical generator with no hand-written
-ideas anywhere, beat the clean line ($863 vs $590 on 2016 → 2024-07) and
-replaced them ([reports/openfe_arm_v3.md](reports/openfe_arm_v3.md)).
-Every configuration ever evaluated is in
-[models/trials_ledger.json](models/trials_ledger.json). The champion is never
-re-tuned on a calendar: nested experiments showed calendar re-selection at any
-cadence adds drawdown without reliable return. Re-selection happens only on a
-structural trigger (a new data source passes its gate, a pre-registered kill
-criterion fires, or the owner directs it).
+`stocks-ml procedure --preds <walk>` runs the strategy layers on a saved
+K=16 walk of the selection window and writes the result into the spec;
+`stocks-ml select` runs the older end-to-end cascade. The cascade was
+validated by a nested test
+([reports/nested_selection_protocol.md](reports/nested_selection_protocol.md)):
+run on 2006–2015 alone it chose a near-champion configuration whose frozen
+grade on 2016 → 2024-07 was $521 vs SPY $316 (on the split-leaky inputs of
+the time). The Stage E package was held to the same standard: a
+pre-registered falsification test (paired weekly excess over the previous
+champion on 2016–2024, t < −2 rejects) read t +1.3, and a leak audit
+passed on both walk segments before adoption. Every configuration ever
+evaluated is in [models/trials_ledger.json](models/trials_ledger.json).
+The champion is never re-tuned on a calendar: nested experiments showed
+calendar re-selection at any cadence adds drawdown without reliable return.
+Re-selection happens only on a structural trigger (a new data source passes
+its gate, a pre-registered kill criterion fires, or the owner directs it).
 
 ## The weekly job
 
@@ -107,11 +111,10 @@ workflow. Every Saturday 13:00 UTC it runs `stocks-ml r5-weekly --commit`
    filings; then SEC EDGAR company facts and 8-Ks, FINRA short interest and
    FRED. Symbol renames are detected by permanent ticker id and rewritten in
    every stored table so history carries over.
-2. **Rebuild the panel** with the research recipe (the candidate columns
-   ride along, and the generated bundle's columns are computed from the
-   spec's formulas; the spec's `features` names the ones the model sees),
-   then fit the K=16 ensemble on the trailing five years and rank every
-   current member.
+2. **Rebuild the panel** with the research recipe (the same code the
+   research walks use, including the sector-relative label), then fit the
+   K=16 ensemble on the spec's label and trailing window (8 years) and rank
+   every current member.
 3. **Rotate the due sleeve** (the schedule is anchored so a rerun on the same
    Friday is a no-op), set the ballast state from SPY's trailing means, and
    write target weights.
@@ -177,6 +180,7 @@ git-ignored in full.
 ```bash
 uv run stocks-ml r5-weekly [--as-of FRIDAY] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] [--screen]
+uv run stocks-ml procedure --preds <K=16 walk>/preds.parquet [--check]   # decide + write the spec's layers
 uv run stocks-ml procedure-card      # regenerate PROCEDURE.md from the champion spec
 ```
 
@@ -197,7 +201,8 @@ reasons it lost are recorded in [AGENTS.md](AGENTS.md).
   from the spec).
 - [models/trials_ledger.json](models/trials_ledger.json) — every evaluated
   configuration.
-- [reports/](reports/) — the nested-selection protocol, the point-in-time
-  source audit, the regrades (rank date, fill basis, the engineered bundle)
-  and the champion-vs-SPY charts.
+- [reports/](reports/) — the clean-improvement program (registration and
+  report), the nested-selection protocol, the point-in-time source audit,
+  the regrades (rank date, fill basis, the engineered bundle) and the
+  champion-vs-SPY charts.
 - [docs/research/](docs/research/) — notes on the papers the design leans on.

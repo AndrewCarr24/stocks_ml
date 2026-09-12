@@ -75,17 +75,27 @@ def test_variants_describe_their_configuration_and_write_separate_pages(tmp_path
     assert (v["select"]["lo"], v["select"]["hi"]) == ("2006-01-01", "2024-07-18")  # holdout untouched
     # the champion page reads the spec, on the recorded basis: ranks before the holdout
     assert v["champion"]["config"]["features"] == oos_build.spec_config()["features"]
-    # the clean line's K=16 mean on the delisting-honest world (no bundle: bare stem, k16 tag)
-    assert v["champion"]["rankings"].parent.name == "nominal_clean_dl_k16"
-    assert v["champion"]["rankings"].name == "holdings_4w_5y_k16.parquet"
+    # the champion walk's K=16 mean on the delisting-honest world (no bundle: bare stem,
+    # k16 tag), the walk the spec's procedure block names (Stage E's ls_w8 since 2026-09-12)
+    spec = json.loads(oos_build.SPEC.read_text())
+    assert oos_build.CLEAN_PREDS[0] == oos_build.ROOT / spec["procedure"]["preds"]["path"]
+    assert v["champion"]["rankings"].parent == oos_build.CLEAN_PREDS[0].parent.parent
+    assert v["champion"]["rankings"].name == f"holdings_4w_{spec['training_window_years']}y_k16.parquet"
+    assert str(spec["training_window_years"]) in oos_build.CHAMPION_VERDICT
     assert v["champion"]["world"].name == "sharadar_world2000_nominal_dl"
     assert v["champion"]["delist"] == "last_print" and v["champion"]["ensemble"] == "k16"
     assert v["champion"]["screen"] is None                                  # no asterisk line: nothing screened
-    assert oos_build.describe(oos_build.load_config(v["champion"]), 5).endswith(
-        "sector cap 2, 70/30 trend ballast, no stop-loss")
+    dec = json.loads(oos_build.SPEC.read_text())["procedure"]["decision"]   # the procedure's, not typed
+    cap_text = f"sector cap {dec['sector_cap']}" if dec["sector_cap"] else "no sector cap"
+    floor_text = {"halfgate": "half-gate"}.get(dec["floor"], dec["floor"])
+    text = oos_build.describe(oos_build.load_config(v["champion"]), spec["training_window_years"])
+    assert text.endswith(f"{cap_text}, {floor_text} trend ballast, no stop-loss")
+    assert f"{spec['training_window_years']}-year training window, top-{dec['book_size']}" in text
     assert v["champion"]["ranks_before"] == "2024-07-18" and v["champion"]["lo"] == "2006-01-01"
     assert oos_build.load_config(v["champion"]) == dict(
-        horizon="4w", book=6, cap=2, stop=None, floor="70/30", features=v["champion"]["config"]["features"])
+        horizon="4w", book=dec["book_size"], cap=dec["sector_cap"], stop=dec["stop_loss"],
+        floor=dec["floor"], features=v["champion"]["config"]["features"])
+    assert dec["floor"] in oos_build.CHAMPION_VERDICT
     frozen = dict(horizon="4w", book=3, cap=None, stop=-0.25, floor="60/40")
     assert oos_build.describe(frozen, 5) == ("4-week horizon, 5-year training window, top-3 in four "
                                              "staggered sleeves, no sector cap, 60/40 trend ballast, "

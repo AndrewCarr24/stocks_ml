@@ -21,6 +21,9 @@ re-grades every layer and the champion package old join vs fixed join.
            (kind/name unchanged, old numbers kept in the notes), chart data
   charts   reports/r5_package_2006_2024.png, reports/r4w_vs_sp500_2021_2024.png
            (needs matplotlib: `uv run --with matplotlib python ops/regrade_campaign.py charts`)
+           — the 2026-09 champion on the split-leaky basis; the files were removed
+           2026-09-12 when the Stage E champion's charts replaced them
+           (`ops/clean_program.py champion_chart` -> reports/champion_vs_sp500_*.png)
 
 Run from the repo root: .venv/bin/python ops/regrade_campaign.py {build,cascade,report,charts,all}
 

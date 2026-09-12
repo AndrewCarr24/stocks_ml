@@ -320,23 +320,9 @@ def grade_clean():
 
 
 def cascade_at(sel, ctx, hold):
-    """run_cascade's book-down layers on the given holdings over the
-    selection window: book by cost-adjusted compounded %/yr, then floor, stop
-    and cap by Sharpe, each at the picks above it."""
-    lo, hi = SELECT
-    hold = hold[(hold.week >= lo) & (hold.week <= hi)]
-    book, bres = sel.decide_book(hold, "4w", lo, hi)
-    fres = {f: sel.sharpe(sel.simulate(ctx, hold, "4w", book, None, None, f), lo, hi) for f in sel.FLOORS}
-    floor = max(fres, key=fres.get)
-    sres = {str(s): sel.sharpe(sel.simulate(ctx, hold, "4w", book, None, s, floor), lo, hi) for s in (None, -0.25)}
-    stop = None if sres["None"] >= sres["-0.25"] else -0.25
-    cres = {str(c): sel.sharpe(sel.simulate(ctx, hold, "4w", book, c, stop, floor), lo, hi) for c in (None, 2)}
-    cap = None if cres["None"] >= cres["2"] else 2
-    return {"book": int(book), "floor": floor, "stop": stop, "cap": cap,
-            "evidence": {"book": {str(k): round(v, 2) for k, v in bres.items()},
-                         "floor": {k: round(v, 3) for k, v in fres.items()},
-                         "stop": {k: round(v, 3) for k, v in sres.items()},
-                         "cap": {k: round(v, 3) for k, v in cres.items()}}}
+    """run_cascade's book-down layers (selection.decide_strategy) on the given
+    holdings over the selection window."""
+    return sel.decide_strategy(ctx, hold, "4w", *SELECT)
 
 
 def grade_champion():

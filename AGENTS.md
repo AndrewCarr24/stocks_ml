@@ -16,11 +16,39 @@ commit before the prune): `git show legacy-final:<path>` or
 `git worktree add ../legacy legacy-final`. The history sections below keep
 their original file references on purpose.
 
-## Current state (2026-09-11)
+## Current state (2026-09-12)
 
-- **Champion since 2026-09-11: the clean nominal line, no bundle** (the
-  split-leak rebuild; details in the dated bullet "Champion switched to the
-  clean nominal line" below and in the spec's `provenance`). Record, K=16 on
+- **Champion since 2026-09-12: the clean-improvement program's Stage E
+  package, ls_w8** (reports/clean_improvement_registration.md,
+  reports/clean_improvement.md; the dated bullet "Stage E adopted" below).
+  Same clean model (64 base features, nominal basis, last-print labels, no
+  bundle) with a different target and window: **`label_4w_sector`** (the
+  4-week return minus the same-week median of the stock's sector; the
+  week's median where the sector is unknown) on a **trailing 8-year
+  window**; strategy layers decided by `stocks-ml procedure` on the
+  package's own K=16 walk of 2006-2015: **top-10 / halfgate / no stop / no
+  cap** (book %/yr {3: 2.14, 6: 7.86, 10: 8.11}; floor Sharpe {none .455,
+  halfgate .532, 80/20 .480, 70/30 .496, 60/40 .514}; stop -25% .482; cap 2
+  .523). Record, K=16, graded as deployed, every window ending at the
+  holdout exclusive, SPY on the same weeks: **2006-2015 $302 | 2016-2024
+  $660 (+24.6%/yr, SR 0.88, DD 33%) | 2006-2024 $1,994 (+17.5%/yr, SR
+  0.70, DD 63%) vs SPY $197 / $316 / $621**; paired weekly t vs SPY 1.15 /
+  1.52 / 1.90; 95% nested CI on the 2016-2024 excess CAGR -3.9..+24.2
+  around +9.0%/yr (P(excess > 0) 0.91), 2006-2024 -2.5..+16.2 around +6.5.
+  Falsification test as registered (paired weekly excess vs the incumbent
+  on 2016-2024, t < -2 rejects): t +1.32, not rejected; the package's edge
+  over the incumbent is +3.0 %/yr on 2006-2015 (chosen there) and +6.4 on
+  2016-2024 (not) — the opposite of selection inflation. Leak audit PASS
+  on both segments. Ledger `stage_e_ls_w8_k16`, `procedure_2006-01-01_
+  2015-12-31_clean_program_stage_e_ls_w8_select`. Charts
+  reports/champion_vs_sp500_{2006,2016}_2024.png (`ops/clean_program.py
+  champion_chart`). First live signal on these settings: 2026-09-19 (the
+  2026-09-11 signal ran on the committed spec of the time); the paper
+  ledger's 6-name sleeves refill to 10 as each rotates over four weeks.
+- **Champion 2026-09-11 -> 2026-09-12: the clean nominal line, no bundle**
+  (the split-leak rebuild; details in the dated bullet "Champion switched to
+  the clean nominal line" below and in the spec's `provenance`). This is
+  the incumbent Stage E was measured against. Record, K=16 on
   the delisting-honest world, every window ending at the holdout exclusive:
   **2006-2015 $229 | 2016-2024 $449 (+19.1%/yr, SR 0.80, DD 42%) |
   2006-2024 $1,028 (+13.4%/yr, SR 0.62, DD 59%) vs SPY $197 / $316 / $621**;
@@ -31,14 +59,18 @@ their original file references on purpose.
 - **Champion: r5** (`models/champion_spec.json`, rendered to PROCEDURE.md by
   `stocks-ml procedure-card`), declared 2026-09-01 after the month-horizon
   rebuild on the Sharadar world: depth-3 XGBoost (MODEL_PARAMS in
-  selection.py, untuned by design), 4-week open-to-open label minus the
-  week's member median, 35-day purge, weekly refit on the trailing 5 years
-  with a purged time-tail early stop, K=16 week-bootstrap copies averaged
-  (K=4 until 2026-09-07);
-  top-6 equal weight in four staggered sleeves (one rotates per week, every
-  name held four weeks), sector cap 2; 70% book / 30% ballast, the ballast
-  SPY shifting to IEF one third per breached SPY trailing mean (30/40/52
-  weeks); fills at the next session's open, 5 bp a side. **From 2026-09-06
+  selection.py, untuned by design), a 4-week open-to-open label, 35-day
+  purge, weekly refit on a trailing window with a purged time-tail early
+  stop, K=16 week-bootstrap copies averaged (K=4 until 2026-09-07); equal
+  weight in four staggered sleeves (one rotates per week, every name held
+  four weeks); a SPY trend-gated ballast (30/40/52-week trailing means);
+  fills at the next session's open, 5 bp a side. Since 2026-09-12 the
+  label is sector-centred, the window 8 years, the book top-10 with no cap
+  and the floor halfgate (first bullet). Until then: the week-centred
+  `label_4w`, 5 years, top-6, sector cap 2, a fixed 70% book / 30% ballast
+  (60/40 in the spec from the 2026-09-11 procedure run, never committed or
+  run live), the ballast SPY shifting to IEF one third per breached gate.
+  **From 2026-09-06
   to 2026-09-11 the model also trained on the generated bundle of 40 features
   (retired: built on split-leaky inputs)**
   (`features/bundle.py`: formulas over the panel's raw inputs, chosen on
@@ -262,15 +294,21 @@ their original file references on purpose.
   graded for r5 and nothing may touch it without the owner's explicit go.
 - **Leak audit before adoption (owner's mandate 2026-09-10):** no candidate
   becomes champion until `ops/leak_audit.py` PASSES on its saved preds —
-  run PER WALK SEGMENT, gated on the worst, the selection window always in
-  the set (pooling windows dilutes: the leaky champion failed 2006-2015 at
-  retention 0.49 yet passed with 2016-2024 pooled in):
-  scores tested against future-information proxies (the vendor adjustment
-  factor closeadj/closeunadj — the split-leak channel; delisting-within-8w),
-  with the residual-IC retention gate (>= 75% after factor residualization;
-  the leaky 2026-09 champion retained ~47%) and per-share identity checks.
-  Pre-holdout weeks only. Born from the split-leak finding: an unusually
-  strong result triggers a leak audit, never a celebration.
+  run PER WALK SEGMENT, every segment must pass, the selection window
+  always in the set. The gate is the per-share IDENTITY check: for the
+  largest in-window future splitters, the nominal per-share input must
+  equal stored x split factor — the mechanism by which the split leak was
+  removed. The factor statistics (score-vs-adjustment-factor Spearman, IC,
+  IC after residualizing the factor, retention) and delisting-within-8w
+  rates are REPORTED per segment, never gated (owner's ruling 2026-09-12:
+  a model that favours rising companies favours future splitters for
+  legitimate reasons, so the correlation cannot separate a leak from a
+  proxy, and residualizing a factor that is partly future return removes
+  real skill; the old retention gate (>= 75%; the leaky champion retained
+  0.49 on 2006-2015, ~1 pooled) failed the clean-program package on a
+  ratio of two zeros). Pre-holdout weeks only. Born from the split-leak
+  finding: an unusually strong result triggers a leak audit, never a
+  celebration.
 - **Delisting-honest world (2026-09-10, reports/delisting_honest_verdict.md):**
   `Config.delist_labels = "last_print"` (env `STOCKS_ML_DELIST_LABELS`; the
   checked-in config.yaml since 2026-09-11) makes training and backtesting match live
@@ -291,11 +329,10 @@ their original file references on purpose.
   history; their nominal-basis replacement failed admission, 5.93 vs 8.14
   %/yr on 2006-2015, ledger `nominal_program_verdict`), `config.yaml`
   `price_basis: nominal` and `delist_labels: last_print` (the spec records
-  both with notes). Strategy layers unchanged (top-6 / cap 2 / no stop /
-  70-30, K=16, 5y, 4w — "do not scrap the champion"; the clean cascade's own
-  argmax reads book 6 / 60-40 on the honest world, 3 / half-gate on the
-  standing one, inside the path band; re-deciding them is a registered
-  research item). Config precedence flipped to env > yaml > default so the
+  both with notes). Strategy layers were kept by hand at the switch (top-6 /
+  cap 2 / no stop / 70-30) while the clean cascade's own argmax read book 6 /
+  60-40 on the honest world — a discretionary override, corrected the same
+  day (next bullet). Config precedence flipped to env > yaml > default so the
   research drivers can still read the other world (`STOCKS_ML_PRICE_BASIS`,
   `STOCKS_ML_DELIST_LABELS`); the live workflow sets no such env. Live's
   `prices` frame gains closeunadj/close_split from `refresh_sharadar`
@@ -309,6 +346,64 @@ their original file references on purpose.
   Transition on the paper ledger: the due sleeve rotates into clean picks on
   the first Saturday, the other three over the following three weeks; NAV
   continues; each signal file records the spec it ran.
+- **The procedure writes the strategy (2026-09-11, owner: "the backtest
+  procedure should be Python code").** `stocks-ml procedure --preds <K=16
+  walk of the selection window>` (src/stocks_ml/procedure.py) ranks the
+  saved walk as live ranks (`selection.ensemble_holdings`), runs
+  `selection.decide_strategy` (the cascade's book-down layers: book by
+  cost-adjusted compounded %/yr; floor, stop, cap by Sharpe — the one
+  function `run_cascade` and the ops drivers' `cascade_at` now call) on
+  2006-2015 only, and WRITES `strategy.book_size / stop_loss / sector_cap`,
+  `ballast.mix` and `name` into `models/champion_spec.json` with a
+  `procedure` block (walk path + sha256 + weeks, world, basis, K, evidence,
+  decision, the selection-window record) and regenerates PROCEDURE.md.
+  `live/r5.py` reads SPEC from the spec at import (`r5.load_spec` →
+  `procedure.live_strategy`); nothing in the job is typed. tests/
+  test_procedure.py fails on a hand edit of either side, on a floor off the
+  menu (`ledger.FLOORS`; every entry runs live since 2026-09-12 — `ledger.
+  floor_split` is the one rule the backtest and `live/r5.py` share, so
+  halfgate's 100/83/67/50% book fraction with the rest in IEF executes as
+  graded) and on a stop (live has none). `--check` recomputes and exits 1
+  on drift. Run 2026-09-11 on `nominal_clean_2006_2015_dl/preds.parquet`:
+  **book 6 / 60-40 / no stop / cap 2** (floor Sharpe 60-40 0.438 vs 70-30
+  0.410; ledger `procedure_2006-01-01_2015-12-31_nominal_clean_2006_2015_dl`);
+  that decision was superseded by Stage E the next day before any commit,
+  so no signal ever ran 60/40. Refuses a walk missing any rank week of the
+  window (no sample decides), a walk with a holdout week, or fewer than K
+  copies. **Since 2026-09-12 the procedure also writes the model fields**
+  (`horizon.label`, `horizon.purge_days`, `training_window_years`) from the
+  walk's own record (`procedure.walk_recipe`: `<walk>/spec.json` `recipe`
+  {label, train_years}, written by `ops/clean_program._guard_spec`; a walk
+  without one is refused, as is a label outside `selection.LABELS_4W`),
+  recorded as `procedure.model`; `live_strategy` returns label and
+  train_years to the live job and tests fail if the spec's model fields
+  differ from that record. Model fields are decided upstream (stage C of
+  the clean program) and only carried by the procedure — it never searches
+  them.
+- **Stage E adopted (2026-09-12, owner: "Ok go" to the three pieces).** (1)
+  `features/panel.sector_label` computes `label_4w_sector` in `build_panel`
+  (`fwd_ret_4w` minus the same-date sector median, the week median where
+  the sector is unknown); `Ctx.__init__` computes it for older panels
+  (verified equal to the graded formula on both real panels, 0% rows
+  without a sector; corr with `label_4w` 0.957); `ops/clean_program.
+  add_labels` calls the same function. `selection.LABELS_4W` names the two
+  labels the live job can train on; `ensemble_preds(..., label=)` takes
+  the label as an axis separate from HORIZONS (which `price_frames` and
+  `stage_grid` iterate — no `4w_sector` horizon). (2) The procedure writes
+  the model fields (previous bullet); `live/r5.py` passes `SPEC["label"]`
+  and `SPEC["train_years"]`, its header names the label. (3) `stocks-ml
+  procedure --preds data/experiments/clean_program/stage_e/ls_w8/select/
+  preds.parquet` wrote the spec (decided_at 2026-09-12 12:07:43; the
+  decision and evidence identical to Stage E's own `procedure.json`),
+  PROCEDURE.md and the ledger row; `--check` matches. Dry run of the live
+  job on 2026-08-28 (`--no-refresh --dry-run`): 502 names ranked in 20 s,
+  header "halfgate trend ballast (book 100% of NAV this week), top-10
+  four-sleeve stagger, sector cap None, sector-relative 4-week label,
+  8-year window, K=16". The live panel is rebuilt by `build_world_panel`
+  every Saturday, so it carries the column without a store change. The
+  champion explorer (`app/oos/build.py champion`) is repointed to the
+  Stage E walk (module assert against the spec's `procedure.preds.path`)
+  but not rebuilt.
 - **One grade-window convention (2026-09-09):** every pre-holdout window ends
   at `selection.HOLDOUT_START` (2024-07-19) as an EXCLUSIVE bound, so the
   label credited at the first holdout close is never counted. Before this,
@@ -335,7 +430,7 @@ their original file references on purpose.
 
 ```bash
 uv sync                      # install (Python 3.12 — what the champion is locked and run on)
-uv run pytest                # 207 tests (1 skipped); MUST stay green with 0 warnings
+uv run pytest                # 273 passed, 2 skipped; MUST stay green with 0 warnings
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
                              # the champion's weekly signal (Actions runs it; below)
 uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] [--screen]
@@ -344,6 +439,16 @@ uv run stocks-ml select --sel-start A --sel-end B [--eval-start C --eval-end D] 
                              # wsweep = population holdings at every window; --screen =
                              # the feature screen, feature_screen.py; `--screen --stage
                              # cascade` = the with-bundle arm, frozen_config_x/eval_x.json)
+uv run stocks-ml procedure --preds data/experiments/<walk>/preds.parquet [--check]
+                             # the strategy layers (book/floor/stop/cap) decided on the
+                             # K=16 walk of 2006-2015 and WRITTEN into the spec + PROCEDURE.md,
+                             # with the model fields (label, window) from <walk>/spec.json;
+                             # the only path into strategy.* / ballast.mix / horizon.label /
+                             # training_window_years (tests enforce)
+PYTHONPATH=src:. .venv/bin/python ops/clean_program.py <stage_a|sweep|stage_b|walk|stage_c|stage_d|extend|assess|stage_e|stage_e_amend|champion_chart>
+                             # the clean-improvement program (its docstring); champion_chart
+                             # redraws reports/champion_vs_sp500_*.png from the spec's walk
+                             # (`uv run --with matplotlib`)
 uv run stocks-ml procedure-card   # regenerate PROCEDURE.md from models/champion_spec.json
 .venv/bin/python ops/regrade_campaign.py {build,cascade,report,charts}
                              # the campaign's numbers on the fixed rank-date join
@@ -355,8 +460,9 @@ uv run stocks-ml procedure-card   # regenerate PROCEDURE.md from models/champion
 .venv/bin/python app/oos/build.py [oos|oos_x|select|champion]
                                   # explorers -> reports/{oos,oos_x,select,champion}_explorer.html
                                   # (nested3 OOS test $521 vs $316; the same with the bundle $1,379;
-                                  # the v2 cascade's pick on 2006-2024 $1,424; the champion as deployed
-                                  # $3,058 vs $628; git-ignored; ~20 s each)
+                                  # the v2 cascade's pick on 2006-2024 $1,424; the champion = the
+                                  # spec's Stage E walk, $1,994 vs $621; git-ignored; ~20 s each;
+                                  # `champion` writes a ledger row, so it is the owner's call)
 /opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e   # their Playwright beta test
 ops/r5_seed.sh               # re-seed the Actions cache with the Mac's live world
 ops/r5_weekly.sh             # the weekly cycle by hand on the Mac (no commit)
@@ -441,7 +547,8 @@ What it does, in order:
    stints vs 503 current). Closing them changes no other panel row.
 3. `selection.ensemble_preds` ranks the Friday's members exactly as the
    research did (K=16 week-bootstrap copies since 2026-09-07, K=4 before;
-   label_4w, 5-year window, purge
+   the spec's label and window — `label_4w_sector`, 8 years since
+   2026-09-12; `label_4w`, 5 years before — purge
    35 d; `ctx.extra = SPEC["features"]`, empty since 2026-09-11 (the
    generated bundle 2026-09-06 → 09-11, the screened ideas 09-05 → 09-06) — the panel
    carries every `x_` candidate and every `g_` bundle column, computed by
@@ -450,13 +557,17 @@ What it does, in order:
    name must have a close in the last 7 days to be rankable (≥100
    required, else the job fails loudly rather than trade a thin universe).
 4. Sleeve schedule (`ledger.rotate_sleeves`, the code `simulate` runs): four
-   6-name sleeves (sector cap 2 from the top-15), one rotates per week —
+   sleeves of `book_size` names (10 since 2026-09-12, no cap; 6 with sector
+   cap 2 from the top-15 before), one rotates per week —
    `((friday_of(t) − 2001-01-05) // 7 days) mod 4`, so a holiday Thursday
    rotates the Friday's sleeve; empty sleeves fill at once (the first week);
-   a sleeve ≥5 weeks old (the job skipped its week) rotates too. Ballast:
-   per 30/40/52-week third, IEF when SPY's weekly close is below the
-   trailing mean, else SPY. Weights: 0.7 × 1/24 per sleeve slot, 0.3 split
-   across the thirds.
+   a sleeve ≥5 weeks old (the job skipped its week) rotates too. Ballast
+   (`ledger.floor_split`, shared with the backtest): halfgate since
+   2026-09-12 — the book holds 1 − g/6 of NAV for g of the 30/40/52-week SPY
+   gates breached (100/83/67/50%), the rest in IEF, no SPY ballast; a fixed
+   floor (70/30 before) keeps the book fraction and parks the ballast in
+   SPY, one third moved to IEF per breached gate. Weights: the book
+   fraction split equally across the sleeve slots.
 5. Paper ledger (`ledger.Ledger`): fills LAST week's pending weights at the
    first open after the decision date (Monday; a name with no open within
    five sessions closes at its last print), sells first, buys sized net of
@@ -556,9 +667,13 @@ src/stocks_ml/
   ledger.py        the live rules and paper ledger, shared by simulate and the
                    weekly job: sleeve schedule, pick_capped, ballast, target
                    weights, next-open fills at 5 bp a side, NAV marks
+  procedure.py     stocks-ml procedure: decide_strategy on a saved walk ->
+                   the spec's strategy layers + `procedure` block; live_strategy
+                   is what r5.py reads
   procedure_card.py  PROCEDURE.md from models/champion_spec.json
-  live/r5.py       the weekly job: rank, then ledger.py's rules; the report
-  cli.py           r5-weekly | select | procedure-card
+  live/r5.py       the weekly job: rank, then ledger.py's rules; the report;
+                   SPEC read from the spec at import (load_spec)
+  cli.py           r5-weekly | select | procedure | procedure-card
 .github/workflows/champion.yml   the champion's Saturday cycle (the only workflow)
 ops/          r5_seed.sh (seed the Actions cache from the Mac), r5_weekly.sh +
               com.stocks-ml.r5-weekly.plist (manual / retired local schedule),
@@ -1062,10 +1177,18 @@ are current.
   The bundle decision is taken (adopted 2026-09-05, "Feature
   engineering"); the with-bundle walk was extended back to 2001-06 into
   `data/experiments/champion_2006_2024/holdings_4w_5y_xeeaf48_s0` for the
-  champion's record. One owner decision remains open, not started:
-  champion re-selection under v3 on the full pre-holdout window (four more
-  population walks; the with-bundle nested cascade's top-3 / halfgate is
-  the hint that the book and ballast layers might move).
+  champion's record. The open decision of the time — re-deciding the
+  book and ballast layers — was settled by `stocks-ml procedure` on
+  2026-09-11/12 (top-10 / halfgate on the Stage E walk).
+- **After Stage E (2026-09-12), open, none started:** the `ls_w8_x` arm
+  (the package with its 16 admitted engineered features) at K=16 — the
+  registration's default package, dropped by the owner after the K=4
+  2016-2024 read, so a K=16 walk would be a second read of 2016-2024; the
+  taxable-account post-tax table (the account is a Roth, so post-tax =
+  pre-tax today); the character study (scratchpad `character.py`: the
+  edge sits in the top of the ranking, in high-volatility beaten-down
+  names, mostly after 2016) belongs under `ops/`; rebuilding the champion
+  explorer page.
 - **OpenFE arm (done 2026-09-06, "Feature engineering"):**
   `data/experiments/openfe_2006_2015/` (v1: inputs.parquet + inputs.json,
   the raw inputs every arm reads; timing.json; stage1_scores.parquet,
@@ -1087,11 +1210,14 @@ are current.
 ## Where to look
 
 - `PROCEDURE.md` — the champion's procedure card (generated from
-  `models/champion_spec.json`; edit the spec, not the card).
+  `models/champion_spec.json`; the strategy layers there are written by
+  `stocks-ml procedure`, the prose in the spec; never the card by hand).
 - `models/trials_ledger.json` — every evaluated configuration.
 - `reports/nested_selection_protocol.md` — the pre-registered nested test of
   the selection procedure; `reports/source_point_in_time_audit.md` — the
-  ALFRED/PIT audit; the two `reports/*.png` charts — champion vs SPY.
+  ALFRED/PIT audit; `reports/clean_improvement_registration.md` +
+  `reports/clean_improvement.md` — the program that produced the champion;
+  the two `reports/champion_vs_sp500_*.png` charts — champion vs SPY.
 - `signals_r5/`, `ledger_r5.json` — the paper record, written by the job.
 - `docs/research/` — notes on the papers the design leans on.
 - Tag `legacy-final` — the legacy pipeline, its leaderboards

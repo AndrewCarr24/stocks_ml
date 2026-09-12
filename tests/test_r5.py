@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from stocks_ml.live import r5
+from stocks_ml.procedure import mix_label
 
 D = pd.Timestamp
 SMAP = {"A1": "Tech", "A2": "Tech", "A3": "Tech", "B1": "Fin", "B2": "Fin", "B3": "Fin",
@@ -42,6 +43,37 @@ def test_render_markdown_lists_book_and_fills():
     assert "| SPY | ballast |  | 20.00% |" in md
     assert "| 2026-08-24 | A1 | +1.5000 | $10.00 | $0.0075 |" in md
     assert "A1 ×0.500000" in md and "Top-1 of 480" in md
+
+
+def test_live_weights_follow_the_floor_menu(monkeypatch):
+    """The live job parks the money exactly as the backtest's floor_split
+    does, for every floor on the menu — halfgate included (2026-09-12)."""
+    from stocks_ml.ledger import floor_split, target_weights
+    sleeves = {"0": {"names": ["A1", "B1"]}, "1": {"names": ["C1", "D1"]}}
+    gates = {"30": "IEF", "40": "IEF", "52": "SPY"}
+    for floor, book, spy, ief in (("halfgate", 2 / 3, 0.0, 1 / 3), ("60/40", 0.6, 0.4 / 3, 0.8 / 3),
+                                  ("none", 1.0, 0.0, 0.0)):
+        monkeypatch.setitem(r5.SPEC, "floor", floor)
+        frac, weights = r5.book_weights(sleeves, gates)
+        assert frac == pytest.approx(book)
+        assert weights == pytest.approx(target_weights(sleeves, *reversed(floor_split(floor, gates))))
+        assert weights.get("SPY", 0.0) == pytest.approx(spy) and weights.get("IEF", 0.0) == pytest.approx(ief)
+        assert sum(weights.values()) == pytest.approx(1.0)
+
+
+def test_render_markdown_names_the_floor_and_this_weeks_fraction(monkeypatch):
+    sig = {"date": "2026-08-28", "sleeve_due": 2, "rotated": [0],
+           "sleeves": {"0": {"names": ["A1"], "since": "2026-08-28"}},
+           "ballast": {"30": "IEF", "40": "SPY", "52": "SPY"}, "book_fraction": 5 / 6,
+           "weights": {"A1": 5 / 6, "IEF": 1 / 6}, "nav": 100.0, "spy_nav": 100.0,
+           "cash": 100.0, "held_value": {}, "fills": [], "rebase_factors": {}, "top": [],
+           "n_ranked": 480, "positions": {}, "freshness": {"panel": "2026-08-28"}, "elapsed_s": 1}
+    monkeypatch.setitem(r5.SPEC, "floor", "halfgate")
+    md = r5.render_markdown(sig, SMAP)
+    assert "halfgate" in md and "book 83% of NAV this week" in md and "30w→IEF" in md
+    monkeypatch.setitem(r5.SPEC, "floor", "60/40")
+    sig["book_fraction"] = 0.6
+    assert "60/40" in r5.render_markdown(sig, SMAP)
 
 
 def test_render_markdown_orders_equal_weights_by_ticker():
@@ -88,7 +120,7 @@ def test_commit_outputs_skips_when_nothing_changed():
 
 
 def test_live_spec_mirrors_the_champion_spec():
-    # r5.SPEC is the live job's hard-coded copy of models/champion_spec.json:
+    # r5.SPEC is read from models/champion_spec.json (r5.load_spec, the procedure.s decision):
     # the engine settings and the feature bundle must not drift apart
     import json
     from pathlib import Path
@@ -101,8 +133,11 @@ def test_live_spec_mirrors_the_champion_spec():
     assert r5.SPEC["train_years"] == spec["training_window_years"]
     assert r5.SPEC["book"] == spec["strategy"]["book_size"]
     assert r5.SPEC["cap"] == spec["strategy"]["sector_cap"]
-    assert r5.SPEC["horizon"] == "4w" and spec["horizon"]["label"] == "label_4w"
-    assert r5.SPEC["floor"] == int(spec["ballast"]["mix"].split("%")[0]) / 100
+    assert r5.SPEC["horizon"] == "4w" and r5.SPEC["label"] == spec["horizon"]["label"]
+    assert spec["horizon"]["label"] == spec["procedure"]["model"]["label"]
+    assert spec["training_window_years"] == spec["procedure"]["model"]["train_years"]
+    assert r5.SPEC["floor"] == spec["procedure"]["decision"]["floor"]
+    assert spec["ballast"]["mix"] == mix_label(r5.SPEC["floor"])
     assert list(r5.SPEC["features"]) == list(spec["features"])
 
 

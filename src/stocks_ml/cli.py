@@ -2,6 +2,7 @@
 
   r5-weekly       the weekly signal (GitHub Actions runs it every Saturday)
   select          the pre-registered selection procedure on a window
+  procedure       the backtest procedure writes the strategy settings into the spec
   procedure-card  regenerate PROCEDURE.md from models/champion_spec.json
 """
 from __future__ import annotations
@@ -17,6 +18,17 @@ def cmd_select(args, cfg):
     shard = tuple(int(x) for x in args.shard.split("/")) if args.shard else (0, 1)
     run_select(args.sel_start, args.sel_end, args.eval_start, args.eval_end,
                name=args.name, stage=args.stage, shard=shard, screen=args.screen)
+
+
+def cmd_procedure(args, cfg):
+    """The strategy layers (book, floor, stop, cap) decided on a saved K-copy
+    walk of the selection window, and the model fields (label, training
+    window) read from the walk's own record, written into
+    models/champion_spec.json — the only way those fields change
+    (stocks_ml.procedure)."""
+    from stocks_ml.procedure import run
+    run(args.preds, store=args.store, k=args.k, lo=args.sel_start, hi=args.sel_end,
+        check=args.check)
 
 
 def cmd_procedure_card(args, cfg):
@@ -60,7 +72,7 @@ def commit_outputs(t: str, paths: list[str], run=None) -> bool:
 def main():
     parser = argparse.ArgumentParser(
         prog="stocks-ml",
-        description="the r5 champion: r5-weekly | select | procedure-card")
+        description="the r5 champion: r5-weekly | select | procedure | procedure-card")
     parser.add_argument("--config", default="config/config.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -99,12 +111,26 @@ def main():
                             "(outputs frozen_config_x.json / eval_x.json) — without it the "
                             "cascade is the base arm")
 
+    p_proc = sub.add_parser("procedure", help="run the strategy layers of the selection "
+                            "procedure on a saved K-copy walk of the selection window and "
+                            "write the decision, with the walk's own model recipe, into "
+                            "models/champion_spec.json (+ PROCEDURE.md)")
+    p_proc.add_argument("--preds", required=True,
+                        help="preds.parquet of the walk (week, ticker, c1..cK), every rank "
+                             "week of the selection window")
+    p_proc.add_argument("--store", default="data/sharadar_world2000_nominal_dl")
+    p_proc.add_argument("--k", type=int, default=None, help="copies (default selection.K_COPIES)")
+    p_proc.add_argument("--sel-start", default="2006-01-01")
+    p_proc.add_argument("--sel-end", default="2015-12-31")
+    p_proc.add_argument("--check", action="store_true",
+                        help="recompute and compare; write nothing; exit 1 if the spec drifted")
+
     sub.add_parser("procedure-card", help="regenerate PROCEDURE.md from "
                    "models/champion_spec.json")
 
     args = parser.parse_args()
     cfg = load_config(args.config)
-    {"r5-weekly": cmd_r5_weekly, "select": cmd_select,
+    {"r5-weekly": cmd_r5_weekly, "select": cmd_select, "procedure": cmd_procedure,
      "procedure-card": cmd_procedure_card}[args.command](args, cfg)
 
 

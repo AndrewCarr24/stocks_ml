@@ -5,12 +5,20 @@ key and a fresh world store, neither of which belongs in Actions. Steps:
 
   1. data/world.py refreshes the live world and rebuilds panel_sf.parquet
   2. selection.ensemble_preds ranks this Friday's members exactly as the
-     research pipeline did (K=16 week-bootstrap copies, 4w label, 5y window,
+     research pipeline did (K=16 week-bootstrap copies; the label and the
+     training window are the spec's, written by the procedure from the
+     champion walk's own record -- the sector-centred 4-week label on an
+     8-year window since 2026-09-12, Stage E of the clean program;
      the panel's f_ columns on the nominal price basis; SPEC["features"] is
      the adopted bundle beyond them — empty since 2026-09-11, when the
      split-leak bundle was retired, features/bundle.py)
-  3. the sleeve schedule rotates one of four 6-name sleeves (sector cap 2)
-  4. the 70/30 trend ballast decides SPY vs IEF per moving-average third
+  3. the sleeve schedule rotates one of four sleeves of the spec's book size
+     (top-10, no sector cap since 2026-09-12; top-6 with cap 2 before)
+  4. the trend ballast: the spec's floor (one of ledger.FLOORS, decided by
+     the procedure) sets this week's book fraction and parks the rest —
+     a fixed split shifts SPY to IEF one third per breached moving average;
+     halfgate cuts the book from 100% to 50% as the three gates go down,
+     the rest in IEF (ledger.floor_split, the rule selection.simulate grades)
   5. a paper ledger fills LAST week's orders at Monday's open, marks NAV at
      Friday's close and stores this week's target weights as pending orders
 
@@ -31,13 +39,34 @@ from pathlib import Path
 import pandas as pd
 
 from stocks_ml.features.bundle import FEATURES as BUNDLE
-from stocks_ml.ledger import (FUNDS, Ledger, ballast_state, due_sleeve, friday_of,
+from stocks_ml.ledger import (FUNDS, Ledger, ballast_state, due_sleeve, floor_split, friday_of,
                               rotate_sleeves, sleeve_counts, target_weights)
 from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds
 
-SPEC = {"horizon": "4w", "train_years": 5, "book": 6, "cap": 2, "floor": 0.7,
-        "top_n": 15,                       # models/champion_spec.json (tests keep them equal)
-        "features": list(BUNDLE)}          # features/bundle.py: empty since 2026-09-11 (clean line)
+
+
+def spec_path() -> Path:
+    """models/champion_spec.json: beside this package's source tree (uv's
+    editable install, the checkout GitHub Actions and ops/r5_weekly.sh run
+    from) or under the working directory."""
+    for p in (Path(__file__).resolve().parents[3] / "models/champion_spec.json",
+              Path("models/champion_spec.json")):
+        if p.exists():
+            return p
+    raise FileNotFoundError("models/champion_spec.json: run the job from the repository root")
+
+
+def load_spec(path: Path | None = None) -> dict:
+    """The live job's settings from the spec the procedure wrote
+    (stocks_ml.procedure): horizon, label, window, book, cap and floor are
+    read, never typed here. top_n (rotation candidates) and the feature bundle are
+    the job's own; tests/test_procedure.py holds them to the spec."""
+    from stocks_ml.procedure import live_strategy
+    spec = json.loads((path or spec_path()).read_text())
+    return {**live_strategy(spec), "top_n": 15, "features": list(BUNDLE)}
+
+
+SPEC = load_spec()                         # features/bundle.py: empty since 2026-09-11 (clean line)
 N_SLEEVES = HORIZONS[SPEC["horizon"]]["kweeks"]
 MIN_UNIVERSE = 100                         # rankable names needed for a signal
 TRADABLE_DAYS = 7                          # a name must have a close this recent
@@ -152,7 +181,7 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         raise RuntimeError(f"{t.date()} is not a panel date; latest is {ctx.weeks[-1].date()}")
     log(f"signal date {t.date()} (sleeve {due_sleeve(t, N_SLEEVES)} due); fitting {SPEC}")
     t1 = time.time()
-    preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"])
+    preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"], label=SPEC["label"])
     if preds is None:
         raise RuntimeError(f"no ensemble prediction for {t.date()}")
     ranked = rank_members(preds, ctx.prices, t)
@@ -172,14 +201,14 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     sleeves, rotated = rotate_sleeves(ledger.sleeves, t, list(ranked.index), ctx.smap,
                                       N_SLEEVES, SPEC["book"], SPEC["cap"], SPEC["top_n"])
     ballast = ballast_state(ctx.spy_w, t)
-    weights = target_weights(sleeves, ballast, SPEC["floor"])
+    frac, weights = book_weights(sleeves, ballast)
     ledger.sleeves = sleeves
     ledger.pending = {"decision_date": str(t.date()), "weights": weights}
 
     held = ledger.value_of(ctx.closes, t)
     signal = {
         "date": str(t.date()), "sleeve_due": due_sleeve(t, N_SLEEVES), "rotated": rotated,
-        "sleeves": sleeves, "ballast": ballast, "weights": weights,
+        "sleeves": sleeves, "ballast": ballast, "book_fraction": frac, "weights": weights,
         "nav": nav, "spy_nav": bench, "cash": ledger.cash,
         "held_value": held, "fills": fills, "rebase_factors": factors,
         "top": [(tk, float(v)) for tk, v in ranked.iloc[:SPEC["top_n"]].items()],
@@ -217,12 +246,28 @@ def _freshness(ctx: Ctx, refresh: dict | None) -> dict:
     return out
 
 
+def book_weights(sleeves: dict, gates: dict) -> tuple[float, dict[str, float]]:
+    """This week's book fraction and target weights under the spec's floor —
+    ledger.floor_split then ledger.target_weights, exactly as
+    selection.simulate graded the champion."""
+    frac, ballast = floor_split(SPEC["floor"], gates)
+    return frac, target_weights(sleeves, ballast, frac)
+
+
+def label_text(label: str) -> str:
+    """The target as the report names it."""
+    return {"label_4w": "4-week label", "label_4w_sector": "sector-relative 4-week label"}[label]
+
+
 def render_markdown(sig: dict, smap: dict) -> str:
     nav, bench = sig["nav"], sig["spy_nav"]
     counts = sleeve_counts(sig["sleeves"])
+    frac = sig.get("book_fraction")
+    frac_text = f" (book {frac:.0%} of NAV this week)" if frac is not None else ""
     lines = [f"# r5 signal — {sig['date']}", "",
-             "Champion r5 (PROCEDURE.md): 70/30 trend ballast, top-6 four-sleeve "
-             f"stagger, sector cap 2, 4-week label, 5-year window, K={K_COPIES}.", "",
+             f"Champion r5 (PROCEDURE.md): {SPEC['floor']} trend ballast{frac_text}, "
+             f"top-{SPEC['book']} four-sleeve stagger, sector cap {SPEC['cap']}, "
+             f"{label_text(SPEC['label'])}, {SPEC['train_years']}-year window, K={K_COPIES}.", "",
              f"Paper NAV **${nav:,.2f}** · SPY buy-and-hold ${bench:,.2f} · "
              f"cash ${sig['cash']:,.2f}", "",
              "## This week", "",

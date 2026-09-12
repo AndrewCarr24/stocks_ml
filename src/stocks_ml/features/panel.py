@@ -329,6 +329,21 @@ def market_macro_features(prices: pd.DataFrame, fred_lagged: pd.DataFrame,
     return pd.concat([mkt, macro, chg], axis=1).rename_axis("date").reset_index()
 
 
+def sector_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Series:
+    """A forward return minus its same-date same-sector median: the ls_w8
+    package's target, label_4w_sector (Stage E, reports/clean_improvement.md).
+
+    A row whose sector is unknown (NaN) is recentred on the week's median
+    instead, so every member week keeps a label. Reads a fwd_ret column only,
+    never a feature. Ctx recomputes it from the membership sector map for a
+    stored panel that predates the column (selection.Ctx), from the same
+    sector rule build_panel uses, so the two agree to the float.
+    """
+    sec_med = fwd.groupby([date, sector]).transform("median")
+    wk_med = fwd.groupby(date).transform("median")
+    return fwd - sec_med.fillna(wk_med)
+
+
 def sector_relative_momentum(panel: pd.DataFrame) -> pd.DataFrame:
     """Raw f_mom_4w/f_mom_12w minus their same-date same-sector median.
 
@@ -498,6 +513,9 @@ def build_panel(store, cfg) -> pd.DataFrame:
 
     sector = membership.dropna(subset=["sector"]).drop_duplicates("ticker")
     panel["sector"] = panel["ticker"].map(dict(zip(sector["ticker"], sector["sector"])))
+    # The sector-relative 4-week target (ls_w8 package, adopted 2026-09-12):
+    # the same fwd_ret_4w, recentred on the sector instead of the week.
+    panel["label_4w_sector"] = sector_label(panel["fwd_ret_4w"], panel["date"], panel["sector"])
     panel = pd.concat([panel, sector_relative_momentum(panel)], axis=1)
     dummies = pd.get_dummies(panel["sector"], prefix="f_sec", prefix_sep="_", dtype=float)
     dummies.columns = [c.lower().replace(" ", "_") for c in dummies.columns]

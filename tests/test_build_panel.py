@@ -99,6 +99,37 @@ def test_build_panel_four_week_label(synthetic_store, tiny_cfg):
     assert {"label_4w", "fwd_ret_4w"}.isdisjoint(feature_cols(panel))
 
 
+def test_build_panel_sector_label_is_the_research_formula(synthetic_store, tiny_cfg):
+    """label_4w_sector (ls_w8 package, Stage E) = fwd_ret_4w minus the
+    same-date same-sector median, the week median where the sector is unknown
+    -- the formula ops/clean_program.add_labels graded, now stored by
+    build_panel and recomputed by Ctx for older panels."""
+    panel = build_panel(synthetic_store, tiny_cfg)
+    mem = synthetic_store.read("membership")
+    smap = dict(mem.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)
+    sec = panel["ticker"].map(smap)
+    fwd = panel["fwd_ret_4w"]
+    sec_med = fwd.groupby([panel["date"], sec]).transform("median")
+    wk_med = fwd.groupby(panel["date"]).transform("median")
+    expected = fwd - sec_med.fillna(wk_med)
+    pd.testing.assert_series_equal(panel["label_4w_sector"], expected, check_names=False)
+    # it differs from the week-centred label wherever a sector's median differs
+    assert not np.allclose(panel["label_4w_sector"].dropna(), panel["label_4w"].dropna())
+    assert panel.loc[panel["date"] == panel["date"].max(), "label_4w_sector"].isna().all()
+    assert "label_4w_sector" not in feature_cols(panel)
+    assert "label_4w_sector" not in all_feature_cols(panel)
+
+
+def test_sector_label_falls_back_to_the_week_median_without_a_sector():
+    from stocks_ml.features.panel import sector_label
+    d = pd.Timestamp("2020-01-03")
+    pan = pd.DataFrame({"date": [d] * 5, "sector": ["A", "A", "B", "B", None],
+                        "fwd": [0.10, 0.20, -0.10, 0.00, 0.05]})
+    got = sector_label(pan["fwd"], pan["date"], pan["sector"])
+    # A: median .15; B: median -.05; the sectorless row: week median .05
+    assert np.allclose(got, [-0.05, 0.05, -0.05, 0.05, 0.0])
+
+
 def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):
     panel = build_panel(synthetic_store, tiny_cfg)
     fcols = feature_cols(panel)

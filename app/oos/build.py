@@ -14,9 +14,11 @@ week by week as a self-contained page.
             same window: in-sample for the selection, holdout untouched
                                                      -> reports/select_explorer.html
   champion  the champion as deployed (models/champion_spec.json: the clean
-            nominal line, no bundle, since 2026-09-11) on its recorded basis: the
-            K=16 ensemble of the delisting-honest world's walk (2006-01-06 ->,
-            ops/nominal_program.py), ranks before the holdout, graded
+            nominal line, no bundle, on the sector-centred 4-week label and an
+            8-year window since 2026-09-12 -- Stage E of the clean program) on
+            its recorded basis: the K=16 ensemble of the delisting-honest
+            world's walk (2006-01-06 ->, ops/clean_program.py stage_e), ranks
+            before the holdout, graded
             2006-01 -> 2024-07               -> reports/champion_explorer.html
 
 The replay goes through selection.simulate itself (with its trace hook), so
@@ -45,12 +47,17 @@ TEMPLATE = Path(__file__).with_name("app.html")
 NESTED = ROOT / "data/experiments/nested3_v2"        # v1's caches plus the v3.1 screen and the bundle walk
 CHAMPION = ROOT / "data/experiments/champion_2006_2024"
 GENERATED = ROOT / "data/experiments/openfe_v3_2006_2015"   # the retired generated bundle's walk (champion 2026-09-06..11)
-# the clean nominal line on the delisting-honest world (the champion since 2026-09-11):
-# K=16 copies' predictions per week, averaged here into one holdings file
+# the champion's walk on the delisting-honest world: K=16 copies' predictions
+# per week, averaged here into one holdings file. The selection-window walk is
+# the one the spec's procedure block names (checked below); its extension over
+# 2016 -> 2024-07-18 sits beside it. Since 2026-09-12 that is Stage E's ls_w8
+# (ops/clean_program.py: label_4w_sector, 8-year window); the clean line's own
+# walk (nominal_clean_2006_2015_dl / nominal_clean_2016_2024_dl, the champion
+# 2026-09-11) is its incumbent in reports/clean_improvement.md.
 CLEAN_WORLD = ROOT / "data/sharadar_world2000_nominal_dl"
-CLEAN_PREDS = [ROOT / "data/experiments/nominal_clean_2006_2015_dl/preds.parquet",
-               ROOT / "data/experiments/nominal_clean_2016_2024_dl/preds.parquet"]
-CLEAN = ROOT / "data/experiments/nominal_clean_dl_k16"
+CHAMPION_WALK = ROOT / "data/experiments/clean_program/stage_e/ls_w8"
+CLEAN_PREDS = [CHAMPION_WALK / "select/preds.parquet", CHAMPION_WALK / "extend/preds.parquet"]
+CLEAN = CHAMPION_WALK
 FROZEN = CHAMPION / "frozen_config.json"
 SPEC = ROOT / "models/champion_spec.json"
 BUNDLE_PAGE = "oos_x_explorer.html"
@@ -80,33 +87,44 @@ SELECTED = ("Ledger row select_2006-01-01_2024-07-18 (2026-09-03), a procedure v
             "champion is a different configuration (top-6, 70/30 ballast, sector cap 2, no "
             "stop): $1,553 on this window as deployed before any bundle on the old basis; on "
             "the clean nominal basis, champion_explorer.html.")
-CHAMPION_VERDICT = ("The champion as deployed (models/champion_spec.json, PROCEDURE.md): top-6 in "
-                    "four sleeves, 70/30 trend ballast, sector cap 2, no stop, the model trained on "
-                    "the panel's f_ columns alone on the nominal price basis, sixteen copies "
-                    "averaged, labels that grade a delisting to its final print (the live rules). "
-                    "Adopted 2026-09-11 after the split-leak audit: the closeadj-basis level "
-                    "features and the SF1 per-share fields carried future splits, and both earlier "
-                    "bundles (the seven ideas, the generated forty) were built on them; their "
-                    "nominal replacement failed admission on 2006–2015. On the same weeks the "
-                    "retired champion read $4,256 — roughly half of its 2016–2024 edge over SPY was "
-                    "the leak. In-sample: the book, ballast and cap were chosen after reading these "
-                    "years (the 4-week rebuild campaign, AGENTS.md); the holdout (2024-07-19 →) is "
-                    "untouched. Path band: four disjoint K=4 draws read $484–$676 on 2016–2024, all "
-                    "above SPY; 95% nested CI on the excess CAGR vs SPY −3.5..+16.3 (2016–2024), "
-                    "−2.4..+10.6 (2006–2024): reports/clean_line_confidence.md.")
 
 
 def spec_config(spec=SPEC):
-    """The champion's engine config, read from the spec (the live job mirrors
-    the same fields, tests/test_r5.py)."""
+    """The champion's engine config, read from the spec (strategy layers as
+    stocks-ml procedure wrote them; the live job reads the same fields,
+    tests/test_procedure.py)."""
     s = json.loads(spec.read_text())
-    st, book_pct = s["strategy"], int(s["ballast"]["mix"].split("%")[0])
+    st = s["strategy"]
     return dict(horizon=s["horizon"]["label"].split("_")[1], book=st["book_size"],
-                cap=st["sector_cap"], stop=st["stop_loss"], floor=f"{book_pct}/{100 - book_pct}",
-                features=list(s["features"]), train_years=s["training_window_years"])
+                cap=st["sector_cap"], stop=st["stop_loss"], floor=s["procedure"]["decision"]["floor"],
+                features=list(s["features"]), train_years=s["training_window_years"],
+                label=s["horizon"]["label"])
 
 
 _spec = spec_config()
+_stop_text = "no stop" if _spec["stop"] is None else f"{_spec['stop']:.0%} stop"
+_proc_walk = ROOT / json.loads(SPEC.read_text())["procedure"]["preds"]["path"]
+assert _proc_walk == CLEAN_PREDS[0], \
+    f"app/oos/build.py CHAMPION_WALK {CLEAN_PREDS[0]} is not the spec's procedure walk {_proc_walk}"
+CHAMPION_VERDICT = ("The champion as deployed (models/champion_spec.json, PROCEDURE.md): "
+                    f"top-{_spec['book']} in four sleeves, {_spec['floor']} trend ballast, sector cap "
+                    f"{_spec['cap']}, {_stop_text}, "
+                    "the model trained on "
+                    f"the panel's f_ columns alone on the nominal price basis, target {_spec['label']} "
+                    f"(the stock's 4-week return minus its sector's that week), a {_spec['train_years']}-year "
+                    "window, sixteen copies averaged, labels that grade a delisting to its final "
+                    "print (the live rules). Adopted 2026-09-12 as Stage E of the clean program "
+                    "(reports/clean_improvement.md): the label and window were chosen on 2006–2015 "
+                    "alone, then read once on 2016–2024 against the clean line at its own settings "
+                    "(6 names, 60/40): $660 vs $420, +6.4%/yr, paired weekly t +1.3; the "
+                    "identity leak check passed on both segments. The clean line itself replaced "
+                    "the split-leak champion on 2026-09-11 (the retired champion read $4,256 on "
+                    "these weeks — roughly half of its 2016–2024 edge over SPY was the leak). "
+                    "In-sample: the book, ballast and cap were chosen on 2006–2015, which this page "
+                    "includes; the holdout (2024-07-19 →) is untouched. 95% nested CI on the excess "
+                    "CAGR vs SPY −3.9..+24.2 (2016–2024), −2.5..+16.2 (2006–2024); ~91% of "
+                    "resampled histories beat SPY (reports/clean_improvement.md, Stage E).")
+
 VARIANTS = {
     "oos": dict(
         rankings=NESTED / "holdings_4w_5y_s0.parquet",
@@ -162,12 +180,16 @@ VARIANTS = {
               "(SPY), costs included, $100 start. In-sample: its book, ballast and cap were "
               "chosen after reading these years; the holdout (2024-07-19 →) is untouched.",
         verdict=CHAMPION_VERDICT,
-        ledger="champion_clean_2006_2024_graded",
-        note="{span}, the champion as deployed (models/champion_spec.json: top-6, 70/30, sector "
-             "cap 2, no stop, the clean nominal line adopted 2026-09-11, K=16) graded by "
-             "selection.simulate on its recorded basis (the delisting-honest world's walk from "
-             "2006-01-06, ops/nominal_program.py, ranks before the holdout): {s} vs SPY {y}. The "
-             "retired split-leak champion read $4,256 on these weeks (champion_generated_2006_2024_graded). "
+        ledger="champion_stage_e_2006_2024_graded",
+        note="{span}, the champion as deployed (models/champion_spec.json: "
+             f"top-{_spec['book']}, {_spec['floor']}, sector cap {_spec['cap']}, "
+             f"{_stop_text}, {_spec['label']} on a {_spec['train_years']}-year window, the clean "
+             "nominal line's Stage E package adopted 2026-09-12, K=16; model and strategy fields "
+             "written by stocks-ml procedure from the walk's record) graded by selection.simulate "
+             "on its recorded basis (the delisting-honest world's walk from 2006-01-06, "
+             "ops/clean_program.py stage_e, ranks before the holdout): {s} vs SPY {y}. The clean "
+             "line it replaced read $963 on these weeks (champion_clean_2006_2024_graded); the "
+             "retired split-leak champion $4,256 (champion_generated_2006_2024_graded). "
              "In-sample for the book/ballast/cap choices; the holdout is untouched. {out} "
              "(app/oos/build.py champion)"),
 }

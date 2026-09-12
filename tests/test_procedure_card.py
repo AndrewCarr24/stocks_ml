@@ -7,12 +7,17 @@ from stocks_ml.procedure_card import SPEC_PATH, render
 def test_render_from_champion_spec():
     spec = json.loads(Path(SPEC_PATH).read_text())
     card = render(spec, today="2026-09-01")
-    assert "trailing 5 years" in card
-    assert "top-6" in card
+    assert f"trailing {spec['training_window_years']} years" in card
+    assert f"top-{spec['strategy']['book_size']}" in card
+    assert f"{spec['horizon']['label']}: " in card
+    assert f"{spec['procedure']['model']['label']} / {spec['procedure']['model']['train_years']}-year window" in card
     assert "K=16" in card
-    assert "70% book / 30% ballast" in card
+    assert spec["ballast"]["mix"] in card                      # whatever the procedure wrote
+    assert "| Decided by | `stocks-ml procedure`" in card
+    assert f"floor {spec['procedure']['decision']['floor']}" in card
     assert "no stop" in card
-    assert "max 2/sector" in card
+    cap = spec["strategy"]["sector_cap"]
+    assert (f"max {cap}/sector" if cap else "no sector cap") in card
     assert "never on a calendar" in card
     assert "| floor |" in card and "Sharpe" in card
     assert "2024-07-19+ is holdout" in card

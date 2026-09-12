@@ -376,3 +376,35 @@ def test_rebase_skips_when_the_store_lacks_the_reference_date():
     assert led.rebase(cw, log=msgs.append) == {}
     assert led.positions["AAA"] == 10.0
     assert msgs and "AAA" in msgs[0]
+
+
+# ---- the floor menu is one rule for the backtest and the live job (2026-09-12) ----
+def test_floor_split_halfgate_moves_the_book_fraction():
+    from stocks_ml.ledger import FLOOR_FRACTION, FLOORS, floor_split
+    sleeves = {"0": {"names": ["A", "B"]}, "1": {"names": ["C", "D"]}}
+    up = {"30": "SPY", "40": "SPY", "52": "SPY"}
+    one = {"30": "IEF", "40": "SPY", "52": "SPY"}
+    three = {"30": "IEF", "40": "IEF", "52": "IEF"}
+    assert FLOORS == ("none", "halfgate", "80/20", "70/30", "60/40")
+    # every gate up: the whole of NAV in the book, no fund at all
+    w = target_weights(sleeves, *reversed(floor_split("halfgate", up)))
+    assert w == pytest.approx({"A": 0.25, "B": 0.25, "C": 0.25, "D": 0.25})
+    # one gate down: 5/6 book, 1/6 IEF, never SPY
+    frac, ballast = floor_split("halfgate", one)
+    assert frac == pytest.approx(5 / 6) and ballast == {"30": "IEF"}
+    w = target_weights(sleeves, ballast, frac)
+    assert w["IEF"] == pytest.approx(1 / 6) and "SPY" not in w and sum(w.values()) == pytest.approx(1)
+    # all three down: half book, half IEF
+    frac, ballast = floor_split("halfgate", three)
+    assert frac == 0.5 and ballast == three
+    w = target_weights(sleeves, ballast, frac)
+    assert w["IEF"] == pytest.approx(0.5) and w["A"] == pytest.approx(0.125)
+    # the fixed splits keep the book fraction and park the rest per third
+    for floor, fixed in FLOOR_FRACTION.items():
+        frac, ballast = floor_split(floor, one)
+        assert frac == fixed and ballast == one
+        w = target_weights(sleeves, ballast, frac)
+        assert w["SPY"] == pytest.approx(2 * (1 - fixed) / 3) and w["IEF"] == pytest.approx((1 - fixed) / 3)
+    assert floor_split("none", three) == (1.0, {})
+    with pytest.raises(KeyError):
+        floor_split("50/50", one)

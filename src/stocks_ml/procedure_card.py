@@ -1,14 +1,18 @@
 """Render PROCEDURE.md (the procedure card) from models/champion_spec.json.
 
 The spec file is the single durable source of truth for the champion's
-settings. Edit the spec, rerun `stocks-ml procedure-card`; never edit
-PROCEDURE.md by hand.
+settings. Its strategy layers (book, floor, stop, cap) are written by
+`stocks-ml procedure` (stocks_ml.procedure), never by hand; the prose fields
+are edited in the spec. Rerun `stocks-ml procedure-card` after either; never
+edit PROCEDURE.md by hand.
 """
 from __future__ import annotations
 
 import json
 from datetime import date
 from pathlib import Path
+
+from stocks_ml.selection import LABELS_4W
 
 SPEC_PATH = Path("models/champion_spec.json")
 CARD_PATH = Path("PROCEDURE.md")
@@ -25,13 +29,14 @@ not this file). Rationale and history: AGENTS.md.
 | Component | Spec |
 |---|---|
 | Model | {model_summary} |
-| Prediction target | {horizon_label}: stock's {hold_weeks}-week return minus that week's median member's ({purge_days}-day purge) |
+| Prediction target | {horizon_label}: {label_text} ({purge_days}-day purge) |
 | Training | weekly refit on trailing {train_years} years; early stop on validation rank correlation |
 | Features | {features_summary} |
 | Price basis / labels | level features on the {price_basis} basis; a delisting's label grades to its {delist_labels} |
 | Ensemble | K={k_copies} copies (random_state + whole-week bootstrap), predictions averaged |
-| Book | top-{book_size}, equal weight, {sleeves} staggered sleeves rotating weekly, {hold_weeks}-week holds; weekly re-leveling; max {sector_cap}/sector (blocked slots to next-ranked other-sector name); no stop (audited: adds nothing over the ballast) |
-| Ballast | {mix}: ballast in SPY, shifted to IEF one-third per breached trailing MA (30/40/52w) |
+| Book | top-{book_size}, equal weight, {sleeves} staggered sleeves rotating weekly, {hold_weeks}-week holds; weekly re-leveling; {cap_summary}; {stop_summary} |
+| Ballast | {ballast_row} |
+| Decided by | `stocks-ml procedure` on {proc_preds} (K={proc_k}, {proc_weeks} rank weeks of {proc_lo} -> {proc_hi}, world {proc_world}), {proc_at}: book {proc_book} / floor {proc_floor} / stop {proc_stop} / cap {proc_cap}; model fields from the walk's own record: {proc_label} / {proc_years}-year window — tests hold the spec's model and strategy fields and the live job to this record |
 | Honest expectation | {honest_expectation} |
 
 ## Cadences
@@ -83,12 +88,38 @@ def features_summary(s: dict) -> str:
             f"2006-2024 record)")
 
 
+def strategy_summary(s: dict) -> tuple[str, str]:
+    """The cap and stop clauses of the Book row from the strategy block."""
+    cap, stop = s["strategy"]["sector_cap"], s["strategy"]["stop_loss"]
+    cap_summary = (f"max {cap}/sector (blocked slots to next-ranked other-sector name)"
+                   if cap else "no sector cap")
+    stop_summary = f"stop at {stop:+.0%} (to SPY until the sleeve rotates)" if stop else "no stop"
+    return cap_summary, stop_summary
+
+
+def ballast_row(s: dict) -> str:
+    """The Ballast row: what the floor does with the money outside the book
+    (ledger.floor_split). A fixed floor parks it in SPY and shifts one third
+    to IEF per breached SPY moving average; halfgate cuts the book itself
+    per breached average and parks the remainder in IEF."""
+    floor, mix = s["procedure"]["decision"]["floor"], s["ballast"]["mix"]
+    if floor == "halfgate":
+        return f"{mix} — the book shrinks one sixth of NAV per breached SPY trailing MA, " \
+               "the freed money sits in IEF (no fixed SPY ballast)"
+    if floor == "none":
+        return mix
+    return f"{mix}: ballast in SPY, shifted to IEF one-third per breached trailing MA (30/40/52w)"
+
+
 def render(spec: dict, today: str | None = None) -> str:
     s = spec
+    cap_summary, stop_summary = strategy_summary(s)
+    proc = s["procedure"]
     return TEMPLATE.format(
         today=today or str(date.today()),
         model_summary=s["model"]["summary"],
         horizon_label=s["horizon"]["label"],
+        label_text=LABELS_4W[s["horizon"]["label"]],
         purge_days=s["horizon"]["purge_days"],
         train_years=s["training_window_years"],
         k_copies=s["ensemble"]["k_copies"],
@@ -99,8 +130,15 @@ def render(spec: dict, today: str | None = None) -> str:
         book_size=s["strategy"]["book_size"],
         sleeves=s["strategy"]["sleeves"],
         hold_weeks=s["strategy"]["hold_weeks"],
-        sector_cap=s["strategy"]["sector_cap"],
-        mix=s["ballast"]["mix"],
+        cap_summary=cap_summary,
+        stop_summary=stop_summary,
+        ballast_row=ballast_row(s),
+        proc_preds=proc["preds"]["path"], proc_k=proc["k_copies"],
+        proc_weeks=proc["preds"]["rank_weeks"], proc_lo=proc["selection_window"][0],
+        proc_hi=proc["selection_window"][1], proc_world=proc["world"], proc_at=proc["decided_at"],
+        proc_book=proc["decision"]["book_size"], proc_floor=proc["decision"]["floor"],
+        proc_stop=proc["decision"]["stop_loss"], proc_cap=proc["decision"]["sector_cap"],
+        proc_label=proc["model"]["label"], proc_years=proc["model"]["train_years"],
         honest_expectation=s["honest_expectation"],
         cost_bps=s["costs_assumed_bps_oneway"],
         triggers="; ".join(s["retune_policy"]["triggers"]),

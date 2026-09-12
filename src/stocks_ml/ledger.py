@@ -31,6 +31,10 @@ COST_BPS = 5.0                             # per side (procedure card)
 STALE_WEEKS = 5                            # a sleeve this old missed a rotation
 MIN_TRADE_FRAC = 0.005                     # skip rebalances under 0.5% of NAV (full exits always run)
 FUNDS = ("SPY", "IEF")
+# The ballast floor menu the procedure chooses from (selection.decide_strategy)
+# and the live job executes (live/r5.py), one rule for both: floor_split.
+FLOORS = ("none", "halfgate", "80/20", "70/30", "60/40")
+FLOOR_FRACTION = {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}   # the fixed book / ballast splits
 TOP_N = 15                                 # names a signal ranks; sleeves pick from these
 
 
@@ -104,9 +108,26 @@ def ballast_state(spy_weekly: pd.Series, t) -> dict[str, str]:
     return out
 
 
+def floor_split(floor: str, gates: dict) -> tuple[float, dict]:
+    """The floor menu as (book fraction of NAV, ballast thirds) for
+    target_weights. `gates` is ballast_state's per-window SPY/IEF reading.
+      none      the whole of NAV in the book
+      halfgate  book at 1 - g/2, g the share of gates down (100% with none
+                down, 50% with all three); the rest in IEF only
+      80/20 ..  a fixed book fraction; the rest one third per gate, SPY or IEF
+    """
+    if floor == "none":
+        return 1.0, {}
+    if floor == "halfgate":
+        below = {w: f for w, f in gates.items() if f == "IEF"}
+        return 1.0 - 0.5 * len(below) / len(gates), below
+    return FLOOR_FRACTION[floor], dict(gates)
+
+
 def target_weights(sleeves: dict, ballast: dict, floor: float) -> dict[str, float]:
-    """Sleeves equal-weighted at `floor` of NAV, names equal within a sleeve;
-    the rest split evenly across the ballast's thirds."""
+    """Sleeves equal-weighted at `floor` of NAV (the book fraction floor_split
+    returns), names equal within a sleeve; the rest split evenly across the
+    ballast's thirds."""
     w: dict[str, float] = {}
     for s in sleeves.values():
         for n in s["names"]:
