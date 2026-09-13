@@ -31,9 +31,9 @@ POINT_IN_TIME_MACRO_SERIES = frozenset({"T10Y2Y", "FEDFUNDS"})
 # any of them changes the champion's inputs — a structural re-selection
 # trigger (AGENTS.md), not an edit.
 PENDING_ABLATION_FEATURES = frozenset({
-    # momentum block, docs/research recommendation #1
+    # momentum block (Jegadeesh-Titman 1993; Novy-Marx 2012)
     "f_mom_12w_skip1w", "f_mom_52w_skip4w", "f_mom_interm",
-    # EDGAR earnings-quality bundle, recommendation #2
+    # EDGAR earnings-quality bundle (Bernard-Thomas 1989)
     "f_sue", "f_nincr", "f_net_issuance",
     # trend-quality bundle (2026-08 feature round, importance-guided)
     "f_mom_sharpe_12w", "f_mom_consist_12w", "f_overnight_12w", "f_intraday_12w",
@@ -199,8 +199,8 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex,
     out["f_lo_52w"] = close / close.rolling(252).min() - 1
     out["aux_vol"] = out["f_vol_12w"]
 
-    # Skip-adjusted and intermediate momentum (docs/research recommendation #1;
-    # Jegadeesh-Titman 1993 skip-week, Novy-Marx 2012 intermediate horizon).
+    # Skip-adjusted and intermediate momentum (Jegadeesh-Titman 1993 skip-week,
+    # Novy-Marx 2012 intermediate horizon).
     # The plain lookbacks above include the most recent days, which carry the
     # OPPOSITE (reversal) signal; these hand the model the clean decomposition:
     #   12w skipping the last week, the classic 12-1 (52w skipping 4w), and

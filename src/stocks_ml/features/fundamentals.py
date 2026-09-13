@@ -110,7 +110,7 @@ def _seasonal_pairs(rows: pd.DataFrame, tolerance_days: int = 45) -> pd.DataFram
 def earnings_quality_features(edgar: pd.DataFrame, base: pd.DataFrame) -> pd.DataFrame:
     """SUE, consecutive-earnings-increases, and net share issuance.
 
-    docs/research recommendation #2 (Bernard-Thomas 1989; Green-Hand-Zhang 2017;
+    The literature (Bernard-Thomas 1989; Green-Hand-Zhang 2017;
     Hou-Xue-Zhang 2020 survivors). All filing-dated with the next-calendar-day
     availability shift applied by _asof_join; NaN where history is short."""
     out = base.copy()

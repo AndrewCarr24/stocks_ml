@@ -1,7 +1,7 @@
-# Panel recipe and walk defaults. The champion's own settings (horizon 4w,
-# purge 35 days, 5-year window, K=4, book/ballast rules) live in
-# models/champion_spec.json and selection.py; the live job overrides
-# data_dir and backtest_start for the world it runs on (data/world.py).
+# Panel recipe and walk defaults. The champion's own settings (label, training
+# window, book, floor, stop, cap; K=16 in selection.py) live in
+# models/champion_spec.json, written by `stocks-ml procedure`; the live job
+# overrides data_dir and backtest_start for the world it runs on (data/world.py).
 data_dir: data
 user_agent: "stocks_ml research carr.andrewjohn@gmail.com"
 horizon_days: 5            # base label horizon in trading days; label_4w = 4x

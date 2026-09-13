@@ -21,7 +21,7 @@ class Config:
     train_sample_rows: int | None
     # "closeadj" (status quo: level features on the total-return basis) or
     # "nominal" (levels from closeunadj/close_split; the split-leak fix,
-    # reports/nominal_basis_registration.md). Returns are closeadj either way.
+    # reports/nominal_basis_registration.md at tag pre-simplify). Returns are closeadj either way.
     price_basis: str = "closeadj"
     # "drop" or "last_print": how labels and the backtest universe treat a
     # name whose price series ends inside the label window (see load_config)

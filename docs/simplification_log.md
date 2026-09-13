@@ -68,3 +68,32 @@ procedure's book evidence; `stocks-ml r5-weekly --no-refresh --dry-run
 --as-of 2026-08-28` ranks 502 names in 22 s with `features: []` from the
 spec (the Mac's live store ends 2026-09-01; the Saturday job refreshes).
 `selection.py` went from 700 to 412 lines.
+
+## Step 3 — the documents
+
+- `README.md` rewritten around the eight commands: the champion (settings
+  table, record table, the caveat paragraph, the chart), the processes
+  (flow, command table with code links, "Reproducing the champion",
+  "Challenging the champion"), the weekly job, data, installation, where
+  to look. Nothing in it describes a removed tool.
+- `AGENTS.md` (1,228 lines → ~230): current state, the tree, commands,
+  the iron rules, the owner's standing instructions, data-source quirks,
+  environment gotchas, open items. The hard-won history (every dated
+  bullet, the missing-data policy, the architecture essay) is in the
+  tag's AGENTS.md; the rules it produced are kept, the narratives are not.
+- `reports/` keeps `champion_eval.md` (written by `stocks-ml eval`), the
+  two champion-vs-SPY charts, `clean_improvement.md` and
+  `clean_improvement_registration.md` (the program that chose the label
+  and window; cited by the spec's provenance). The other 27 reports and
+  the three stale explorer pages are at the tag. `docs/research/` (paper
+  notes and PDFs) likewise; the three feature comments that cited it now
+  cite the papers by name.
+- `models/champion_spec.json`: prose only — `selection_procedure.note`
+  says how a model is chosen with the current commands; its `steps` no
+  longer list the retired horizon/window/feature-screen stages (the model
+  step and a features step replace them; book, stagger, floor, stop, cap
+  unchanged); `features_note` and `constraints` name the current code;
+  `provenance` points at the tag for files it cites; the dead `formulas`
+  key is dropped. No decision or model field changed —
+  `stocks-ml procedure --check` passes. `PROCEDURE.md` regenerated.
+- `config/config.yaml`'s header no longer says "5-year window, K=4".
