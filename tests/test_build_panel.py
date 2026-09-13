@@ -102,7 +102,7 @@ def test_build_panel_four_week_label(synthetic_store, tiny_cfg):
 def test_build_panel_sector_label_is_the_research_formula(synthetic_store, tiny_cfg):
     """label_4w_sector (ls_w8 package, Stage E) = fwd_ret_4w minus the
     same-date same-sector median, the week median where the sector is unknown
-    -- the formula ops/clean_program.add_labels graded, now stored by
+    -- the formula the Stage E walks graded, now stored by
     build_panel and recomputed by Ctx for older panels."""
     panel = build_panel(synthetic_store, tiny_cfg)
     mem = synthetic_store.read("membership")

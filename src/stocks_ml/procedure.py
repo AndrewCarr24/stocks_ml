@@ -35,7 +35,7 @@ MODEL_KEYS = ("label", "train_years")      # the walk's recipe: what the spec's 
 def walk_recipe(preds_path: Path) -> dict:
     """The model that made the walk, from the record beside it
     (<walk dir>/spec.json, `recipe`: the label column and training window the
-    walk's copies were trained on -- ops/clean_program.py writes it under a
+    walk's copies were trained on -- `stocks-ml train` writes it under a
     guard, so a walk cannot be resumed under another recipe). The spec's
     horizon.label and training_window_years come from here and are never
     typed; a walk whose record names no recipe is refused."""

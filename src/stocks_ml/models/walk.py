@@ -64,8 +64,7 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
     Other targets/cadences pass `label_col` (e.g. "label_4w"), `purge_days`
     exceeding that label's calendar span, and `rebalance_every` (panel dates
     per rebalance). `extra_features` names panel columns the model gets on
-    top of feature_cols(panel) — a screen's admitted candidates (``x_``) or a
-    pending ``f_`` feature admitted by name."""
+    top of feature_cols(panel) — the spec's `features` list (empty)."""
     # Walks cost hours of fits; cache_path (under the data dir, NOT tmp — the
     # OS purges tmp and has eaten these before) lets studies reuse them. The
     # caller owns invalidation: pass a new path when estimator/panel change.

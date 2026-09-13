@@ -9,9 +9,8 @@ key and a fresh world store, neither of which belongs in Actions. Steps:
      training window are the spec's, written by the procedure from the
      champion walk's own record -- the sector-centred 4-week label on an
      8-year window since 2026-09-12, Stage E of the clean program;
-     the panel's f_ columns on the nominal price basis; SPEC["features"] is
-     the adopted bundle beyond them — empty since 2026-09-11, when the
-     split-leak bundle was retired, features/bundle.py)
+     the panel's f_ columns on the nominal price basis; SPEC["features"]
+     names any panel columns the model gets beyond them — none)
   3. the sleeve schedule rotates one of four sleeves of the spec's book size
      (top-10, no sector cap since 2026-09-12; top-6 with cap 2 before)
   4. the trend ballast: the spec's floor (one of ledger.FLOORS, decided by
@@ -38,7 +37,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from stocks_ml.features.bundle import FEATURES as BUNDLE
 from stocks_ml.ledger import (FUNDS, Ledger, ballast_state, due_sleeve, floor_split, friday_of,
                               rotate_sleeves, sleeve_counts, target_weights)
 from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds
@@ -59,14 +57,15 @@ def spec_path() -> Path:
 def load_spec(path: Path | None = None) -> dict:
     """The live job's settings from the spec the procedure wrote
     (stocks_ml.procedure): horizon, label, window, book, cap and floor are
-    read, never typed here. top_n (rotation candidates) and the feature bundle are
-    the job's own; tests/test_procedure.py holds them to the spec."""
+    read, never typed here; `features` is the spec's list of panel columns the
+    model gets beyond the panel's f_ columns (empty). top_n (rotation
+    candidates) is the job's own; tests/test_procedure.py holds it to the spec."""
     from stocks_ml.procedure import live_strategy
     spec = json.loads((path or spec_path()).read_text())
-    return {**live_strategy(spec), "top_n": 15, "features": list(BUNDLE)}
+    return {**live_strategy(spec), "top_n": 15, "features": list(spec.get("features") or [])}
 
 
-SPEC = load_spec()                         # features/bundle.py: empty since 2026-09-11 (clean line)
+SPEC = load_spec()
 N_SLEEVES = HORIZONS[SPEC["horizon"]]["kweeks"]
 MIN_UNIVERSE = 100                         # rankable names needed for a signal
 TRADABLE_DAYS = 7                          # a name must have a close this recent
@@ -171,11 +170,10 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         build_world_panel(live_dir, cfg, log=log)
 
     ctx = Ctx(str(live_dir))
-    ctx.extra = list(SPEC.get("features", ()))     # the champion's bundle beyond feature_cols
+    ctx.extra = list(SPEC.get("features", ()))     # panel columns beyond feature_cols (none)
     missing = [c for c in ctx.extra if c not in ctx.pan.columns]
     if missing:
-        raise RuntimeError(f"panel_sf lacks the champion's bundle columns {missing[:3]}...: "
-                           "rebuild it (build_world_panel computes the g_ columns)")
+        raise RuntimeError(f"panel_sf lacks the spec's extra feature columns {missing[:3]}")
     t = pd.Timestamp(as_of) if as_of else _latest_complete_week(ctx.weeks)
     if t not in ctx.members:
         raise RuntimeError(f"{t.date()} is not a panel date; latest is {ctx.weeks[-1].date()}")

@@ -64,7 +64,6 @@ def test_procedure_record_names_what_it_read():
 
 # ---- the live job reads the decision ----
 def test_live_spec_is_read_from_the_procedure():
-    from stocks_ml.features.bundle import FEATURES
     from stocks_ml.live import r5
     dec = SPEC["procedure"]["decision"]
     assert r5.SPEC["book"] == dec["book_size"] == SPEC["strategy"]["book_size"]
@@ -73,7 +72,7 @@ def test_live_spec_is_read_from_the_procedure():
     assert r5.SPEC["train_years"] == SPEC["training_window_years"] == SPEC["procedure"]["model"]["train_years"]
     assert r5.SPEC["horizon"] == "4w"
     assert r5.SPEC["label"] == SPEC["horizon"]["label"] == SPEC["procedure"]["model"]["label"]
-    assert list(r5.SPEC["features"]) == list(FEATURES) == list(SPEC["features"])
+    assert list(r5.SPEC["features"]) == list(SPEC["features"]) == []
     assert r5.load_spec(r5.spec_path()) == r5.SPEC
 
 
@@ -219,26 +218,6 @@ def test_decide_strategy_is_the_argmax_of_its_menus(monkeypatch):
     assert all(b == 6 for b, *_ in calls)                                  # layers below read the book
     assert got["evidence"]["floor"]["60/40"] == 0.5 and got["evidence"]["cap"]["2"] == 0.49
     assert set(got["evidence"]) == {"book", "floor", "stop", "cap"}
-
-
-def test_run_cascade_layers_come_from_decide_strategy(monkeypatch):
-    """run_cascade's book-down block is decide_strategy: same fields, same evidence."""
-    seen = {}
-
-    def fake(ctx, holdings, horizon, lo, hi):
-        seen["args"] = (horizon, lo, hi)
-        return {"book": 3, "floor": "80/20", "stop": -0.25, "cap": 2,
-                "evidence": {"book": {"3": 1.0}, "floor": {}, "stop": {}, "cap": {}}}
-    monkeypatch.setattr(sel, "decide_strategy", fake)
-    monkeypatch.setattr(sel, "decide_horizon", lambda grids, lo, hi: ("4w", {}))
-    monkeypatch.setattr(sel, "load_windows", lambda *a, **k: {})
-    monkeypatch.setattr(sel, "decide_window", lambda sweeps, lo, hi: (5, {}))
-    monkeypatch.setattr(sel, "_load", lambda out, pat: pd.DataFrame({"week": []}))
-    import stocks_ml.models.trials as trials
-    monkeypatch.setattr(trials, "record_trials", lambda rows: None)
-    cfg = sel.run_cascade(None, Path("."), pd.Timestamp("2006-01-01"), pd.Timestamp("2015-12-31"))
-    assert (cfg["book"], cfg["floor"], cfg["stop"], cfg["cap"]) == (3, "80/20", -0.25, 2)
-    assert cfg["evidence"]["book"] == {"3": 1.0} and seen["args"][0] == "4w"
 
 
 def test_procedure_run_writes_spec_card_and_ledger(tmp_path, monkeypatch):

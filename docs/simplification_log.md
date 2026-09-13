@@ -35,3 +35,36 @@ first two weeks and matches to 1e-6; `stocks-ml eval` reproduces the table,
 the leak verdict and the intervals; `stocks-ml app` builds the page.
 `pyproject.toml` gained a non-default `eval` group (matplotlib) for the
 charts.
+
+## Step 2 — the removals (9,583 lines deleted, 119 added)
+
+Everything below is at tag `pre-simplify`; the ledger rows and reports
+that cite these tools name them as they were.
+
+| removed | what it was | where the process lives now |
+|---|---|---|
+| `ops/clean_program.py`, `nominal_program.py`, `k16_program.py` | the research programs (stage B–E, the nominal rebuild, the K=16 regrade) | `stocks-ml train` / `backtest` / `eval` / `procedure` |
+| `ops/leak_audit.py` | the leak audit with the shifted-feature retention gate | `leak_audit.py` inside `stocks-ml eval` (identity gate; factor and delisting report-only) |
+| `ops/openfe_arm*.py`, `tails_exam*.py`, `tails_features_probe.py`, `decline_features_probe.py`, `champion_bundle_regrade.py`, `fill_basis_regrade.py`, `regrade_campaign.py`, `k16_seed_spread.py`, `leverage_exam.py`, `live_emulation.py` | one-off exams and regrades (each has a report at the tag and a ledger row) | a challenger is now a walk: `train` → `backtest` (selection metric) → `eval` |
+| `ops/com.stocks-ml.r5-weekly.plist` | the Mac launchd schedule for the weekly job | GitHub Actions (`.github/workflows/champion.yml`); `ops/r5_weekly.sh` stays for a manual Mac run |
+| `app/oos/` | the four explorer variants | `stocks-ml app` (`src/stocks_ml/app/`) |
+| `src/stocks_ml/feature_screen.py`, `features/candidates.py`, `features/derived.py`, `features/generated.py`, `features/bundle.py` | the feature screen, the `x_` candidate ideas, the generated (`g_`) bundle and its formulas | none: the model's inputs are the panel's `f_` columns; the spec's `features` list (empty) names any extra panel column, read by `live/r5.py` and `models/walk.py`; a new feature set is a challenger model, admitted by the selection metric |
+| `selection.py`: `stage_grid`, `stage_wsweep`, `stage_holdings`, `stage_screen`, `run_cascade`, `run_select`, `decide_engine`, `decide_horizon`, `decide_window`, `load_windows`, `sample_weeks`, `holdings_name`, `_stage_*`, `_load`, `WINDOWS`, `REF_WINDOW` | the cascade's search stages (horizon and window menus; the 2026-09-01 procedure) | the model (label, window) is chosen by the argmax of the selection metric across candidate walks; the strategy layers by `decide_strategy` (unchanged) |
+| tests: `test_bundle`, `test_candidates`, `test_derived_features`, `test_feature_screen`, `test_fill_basis_regrade`, `test_generated`, `test_live_emulation`, `test_regrade_campaign`; eight cascade tests in `test_selection.py`; one in `test_procedure.py` | tests of the removed code | — |
+
+Edits to kept code: `data/world.py` no longer adds `x_`/`g_` columns to the
+live `panel_sf` (the model reads `feature_cols` only); `live/r5.py` reads
+`features` from the spec instead of `features/bundle.py`; `backtest.run`
+prints the **selection metric** (cost-adjusted compounded %/yr per book on
+2006-2015, `selection.decide_book` — the number the procedure's book layer
+reads, so a challenger model's admission is code); `procedure_card` and
+its test lost the bundle wording; `tests/e2e/test_app.py` renamed
+`test_app_e2e.py` (pytest basename clash with `tests/test_app.py`).
+
+Verified after the removals: 245 tests pass; `stocks-ml procedure --check`
+matches the spec; `stocks-ml backtest` on the champion prints the record and
+the selection metric {3: +2.14, 6: +7.86, 10: +8.11} equal to the
+procedure's book evidence; `stocks-ml r5-weekly --no-refresh --dry-run
+--as-of 2026-08-28` ranks 502 names in 22 s with `features: []` from the
+spec (the Mac's live store ends 2026-09-01; the Saturday job refreshes).
+`selection.py` went from 700 to 412 lines.

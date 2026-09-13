@@ -29,18 +29,12 @@ def test_render_tracks_spec_changes():
     assert "trailing 2 years" in render(spec)
 
 
-def test_render_lists_the_bundle_with_its_formulas():
+def test_render_names_the_features():
     spec = json.loads(Path(SPEC_PATH).read_text())
     card = render(spec)
-    # the champion carries no bundle since 2026-09-11 (the split-leak bundle retired)
-    assert spec["features"] == [] and spec["formulas"] == {}
+    # the champion carries no extra columns since 2026-09-11 (the split-leak bundle retired)
+    assert spec["features"] == []
     assert "| Features |" in card and "no screened bundle" in card
     assert "level features on the nominal basis" in card and "final print (last_print)" in card
-    spec["features"] = ["g_00", "g_01"]                          # a generated bundle with formulas
-    spec["formulas"] = {"g_00": "(r_close*f_a)", "g_01": "log(f_b)"}
-    card = render(spec)
-    assert "generated bundle of 2" in card and "no asterisk" in card
-    for f in spec["features"]:
-        assert f"{f} = `{spec['formulas'][f]}`" in card
-    spec["features"] = ["x_cash_runway", "f_vol_chg_12w"]      # a screened bundle of ideas
-    assert "screened bundle of 2: x_cash_runway, f_vol_chg_12w" in render(spec) and "asterisk" in render(spec)
+    spec["features"] = ["x_cash_runway", "f_vol_chg_12w"]      # extra columns carry the asterisk
+    assert "extra columns x_cash_runway, f_vol_chg_12w" in render(spec) and "asterisk" in render(spec)

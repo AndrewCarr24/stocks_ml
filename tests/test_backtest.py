@@ -75,3 +75,20 @@ def test_table_md_always_carries_the_sp500_row():
         bt.table_md({"champion": rows["champion"]})
     two = bt.table_md(rows, spans=("2006-2015",))
     assert two[0].count("|") == 5 and "(06-15" in two[0]
+
+
+def test_selection_metric_is_decide_book_on_the_selection_window_only():
+    weeks = pd.date_range("2006-01-06", "2016-12-30", freq="W-FRI")
+    rng = np.random.default_rng(0)
+    hold = pd.DataFrame({"week": weeks, "spy": 0.0, "rand_mean": 0.0,
+                         "top3": rng.normal(0.01, 0.02, len(weeks)),
+                         "top6": rng.normal(0.02, 0.02, len(weeks)),
+                         "top10": rng.normal(0.03, 0.02, len(weeks))})
+    m = bt.selection_metric(sel, hold)
+    assert set(m) == set(sel.BOOKS)
+    inside = hold[(hold.week >= bt.SELECT_START) & (hold.week <= bt.SELECT_END)]
+    _, res = sel.decide_book(inside, "4w", bt.SELECT_START, bt.SELECT_END)
+    assert m == {int(k): round(float(v), 2) for k, v in res.items()}
+    # the 2016 weeks change nothing; a walk that misses the window has no metric
+    assert bt.selection_metric(sel, inside) == m
+    assert bt.selection_metric(sel, hold[hold.week >= bt.EXTEND_START]) == {}

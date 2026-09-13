@@ -15,6 +15,13 @@ on the same weeks, with the paired weekly t. Settings default to the deployed
 spec's decision, which `stocks-ml procedure` wrote; `--book/--floor/--stop/
 --cap` try others for exploration only — the procedure decides.
 
+Above the table it prints the MODEL-SELECTION METRIC: the cost-adjusted
+compounded %/yr of each book (top-3/6/10, held 4 weeks) on the selection
+window 2006-2015 alone — selection.decide_book, the same number the
+procedure's book layer reads. A challenger model (another label, window or
+feature set) is admitted by this metric's argmax across candidate walks,
+never by the 2016-2024 columns, which are read once at `stocks-ml eval`.
+
     stocks-ml backtest --preds <walk>/select/preds.parquet <walk>/extend/preds.parquet
     stocks-ml backtest --preds ... --book 6 --floor none --k 4
 
@@ -32,6 +39,7 @@ from stocks_ml.selection import HOLDOUT_START
 
 SPEC_PATH = Path("models/champion_spec.json")
 SELECT_START = pd.Timestamp("2006-01-01")     # the selection window opens
+SELECT_END = pd.Timestamp("2015-12-31")       # ... and closes (procedure.SELECT)
 EXTEND_START = pd.Timestamp("2016-01-01")     # the one-look years open
 SPANS = {"2006-2015": (SELECT_START, EXTEND_START),
          "2016-2024": (EXTEND_START, HOLDOUT_START),
@@ -72,12 +80,32 @@ def spec_settings(spec_path: Path = SPEC_PATH) -> dict:
     return dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"])
 
 
-def weekly_returns(sel, ctx, preds: pd.DataFrame, copies, st: dict) -> pd.Series:
-    """The strategy's weekly returns for the mean of `copies` at settings
-    st = {book, floor, stop, cap}."""
+def holdings(sel, ctx, preds: pd.DataFrame, copies) -> pd.DataFrame:
+    """The per-week holdings frame for the mean of `copies`: the books'
+    forward returns (top3/top6/top10), the universe mean, the top-15 names."""
     hold, _ = sel.ensemble_holdings(ctx, preds, copies)
-    hold = hold.sort_values("week").reset_index(drop=True)
+    return hold.sort_values("week").reset_index(drop=True)
+
+
+def simulate_holdings(sel, ctx, hold: pd.DataFrame, st: dict) -> pd.Series:
+    """The strategy's weekly returns on a holdings frame at settings
+    st = {book, floor, stop, cap}."""
     return sel.simulate(ctx, hold, "4w", st["book"], st["cap"], st["stop"], st["floor"])
+
+
+def weekly_returns(sel, ctx, preds: pd.DataFrame, copies, st: dict) -> pd.Series:
+    """The strategy's weekly returns for the mean of `copies` at settings st."""
+    return simulate_holdings(sel, ctx, holdings(sel, ctx, preds, copies), st)
+
+
+def selection_metric(sel, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END) -> dict:
+    """Cost-adjusted compounded %/yr per book on the selection window — the
+    model-selection metric (the procedure's book layer, selection.decide_book).
+    Empty when the walk does not cover the window."""
+    if not ((hold.week >= lo) & (hold.week <= hi)).sum() > 52:
+        return {}
+    _, res = sel.decide_book(hold[(hold.week >= lo) & (hold.week <= hi)], "4w", lo, hi)
+    return {int(k): round(float(v), 2) for k, v in res.items()}
 
 
 def paired_t(x: pd.Series) -> float:
@@ -131,7 +159,13 @@ def run(preds_paths, store: str, st: dict | None = None, k: int | None = None,
     sel, ctx, _ = context(store)
     log(f"backtest: {name} — {preds.week.nunique()} rank weeks {preds.week.min().date()} -> "
         f"{preds.week.max().date()}, K={k}, {settings_label(st)}")
-    r = weekly_returns(sel, ctx, preds, range(1, k + 1), st)
+    hold = holdings(sel, ctx, preds, range(1, k + 1))
+    metric = selection_metric(sel, hold)
+    if metric:
+        log(f"selection metric (2006-2015, cost-adjusted compounded %/yr per book, held 4 weeks): "
+            + ", ".join(f"top-{b} {v:+.2f}" for b, v in metric.items())
+            + f" — a challenger model is admitted by the argmax of this, never by 2016-2024")
+    r = simulate_holdings(sel, ctx, hold, st)
     spy = ctx.wret["SPY"]
     spans = {w: (a, b) for w, (a, b) in SPANS.items()
              if ((r.index >= a) & (r.index < b)).sum() > 52}
@@ -140,4 +174,5 @@ def run(preds_paths, store: str, st: dict | None = None, k: int | None = None,
     md = table_md(rows, tuple(w for w in ("2006-2024", "2016-2024", "2006-2015") if w in spans))
     log("\n".join(md))
     return {"settings": st, "k": k, "rank_weeks": int(preds.week.nunique()),
+            "selection_metric": metric,
             "records": walk_records(preds_paths), "table": rows, "md": md}

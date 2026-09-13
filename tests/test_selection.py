@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from stocks_ml.selection import (COST, COST_BPS, compounded_pct, decide_book, decide_horizon,
-                                 decide_window, floor_split, holdings_name, label_end, load_windows,
+from stocks_ml.selection import (COST, COST_BPS, compounded_pct, decide_book, floor_split, label_end,
                                  next_open, pick_capped, price_frames, simulate, slice_row, week_slot)
 
 
@@ -14,33 +13,6 @@ def _frame(weeks, top6, spy=0.0, rand=0.0, top3=None, top10=None):
         "week": weeks, "top3": top3 if top3 is not None else top6,
         "top6": top6, "top10": top10 if top10 is not None else top6,
         "spy": spy, "rand_mean": rand, "top15": "A,B,C"})
-
-
-def test_decide_horizon_prefers_cost_adjusted_compounding():
-    weeks = pd.date_range("2010-01-01", periods=104, freq="W-FRI")
-    # 1w: +30bp/week gross but pays weekly cost; 4w: +200bp/4w
-    g1 = _frame(weeks, 0.003)
-    g4 = _frame(weeks, 0.020)
-    h, res = decide_horizon({"1w": g1, "4w": g4}, weeks[0], weeks[-1])
-    assert h == "4w" and res["4w"] > res["1w"]
-
-
-def test_decide_horizon_flips_when_weekly_dominates():
-    weeks = pd.date_range("2010-01-01", periods=104, freq="W-FRI")
-    h, _ = decide_horizon({"1w": _frame(weeks, 0.02),
-                           "4w": _frame(weeks, 0.005)}, weeks[0], weeks[-1])
-    assert h == "1w"
-
-
-def test_decide_window_pairs_on_common_weeks():
-    weeks = pd.date_range("2010-01-01", periods=50, freq="4W-FRI")
-    sweeps = {2: _frame(weeks, 0.01, rand=0.005),
-              5: _frame(weeks, 0.02, rand=0.005),
-              3: _frame(weeks[:10], 0.09, rand=0.0)}  # partial overlap only
-    w, res = decide_window(sweeps, weeks[0], weeks[-1])
-    # 3y graded only on the common (first-10) weeks like everyone else
-    assert set(res) == {2, 3, 5}
-    assert w == 3  # its common-week edge is largest
 
 
 def test_decide_book_uses_named_columns():
@@ -64,26 +36,8 @@ def test_compounded_pct_reads_every_week_through_the_phases():
     # one-week books have a single phase: the plain chain
     assert compounded_pct(df, "top6", 1, weeks[0], weeks[-1]) == pytest.approx(
         (float(np.prod(1 + r - COST)) ** (52 / 104) - 1) * 100)
-    h, res = decide_horizon({"1w": df, "4w": df}, weeks[0], weeks[-1])
-    assert res["4w"] == pytest.approx((phase0 + 3 * other) / 4 * 100)
-
-
-def test_load_windows_refuses_a_partial_sweep(tmp_path):
-    weeks = pd.date_range("2006-01-06", periods=200, freq="W-FRI")
-    lo, hi = weeks[0], weeks[-1]
-    for y in (1, 2, 3, 4, 5):
-        _frame(weeks, 0.01).to_parquet(tmp_path / f"holdings_4w_{y}y_s0.parquet")
-    assert set(load_windows(tmp_path, "4w", lo, hi)) == {1, 2, 3, 4, 5}
-    # a few None weeks (degenerate ensembles) are tolerated ...
-    _frame(weeks[:-3], 0.01).to_parquet(tmp_path / "holdings_4w_3y_s0.parquet")
-    assert len(load_windows(tmp_path, "4w", lo, hi)[3]) == 197
-    # ... an interrupted walk is not, nor a missing window
-    _frame(weeks[:100], 0.01).to_parquet(tmp_path / "holdings_4w_3y_s0.parquet")
-    with pytest.raises(RuntimeError, match="short \\[3\\]"):
-        load_windows(tmp_path, "4w", lo, hi)
-    (tmp_path / "holdings_4w_3y_s0.parquet").unlink()
-    with pytest.raises(RuntimeError, match="missing \\[3\\]"):
-        load_windows(tmp_path, "4w", lo, hi)
+    b, res = decide_book(df, "4w", weeks[0], weeks[-1])
+    assert res[6] == pytest.approx((phase0 + 3 * other) / 4 * 100)
 
 
 def test_pick_capped_spills_to_next_sector():
@@ -269,104 +223,22 @@ def test_simulate_trace_reassembles_each_credited_week():
     assert trace[2]["pnl"]["A"] == pytest.approx(-fee_a)    # sold flat: the fee is the loss
 
 
-def test_stage_screen_examines_keepers_with_a_second_holdings_run(tmp_path, monkeypatch):
-    """The screen probes, re-runs holdings WITH the keepers (ctx.extra set only
-    for that run), grades the paired difference and writes screen.json."""
-    import stocks_ml.feature_screen as fs
-    import stocks_ml.models.trials as trials
-    import stocks_ml.selection as sel
-
-    weeks = pd.Series(pd.date_range("2006-01-06", periods=120, freq="7D"))
-    lo, hi = weeks.iloc[0], weeks.iloc[-1]
-    base = np.random.default_rng(0).normal(0.01, 0.03, 120)
-    _frame(weeks, base).to_parquet(tmp_path / "holdings_4w_5y_s0.parquet")
-    ctx = SimpleNamespace(pan=None, world=None, weeks=list(weeks), extra=[])
-    probe = pd.DataFrame([{"feature": "x_good", "coverage": 1.0, "active": 1.0, "sparse": False, "ic": 0.02,
-                           "t": 3.0, "ic_a": 0.02, "ic_b": 0.02, "weeks": 100, "same_sign": True, "keep": True},
-                          {"feature": "x_noise", "coverage": 1.0, "active": 1.0, "sparse": False, "ic": 0.0,
-                           "t": 0.1, "ic_a": 0.0, "ic_b": 0.0, "weeks": 100, "same_sign": False, "keep": False}])
-    monkeypatch.setattr(fs, "probe_frame", lambda *a, **k: "frame")
-    monkeypatch.setattr(fs, "probe", lambda *a, **k: probe)
-    seen = []
-
-    def fake_holdings(ctx, out, horizon, train_years, lo_, hi_, shard=(0, 1)):
-        seen.append(list(ctx.extra))
-        stem = sel.holdings_name(horizon, train_years, ctx.extra)
-        _frame(weeks, base + 0.02).to_parquet(f"{out}/{stem}_s0.parquet")
-    monkeypatch.setattr(sel, "stage_holdings", fake_holdings)
-    rows = []
-    monkeypatch.setattr(trials, "record_trials", lambda r: rows.extend(r))
-
-    summary = sel.stage_screen(ctx, tmp_path, "4w", 5, lo, hi, hi, name="t")
-    assert seen == [["x_good"]] and ctx.extra == []
-    assert summary["admitted"] == ["x_good"] and summary["exam"]["passed"]
-    assert (tmp_path / f"{holdings_name('4w', 5, ['x_good'])}_s0.parquet").exists()
-    assert (tmp_path / "screen.json").exists() and (tmp_path / "screen_probe.parquet").exists()
-    assert rows[0]["kind"] == "feature_screen" and rows[0]["passed"] and rows[0]["top6_diff"] == pytest.approx(0.02)
-    # the cascade of a screened run reads the with-arm holdings
-    assert sel.holdings_name("4w", 5, fs.load_screen(tmp_path)["admitted"]).startswith("holdings_4w_5y_x")
-    assert sel.holdings_name("4w", 5, []) == "holdings_4w_5y"
-
-
-def test_holdings_name_keeps_bundles_apart():
-    """Two bundles never share a cache file: the stem carries a hash of the
-    sorted names (order-free), the base run has no suffix."""
-    assert holdings_name("4w", 5) == "holdings_4w_5y"
-    a, b = holdings_name("4w", 5, ["x_b", "x_a"]), holdings_name("4w", 5, ["x_a", "x_b"])
-    assert a == b and a.startswith("holdings_4w_5y_x") and len(a) == len("holdings_4w_5y_x") + 6
-    assert holdings_name("4w", 5, ["x_a"]) != a and holdings_name("1w", 2, ["x_a"]) != holdings_name("4w", 5, ["x_a"])
-
-
 def test_decisions_stop_where_labels_would_end_after_the_window():
     """No layer reads a rank week whose forward label ends after the window's
     end: at a window closing at the holdout's edge those weeks would be
-    graded on holdout prices. The cut is the screen's rule (label_span_days:
-    35 days for 4w, 14 for 1w); horizons are compared on the same weeks."""
+    graded on holdout prices (label_span_days: 35 days for 4w, 14 for 1w)."""
     assert label_end("2024-07-18") == pd.Timestamp("2024-06-13")
     assert label_end("2024-07-18", 1) == pd.Timestamp("2024-07-04")
     weeks = pd.date_range("2010-01-01", periods=104, freq="W-FRI")
     lo, hi = weeks[0], weeks[-1]
     tail = weeks > label_end(hi)                                  # the last five rank weeks
     assert tail.sum() == 5
-    # a windfall in the tail would flip every layer; the cut leaves it unread
-    g1 = _frame(weeks, np.where(tail, 0.5, 0.004))
-    g4 = _frame(weeks, np.where(tail, -0.9, 0.02))
-    h, res = decide_horizon({"1w": g1, "4w": g4}, lo, hi)
-    assert h == "4w" and res["1w"] == pytest.approx(compounded_pct(_frame(weeks, 0.004), "top6", 1, lo, label_end(hi)))
-    sweeps = {2: _frame(weeks, np.where(tail, 0.9, 0.01), rand=0.005),
-              5: _frame(weeks, 0.02, rand=0.005)}
-    w, res = decide_window(sweeps, lo, hi)
-    assert w == 5 and res[2] == pytest.approx(0.005 * 13 * 100)
+    # a windfall in the tail would flip the book layer; the cut leaves it unread
     df = _frame(weeks, top6=0.01, top3=np.where(tail, 0.9, 0.0), top10=0.005)
     b, res = decide_book(df, "4w", lo, hi)
     assert b == 6
     b, res = decide_book(_frame(weeks, top6=0.01, top3=np.where(weeks > label_end(hi, 1), 0.9, 0.0)), "1w", lo, hi)
     assert b == 6                                                  # 1w's own (shorter) span
-
-
-def test_run_cascade_names_its_ledger_row_after_the_run(tmp_path, monkeypatch):
-    """Two runs on one window keep separate rows: the row is the run's name
-    (`_x` for the with-features arm), the window only when no name is given."""
-    import stocks_ml.models.trials as trials
-    import stocks_ml.selection as sel
-
-    weeks = pd.date_range("2006-01-06", periods=120, freq="W-FRI")
-    lo, hi = weeks[0], weeks[-1]
-    for h, r in (("1w", 0.002), ("4w", 0.02)):
-        _frame(weeks, r).to_parquet(tmp_path / f"grid_{h}_s0.parquet")
-    for y in (1, 2, 3, 4, 5):
-        _frame(weeks, 0.01 + 0.002 * y, rand=0.005).to_parquet(tmp_path / f"holdings_4w_{y}y_s0.parquet")
-    _frame(weeks, 0.03, rand=0.005).to_parquet(tmp_path / f"{holdings_name('4w', 5, ['x_a'])}_s0.parquet")
-    monkeypatch.setattr(sel, "simulate", lambda ctx, holdings, horizon, book, cap, stop, floor, trace=None:
-                        pd.Series(np.random.default_rng(0).normal(0.01, 0.02, len(weeks)), index=weeks))
-    rows = []
-    monkeypatch.setattr(trials, "record_trials", lambda r: rows.extend(r))
-    cfg = sel.run_cascade(None, tmp_path, lo, hi, name="select3_2006_2024")
-    assert (cfg["horizon"], cfg["train_years"], cfg["features"]) == ("4w", 5, [])
-    sel.run_cascade(None, tmp_path, lo, hi, features=["x_a"], name="select3_2006_2024")
-    sel.run_cascade(None, tmp_path, lo, hi)
-    assert [r["name"] for r in rows] == ["select3_2006_2024", "select3_2006_2024_x",
-                                         f"select_{lo.date()}_{hi.date()}"]
 
 
 def test_holdout_start_is_the_exclusive_grade_bound():
@@ -397,26 +269,6 @@ def test_compounded_pct_chains_do_not_rephase_at_a_gap():
     assert compounded_pct(df, "top6", 4, weeks[0], weeks[-1]) == pytest.approx(expect)
     gapped = compounded_pct(df.drop(index=1), "top6", 4, weeks[0], weeks[-1])
     assert gapped == pytest.approx(expect)     # positional striding re-phased here
-
-
-def test_stage_loop_refuses_a_cache_from_another_recipe(tmp_path):
-    from stocks_ml import selection as sel
-    out = tmp_path / "holdings_4w_5y_s0.parquet"
-    calls = []
-    weeks = list(pd.date_range("2024-01-05", periods=3, freq="W-FRI"))
-    fn = lambda t: calls.append(t) or {"week": t, "top6": 0.0}
-    sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
-    assert (tmp_path / "holdings_4w_5y_s0.parquet.spec.json").exists()
-    # resuming under the same recipe is fine and re-runs nothing
-    sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
-    assert len(calls) == 3
-    # a different bundle, K, or params must refuse rather than mix rows
-    with pytest.raises(RuntimeError, match="different|recipe"):
-        sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_99",)))
-    # a legacy cache without a stamp is not silently trusted
-    (tmp_path / "holdings_4w_5y_s0.parquet.spec.json").unlink()
-    with pytest.raises(RuntimeError, match="predates"):
-        sel._stage_loop(None, weeks, out, fn, spec=sel._stage_spec(("g_00",)))
 
 
 def test_price_frames_grades_a_delisting_to_its_last_print():

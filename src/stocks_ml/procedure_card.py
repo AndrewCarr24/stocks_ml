@@ -71,21 +71,13 @@ procedure: {inflation}.
 
 
 def features_summary(s: dict) -> str:
-    """The model's inputs: the panel's standing f_ columns plus the spec's
-    bundle, if one was adopted — the generated bundle (g_ columns with their
-    formulas) or a screened bundle of hand-written ideas (asterisk)."""
+    """The model's inputs: the panel's standing f_ columns plus any extra
+    panel columns the spec names (`features`; none since 2026-09-11)."""
     feats = s.get("features") or []
     if not feats:
         return ("the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*); no screened bundle "
-                "(the split-leak bundle retired 2026-09-11, features/bundle.py)")
-    formulas = s.get("formulas") or {}
-    if formulas and all(f in formulas for f in feats):
-        return (f"the panel's f_ columns plus the generated bundle of {len(feats)} (features/bundle.py, "
-                f"selected on 2006-2015 alone, no asterisk): "
-                + ", ".join(f"{f} = `{formulas[f]}`" for f in feats))
-    return (f"the panel's f_ columns plus the screened bundle of {len(feats)}: {', '.join(feats)} "
-            f"(feature screen, rule v3.1; asterisk: the candidate ideas were written from the whole "
-            f"2006-2024 record)")
+                "(the split-leak bundle retired 2026-09-11)")
+    return f"the panel's f_ columns plus the extra columns {', '.join(feats)} (asterisk: see features_note)"
 
 
 def strategy_summary(s: dict) -> tuple[str, str]:

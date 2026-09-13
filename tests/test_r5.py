@@ -125,11 +125,10 @@ def test_live_spec_mirrors_the_champion_spec():
     import json
     from pathlib import Path
 
-    from stocks_ml.features.bundle import FEATURES, FORMULAS
     from stocks_ml.selection import K_COPIES
     spec = json.loads((Path(__file__).resolve().parents[1] / "models/champion_spec.json").read_text())
     assert spec["ensemble"]["k_copies"] == K_COPIES == 16       # the live job averages K_COPIES copies
-    assert list(r5.SPEC["features"]) == list(FEATURES) and spec["formulas"] == FORMULAS
+    assert list(r5.SPEC["features"]) == list(spec["features"]) == []   # the panel's f_ columns only
     assert r5.SPEC["train_years"] == spec["training_window_years"]
     assert r5.SPEC["book"] == spec["strategy"]["book_size"]
     assert r5.SPEC["cap"] == spec["strategy"]["sector_cap"]
