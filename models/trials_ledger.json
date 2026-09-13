@@ -24621,5 +24621,32 @@
   "name": "procedure_2006-01-01_2015-12-31_clean_program_stage_e_ls_w8_select",
   "pre_holdout_sharpe": 0.532,
   "notes": "{\"decision\": {\"book_size\": 10, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": null}, \"evidence\": {\"book\": {\"3\": 2.14, \"6\": 7.86, \"10\": 8.11}, \"floor\": {\"none\": 0.455, \"halfgate\": 0.532, \"80/20\": 0.48, \"70/30\": 0.496, \"60/40\": 0.514}, \"stop\": {\"None\": 0.532, \"-0.25\": 0.482}, \"cap\": {\"None\": 0.532, \"2\": 0.523}}, \"preds_sha256\": \"94b2cf6042d9\", \"changed\": {\"book_size\": [6, 10], \"floor\": [\"60/40\", \"halfgate\"], \"sector_cap\": [2, null], \"label\": [\"label_4w\", \"label_4w_sector\"], \"train_years\": [5, 8]}}"
+ },
+ {
+  "date": "2026-09-13",
+  "kind": "eval",
+  "name": "eval_champion_ls_w8_k16",
+  "pre_holdout_sharpe": 0.698,
+  "notes": "{\"walk\": \"data/experiments/clean_program/stage_e/ls_w8\", \"settings\": {\"book\": 10, \"floor\": \"halfgate\", \"stop\": null, \"cap\": null}, \"2016_2024\": {\"terminal_100\": 659.8, \"cagr_pct\": 24.61, \"sharpe\": 0.88, \"max_dd\": 0.334, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 1994.0, \"cagr_pct\": 17.48, \"sharpe\": 0.698, \"max_dd\": 0.628, \"n_weeks\": 966}, \"falsification_t\": null, \"verdict\": null, \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-13",
+  "kind": "app",
+  "name": "app_champion_ls_w8_k16",
+  "config": {
+   "horizon": "4w",
+   "book": 10,
+   "floor": "halfgate",
+   "stop": null,
+   "cap": null,
+   "train_years": 8,
+   "fills": "next open"
+  },
+  "terminal_100": 1994.0,
+  "cagr_pct": 17.48,
+  "sharpe": 0.698,
+  "max_dd": 0.628,
+  "n_weeks": 966,
+  "notes": "2006-01 \u2192 2024-07, the spec's walk data/experiments/clean_program/stage_e/ls_w8 replayed by selection.simulate at K=16 for reports/champion_explorer.html: $1,994 (+17.5%/yr, SR 0.70, DD 63%) vs SPY $621 (+10.3%/yr, SR 0.64, DD 55%) (stocks-ml app)"
  }
 ]

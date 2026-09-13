@@ -20,6 +20,8 @@ stocks-ml = "stocks_ml.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0"]
+# charts for `stocks-ml eval` (uv sync --group eval); the live job never needs them
+eval = ["matplotlib>=3.8"]
 
 [build-system]
 requires = ["hatchling"]
