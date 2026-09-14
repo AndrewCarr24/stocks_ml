@@ -12,17 +12,17 @@ written; adoption is `stocks-ml procedure`). Then, at K copies:
 
     table          $100, %/yr, Sharpe, drawdown on 2006-2015 / 2016-2024 /
                    2006-2024 beside the S&P 500, paired weekly t
-    incumbent      the same for --incumbent (a walk directory), plus the
-                   walk at the incumbent's settings when they differ
+    incumbent      the same for --incumbent (a walk directory), each model at
+                   its own procedure-decided settings
     falsification  paired weekly excess vs the incumbent on 2016-2024:
                    t < -2 rejects the walk (pre-registered)
     leak audit     stocks_ml.leak_audit on each segment (identity gate)
     confidence     95% intervals: seed noise (resampled copies), history
                    noise (block bootstrap of the weeks), both nested
-    charts         growth of $100 vs the S&P 500, 2006-2024 and 2016-2024
+    charts         growth of $100 vs the S&P 500 on 2016-2024 (out of sample only)
 
 Outputs: <walk>/eval.json, reports/<label>_eval.md, reports/<label>_vs_sp500_
-{2006,2016}_2024.png, one ledger row. Default --walk is the spec's walk (the
+2016_2024.png, one ledger row. Default --walk is the spec's walk (the
 champion; label "champion"). Nothing at or past the holdout is read.
 
     stocks-ml eval                                  # the champion
@@ -51,7 +51,10 @@ CI_NESTED_PER_SEED = 20
 CI_BLOCK_WEEKS = 8
 CI_RNG_SEED = 20260911
 FALSIFY_T = -2.0
-LABELS_4W_SHORT = {"label_4w": "4w label", "label_4w_sector": "sector-relative 4w label"}
+LABELS_4W_SHORT = {"label_4w": "4w label", "label_4w_sector": "sector-relative 4w label",
+                   "label_4w_sector_log": "sector-relative 4w log label",
+                   "label_4w_sector_clip": "sector-relative 4w label, clipped",
+                   "label_4w_sector_rank": "sector-relative 4w rank label"}
 
 
 def log(msg):
@@ -326,9 +329,9 @@ def run(walk: Path | None = None, incumbent: Path | None = None, store: str = ST
         inc_preds = load_preds(inc_paths)
         check_complete(ctx, inc_preds, k, lo, hi)
         inc = weekly_returns(sel, ctx, inc_preds, range(1, k + 1), inc_st)
-        if inc_st != st:
-            rows[f"{label} at the incumbent's settings ({settings_label(inc_st)})"] = row_vs_spy(
-                sel, weekly_returns(sel, ctx, preds, range(1, k + 1), inc_st), spy)
+        # Each model is graded at its own procedure-decided settings only. A
+        # row of the walk at the incumbent's settings was dropped 2026-09-14
+        # (owner: a challenger at another model's settings is misleading).
         rows[f"incumbent ({inc_walk.name}, {settings_label(inc_st)})"] = row_vs_spy(sel, inc, spy)
         fals = falsification(pkg, inc)
         inc_row = rows[f"incumbent ({inc_walk.name}, {settings_label(inc_st)})"]
@@ -354,8 +357,8 @@ def run(walk: Path | None = None, incumbent: Path | None = None, store: str = ST
         footer = (f"walk {paths[0]} (sha256 {proc['preds']['sha256'][:12]}), settings decided by the procedure's "
                   f"code {proc['decided_at']}; the label and window were chosen on 2006-2015, 2016-2024 read once")
         res["charts"] = []
-        for start in ("2006-01-01", "2016-01-01"):
-            out = Path("reports") / f"{label}_vs_sp500_{start[:4]}_2024.png"
+        for start in ("2016-01-01",):        # the out-of-sample years only: a chart that
+            out = Path("reports") / f"{label}_vs_sp500_{start[:4]}_2024.png"   # includes 2006-2015 misleads
             chart(df, f"{label}: {res['who']}", footer, start, out, k)
             res["charts"].append(str(out))
             log(f"chart -> {out}")

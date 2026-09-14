@@ -80,6 +80,35 @@ def spec_settings(spec_path: Path = SPEC_PATH) -> dict:
     return dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"])
 
 
+def is_champion_walk(records: list[dict], spec_path: Path = SPEC_PATH) -> bool:
+    """Whether every segment's recipe is the spec's model (label, window,
+    features, params). Only then may the spec's settings be assumed: a
+    challenger graded at the champion's settings compares nothing."""
+    spec = json.loads(Path(spec_path).read_text())
+    from stocks_ml.procedure import model_params
+    want = {"label": spec["horizon"]["label"], "train_years": int(spec["training_window_years"]),
+            "features": list(spec.get("features") or []),
+            "params": {k: str(v) for k, v in spec["model"]["params"].items()}}
+    for rec in records:
+        r = rec.get("recipe") or {}
+        have = {"label": r.get("label"), "train_years": int(r.get("train_years", -1)),
+                "features": list(r.get("features") or []),
+                "params": {k: str(v) for k, v in model_params(r).items()}}
+        if have != want:
+            return False
+    return bool(records)
+
+
+def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END) -> dict:
+    """The walk's own strategy layers: the procedure's decision function on
+    its selection-window holdings (2006-2015 only; nothing later is read)."""
+    if not ((hold.week >= lo) & (hold.week <= hi)).sum() > 52:
+        raise SystemExit("this walk does not cover the selection window, so its settings cannot "
+                         "be decided; pass --book/--floor/--stop/--cap explicitly")
+    d = sel.decide_strategy(ctx, hold, "4w", lo, hi)
+    return dict(book=d["book"], floor=d["floor"], stop=d["stop"], cap=d["cap"])
+
+
 def holdings(sel, ctx, preds: pd.DataFrame, copies) -> pd.DataFrame:
     """The per-week holdings frame for the mean of `copies`: the books'
     forward returns (top3/top6/top10), the universe mean, the top-15 names."""
@@ -147,24 +176,36 @@ def table_md(rows: dict, spans=("2006-2024", "2016-2024", "2006-2015")) -> list[
 
 def run(preds_paths, store: str, st: dict | None = None, k: int | None = None,
         name: str = "walk", log=print) -> dict:
-    """Backtest the walk at the settings (default: the spec's decision) for
-    the mean of copies 1..k (default: every copy the walk holds). Prints the
-    table; returns {settings, k, rank_weeks, records, table}."""
+    """Backtest the walk for the mean of copies 1..k (default: every copy the
+    walk holds). Settings: the ones given; else the spec's decision if this
+    is the champion's own walk; else the walk's own, decided by the
+    procedure's function on its 2006-2015 segment — a challenger is never
+    shown at the champion's settings. Prints the table; returns {settings,
+    settings_source, k, rank_weeks, records, table}."""
     from stocks_ml.train import context
-    st = st or spec_settings()
     preds = load_preds(preds_paths)
+    records = walk_records(preds_paths)
     k = k or copies_in(preds)
     if k > copies_in(preds):
         raise SystemExit(f"the walk holds {copies_in(preds)} copies, --k {k} asked")
     sel, ctx, _ = context(store)
-    log(f"backtest: {name} — {preds.week.nunique()} rank weeks {preds.week.min().date()} -> "
-        f"{preds.week.max().date()}, K={k}, {settings_label(st)}")
     hold = holdings(sel, ctx, preds, range(1, k + 1))
+    if st is not None:
+        source = "given"
+    elif is_champion_walk(records):
+        st, source = spec_settings(), "the spec (this is the champion's walk)"
+    else:
+        st, source = own_settings(sel, ctx, hold), "the procedure's decision on this walk's 2006-2015"
+    log(f"backtest: {name} — {preds.week.nunique()} rank weeks {preds.week.min().date()} -> "
+        f"{preds.week.max().date()}, K={k}, {settings_label(st)} (settings: {source})")
     metric = selection_metric(sel, hold)
     if metric:
+        score = float(np.mean(list(metric.values())))
         log(f"selection metric (2006-2015, cost-adjusted compounded %/yr per book, held 4 weeks): "
             + ", ".join(f"top-{b} {v:+.2f}" for b, v in metric.items())
-            + f" — a challenger model is admitted by the argmax of this, never by 2016-2024")
+            + f"; model score (mean of the three) {score:+.2f} — `challenge` admits a model by the "
+              f"argmax of the score across models, never by 2016-2024; the procedure's book layer "
+              f"takes the argmax of the three")
     r = simulate_holdings(sel, ctx, hold, st)
     spy = ctx.wret["SPY"]
     spans = {w: (a, b) for w, (a, b) in SPANS.items()
@@ -173,6 +214,7 @@ def run(preds_paths, store: str, st: dict | None = None, k: int | None = None,
             "sp500": {w: sel.metrics(spy.reindex(r.index), a, b) for w, (a, b) in spans.items()}}
     md = table_md(rows, tuple(w for w in ("2006-2024", "2016-2024", "2006-2015") if w in spans))
     log("\n".join(md))
-    return {"settings": st, "k": k, "rank_weeks": int(preds.week.nunique()),
+    return {"settings": st, "settings_source": source, "k": k, "rank_weeks": int(preds.week.nunique()),
             "selection_metric": metric,
-            "records": walk_records(preds_paths), "table": rows, "md": md}
+            "model_score": (round(float(np.mean(list(metric.values()))), 2) if metric else None),
+            "records": records, "table": rows, "md": md}

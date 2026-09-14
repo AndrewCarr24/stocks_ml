@@ -92,3 +92,24 @@ def test_selection_metric_is_decide_book_on_the_selection_window_only():
     # the 2016 weeks change nothing; a walk that misses the window has no metric
     assert bt.selection_metric(sel, inside) == m
     assert bt.selection_metric(sel, hold[hold.week >= bt.EXTEND_START]) == {}
+
+
+def test_only_the_champions_walk_gets_the_spec_settings(tmp_path):
+    import stocks_ml.selection as sel
+    spec = {"horizon": {"label": "label_4w_sector"}, "training_window_years": 8, "features": [],
+            "model": {"params": dict(sel.MODEL_PARAMS)}}
+    sp = tmp_path / "spec.json"
+    sp.write_text(json.dumps(spec))
+    champion = [{"recipe": {"label": "label_4w_sector", "train_years": 8}}] * 2
+    assert bt.is_champion_walk(champion, sp)
+    assert not bt.is_champion_walk([{"recipe": {"label": "label_4w_sector_rank", "train_years": 8}}], sp)
+    assert not bt.is_champion_walk([{"recipe": {"label": "label_4w_sector", "train_years": 5}}], sp)
+    assert not bt.is_champion_walk([{"recipe": {"label": "label_4w_sector", "train_years": 8,
+                                                "params": {"max_depth": 4}}}], sp)
+    assert not bt.is_champion_walk([{}], sp) and not bt.is_champion_walk([], sp)
+
+
+def test_own_settings_refuse_a_walk_outside_the_selection_window():
+    hold = pd.DataFrame({"week": pd.date_range("2016-01-08", periods=100, freq="W-FRI"), "top3": 0.0})
+    with pytest.raises(SystemExit):
+        bt.own_settings(None, None, hold)

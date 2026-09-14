@@ -49,7 +49,13 @@ HORIZONS = {"1w": dict(label="label", purge=10, kweeks=1),
 # differs. HORIZONS is what price_frames keys its forward returns on.
 LABELS_4W = {"label_4w": "the stock's 4-week return minus that week's median member's",
              "label_4w_sector": "the stock's 4-week return minus the same-week median of its "
-                                "sector (the week's median where the sector is unknown)"}
+                                "sector (the week's median where the sector is unknown)",
+             "label_4w_sector_log": "log(1 + the stock's 4-week return) minus log(1 + the same-week "
+                                    "median of its sector): the upside tempered, the downside stretched",
+             "label_4w_sector_clip": "the stock's 4-week return minus the same-week median of its "
+                                     "sector, capped at +/-20%",
+             "label_4w_sector_rank": "the stock's 4-week return minus the same-week median of its "
+                                     "sector, replaced by its within-week rank as a normal score"}
 BOOKS = (3, 6, 10)
 # FLOORS / FLOOR_FRACTION / floor_split: stocks_ml.ledger, the one rule the
 # backtest and the live job share (halfgate runs live since 2026-09-12).
@@ -85,12 +91,15 @@ class Ctx:
         mem = world.read("membership")
         self.smap = dict(mem.dropna(subset=["sector"])
                          .drop_duplicates("ticker")[["ticker", "sector"]].values)
-        if "label_4w_sector" not in self.pan.columns:
-            # Panels built before 2026-09-12 store label_4w only; the sector
-            # target is the same fwd_ret_4w recentred on build_panel's sector map.
-            from stocks_ml.features.panel import sector_label
-            self.pan["label_4w_sector"] = sector_label(
-                self.pan["fwd_ret_4w"], self.pan["date"], self.pan["ticker"].map(self.smap))
+        # A stored panel carries label_4w (and label_4w_sector since
+        # 2026-09-12); every other 4-week target is the same fwd_ret_4w
+        # recentred on build_panel's sector map and transformed here, so the
+        # research walk and the live job train on identical columns.
+        from stocks_ml.features.panel import LABEL_TRANSFORMS
+        for name, fn in LABEL_TRANSFORMS.items():
+            if name not in self.pan.columns:
+                self.pan[name] = fn(self.pan["fwd_ret_4w"], self.pan["date"],
+                                    self.pan["ticker"].map(self.smap))
         daily = self.prices.sort_values("date")
         self.delist_labels = getattr(self.cfg, "delist_labels", "drop")
         self.__dict__.update(price_frames(
@@ -114,10 +123,12 @@ class Ctx:
         return c
 
 
-def ensemble_preds(ctx, t, horizon, train_years, label=None):
+def ensemble_preds(ctx, t, horizon, train_years, label=None, features=None, params=None):
     """The K_COPIES-copy ensemble score at rank week t: copy c is the champion
-    model on the trailing `train_years` under whole-week bootstrap seed c,
-    trained on `label` (the horizon's own label unless given; LABELS_4W)."""
+    model (MODEL_PARAMS, `params` overriding) on the trailing `train_years`
+    under whole-week bootstrap seed c, trained on `label` (the horizon's own
+    label unless given; LABELS_4W), on the panel's f_ columns plus `features`
+    (ctx.extra unless given) — the spec's recipe, as the live job passes it."""
     from stocks_ml.models.walk import walk_forward_predictions
     from stocks_ml.models.xgb import TimeTailEarlyStopXGB
     from stocks_ml.models.replication import WeekBootstrapEstimator
@@ -127,12 +138,12 @@ def ensemble_preds(ctx, t, horizon, train_years, label=None):
     copies = []
     for c in range(1, K_COPIES + 1):
         est = WeekBootstrapEstimator(
-            TimeTailEarlyStopXGB(**MODEL_PARAMS, **fixed(h["purge"])),
+            TimeTailEarlyStopXGB(**{**MODEL_PARAMS, **(params or {})}, **fixed(h["purge"])),
             bootstrap_seed=c)
         wf = walk_forward_predictions(ctx.pan, est, cfg2, start=t, end=t,
                                       label_col=label,
                                       purge_days=h["purge"],
-                                      extra_features=tuple(ctx.extra))
+                                      extra_features=tuple(ctx.extra if features is None else features))
         p = wf.preds.get(t)
         if p is not None:
             copies.append(p)
@@ -281,7 +292,7 @@ def decide_book(df, horizon, lo, hi):
     return max(res, key=res.get), res
 
 
-def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
+def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None, settings=None):
     """Weekly returns of the configured book under the live job's rules
     (stocks_ml.ledger): each rank date's target weights are filled at the
     next session's open at COST_BPS a side, rebalances under 0.5% of NAV are
@@ -290,8 +301,17 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
     the book. `stop` moves a name that has fallen that far from its rotation
     close into SPY until its sleeve rotates. Pass a list as `trace` to
     receive one record per credited week (pick date, sleeves, fills, per-name
-    $ and price returns, gate)."""
+    $ and price returns, gate). `settings`, when given, is a frame indexed by
+    decision week with columns book, floor, stop, cap (rolling.decisions): at
+    each rank week the row decided at or before it is in force and the four
+    scalar arguments are ignored — a book-size change phases in as sleeves
+    rotate, as it would for the live job."""
     ranked = {r.week: r.top15.split(",") for r in holdings.itertuples()}
+    if settings is not None:
+        settings = settings.sort_index()
+        if ranked and settings.index[0] > min(ranked):
+            raise ValueError(f"no decision in force at the first rank week {min(ranked).date()} "
+                             f"(the first decision is {settings.index[0].date()})")
     grid = ctx.wret.index
     by_label = {}
     for t in sorted(ranked):
@@ -320,6 +340,8 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
             rotated, weights = [], {}
             continue
         t = by_label[lab]
+        if settings is not None:
+            book, floor, stop, cap = settings_at(settings, t)
         sleeves, rotated = rotate_sleeves(led.sleeves, t, ranked[t], ctx.smap,
                                           n_sleeves, book, cap)
         for k in rotated:
@@ -341,6 +363,19 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
         led.sleeves = sleeves
         led.pending = {"decision_date": str(t.date()), "weights": weights}
     return pd.Series(nav).sort_index().pct_change().iloc[1:]
+
+
+def settings_at(settings, t):
+    """(book, floor, stop, cap) in force at rank week t: the last row of
+    `settings` decided at or before t. NaN stop/cap read as none."""
+    i = settings.index.searchsorted(pd.Timestamp(t), side="right") - 1
+    if i < 0:
+        raise ValueError(f"no decision in force at {pd.Timestamp(t).date()}")
+    r = settings.iloc[i]
+    none = lambda v: None if v is None or (isinstance(v, float) and np.isnan(v)) else v
+    stop, cap = none(r["stop"]), none(r["cap"])
+    return (int(r["book"]), str(r["floor"]), None if stop is None else float(stop),
+            None if cap is None else int(cap))
 
 
 def _attribute(ctx, led, v_prev, fills, wk, nxt):

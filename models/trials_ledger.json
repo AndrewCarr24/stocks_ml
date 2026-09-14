@@ -24630,7 +24630,7 @@
   "notes": "{\"walk\": \"data/experiments/clean_program/stage_e/ls_w8\", \"settings\": {\"book\": 10, \"floor\": \"halfgate\", \"stop\": null, \"cap\": null}, \"2016_2024\": {\"terminal_100\": 659.8, \"cagr_pct\": 24.61, \"sharpe\": 0.88, \"max_dd\": 0.334, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 1994.0, \"cagr_pct\": 17.48, \"sharpe\": 0.698, \"max_dd\": 0.628, \"n_weeks\": 966}, \"falsification_t\": null, \"verdict\": null, \"leak\": \"PASS\"}"
  },
  {
-  "date": "2026-09-13",
+  "date": "2026-09-14",
   "kind": "app",
   "name": "app_champion_ls_w8_k16",
   "config": {
@@ -24642,11 +24642,120 @@
    "train_years": 8,
    "fills": "next open"
   },
-  "terminal_100": 1994.0,
-  "cagr_pct": 17.48,
-  "sharpe": 0.698,
-  "max_dd": 0.628,
-  "n_weeks": 966,
-  "notes": "2006-01 \u2192 2024-07, the spec's walk data/experiments/clean_program/stage_e/ls_w8 replayed by selection.simulate at K=16 for reports/champion_explorer.html: $1,994 (+17.5%/yr, SR 0.70, DD 63%) vs SPY $621 (+10.3%/yr, SR 0.64, DD 55%) (stocks-ml app)"
+  "terminal_100": 659.8,
+  "cagr_pct": 24.61,
+  "sharpe": 0.88,
+  "max_dd": 0.334,
+  "n_weeks": 446,
+  "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/clean_program/stage_e/ls_w8 replayed by selection.simulate at K=16 for reports/champion_explorer.html: $660 (+24.6%/yr, SR 0.88, DD 33%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
+ },
+ {
+  "date": "2026-09-13",
+  "kind": "rolling_lookback",
+  "name": "rolling_lookback_2010-2015_trailing_5_c1",
+  "pre_holdout_sharpe": 0.886,
+  "notes": "{\"choice\": \"trailing_5_c1\", \"metric\": {\"trailing_8_c1\": 2.53, \"trailing_5_c1\": 6.76, \"trailing_3_c1\": 5.89, \"expanding_c1\": 3.72}, \"graded_on\": [\"2010-01-08\", \"2015-12-31\"], \"one_look_2016_2024\": {\"trailing_5_c1 (rolling)\": {\"terminal_100\": 610.5, \"cagr_pct\": 23.48, \"sharpe\": 0.886, \"max_dd\": 0.412, \"n_weeks\": 446}, \"spec settings, fixed\": {\"terminal_100\": 659.8, \"cagr_pct\": 24.61, \"sharpe\": 0.88, \"max_dd\": 0.334, \"n_weeks\": 446}, \"sp500\": {\"terminal_100\": 315.7, \"cagr_pct\": 14.34, \"sharpe\": 0.867, \"max_dd\": 0.318, \"n_weeks\": 446}}, \"paired_t_rolling_vs_fixed\": -0.35}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "label_test",
+  "name": "label_test_2006_2015_k4_incumbent",
+  "cv_metric": 6.75,
+  "notes": "{\"selection_metric_top_book_pct_per_yr\": {\"3\": 10.39, \"6\": 6.75, \"10\": 9.07}, \"window\": \"2006-01-01..2015-12-31\", \"k\": 4, \"note\": \"label_4w_sector / 8y: copies 1-4 of the champion's K=16 select walk\"}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "label_test",
+  "name": "label_test_2006_2015_k4_rank",
+  "cv_metric": 11.01,
+  "notes": "{\"selection_metric_top_book_pct_per_yr\": {\"3\": 8.05, \"6\": 11.01, \"10\": 10.28}, \"window\": \"2006-01-01..2015-12-31\", \"k\": 4, \"note\": \"label_4w_sector_rank / 8y: the argmax (top-6 +11.15 vs +6.75 on the 513 common weeks; paired t of the top-6 book's 4-week returns +0.24; copies 1-4: +1.21, +12.05, +10.35, +12.73 vs incumbent +27.68, +20.03, +13.34, +20.92); leak audit PASS (identity PASS, retention 0.874); picks less volatile (vol rank 0.48 vs 0.60), less beaten-down (52w momentum -0.16 vs -0.36); sent to K=16\"}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "label_test",
+  "name": "label_test_2006_2015_k4_log",
+  "cv_metric": 6.11,
+  "notes": "{\"selection_metric_top_book_pct_per_yr\": {\"3\": 4.43, \"6\": 6.11, \"10\": 6.07}, \"window\": \"2006-01-01..2015-12-31\", \"k\": 4, \"note\": \"label_4w_sector_log / 8y: below the incumbent; leak audit PASS (identity PASS, retention 1.485)\"}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "label_test",
+  "name": "label_test_2006_2015_k4_clip",
+  "cv_metric": null,
+  "notes": "{\"selection_metric_top_book_pct_per_yr\": {\"sample_top6\": -3.78}, \"window\": \"2006-01-01..2015-12-31\", \"k\": 4, \"note\": \"label_4w_sector_clip / 8y: every-4th-week sample only (ranked 3rd of 3; incumbent's sample -5.18, log -2.75, rank +4.86); not walked on every week\"}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "eval",
+  "name": "eval_rank_k16_rank_k16_k16",
+  "pre_holdout_sharpe": 0.824,
+  "notes": "{\"walk\": \"data/experiments/labels/rank_k16\", \"settings\": {\"book\": 3, \"floor\": \"halfgate\", \"stop\": null, \"cap\": 2}, \"2016_2024\": {\"terminal_100\": 844.2, \"cagr_pct\": 28.24, \"sharpe\": 0.922, \"max_dd\": 0.383, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 4940.2, \"cagr_pct\": 23.36, \"sharpe\": 0.824, \"max_dd\": 0.492, \"n_weeks\": 966}, \"falsification_t\": 0.76, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "procedure",
+  "name": "procedure_2006-01-01_2015-12-31_labels_rank_k16_select",
+  "pre_holdout_sharpe": 0.733,
+  "notes": "{\"decision\": {\"book_size\": 3, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": 2}, \"evidence\": {\"book\": {\"3\": 15.92, \"6\": 13.13, \"10\": 10.82}, \"floor\": {\"none\": 0.613, \"halfgate\": 0.693, \"80/20\": 0.639, \"70/30\": 0.655, \"60/40\": 0.675}, \"stop\": {\"None\": 0.693, \"-0.25\": 0.635}, \"cap\": {\"None\": 0.693, \"2\": 0.733}}, \"preds_sha256\": \"afceef6a28db\", \"changed\": {\"book_size\": [10, 3], \"sector_cap\": [null, 2], \"label\": [\"label_4w_sector\", \"label_4w_sector_rank\"]}}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_labels_s0_label_4w_sector_rank_8y",
+  "cv_metric": 4.083333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8
+  },
+  "notes": "{\"metric\": {\"3\": -2.91, \"6\": 5.71, \"10\": 9.45}, \"mean_excess_pp\": 0.36, \"copies\": [-2.336666666666667, 21.16333333333333, 1.2733333333333334, 3.063333333333334], \"paired_t_vs_incumbent\": -0.25, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": false}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_labels_s0_label_4w_sector_clip_8y",
+  "cv_metric": -2.6066666666666665,
+  "config": {
+   "label": "label_4w_sector_clip",
+   "train_years": 8
+  },
+  "notes": "{\"metric\": {\"3\": -3.14, \"6\": -6.72, \"10\": 2.04}, \"mean_excess_pp\": -0.17, \"copies\": [2.866666666666667, 12.24, -1.88, 9.360000000000001], \"paired_t_vs_incumbent\": -1.02, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": false}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_labels_s0_label_4w_sector_log_8y",
+  "cv_metric": -6.03,
+  "config": {
+   "label": "label_4w_sector_log",
+   "train_years": 8
+  },
+  "notes": "{\"metric\": {\"3\": -10.4, \"6\": -4.59, \"10\": -3.1}, \"mean_excess_pp\": -0.56, \"copies\": [-3.9666666666666663, -1.25, 4.016666666666667, -13.316666666666665], \"paired_t_vs_incumbent\": -1.33, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": false}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "eval",
+  "name": "eval_champion_rank_k16_k16",
+  "pre_holdout_sharpe": 0.824,
+  "notes": "{\"walk\": \"data/experiments/labels/rank_k16\", \"settings\": {\"book\": 3, \"floor\": \"halfgate\", \"stop\": null, \"cap\": 2}, \"2016_2024\": {\"terminal_100\": 844.2, \"cagr_pct\": 28.24, \"sharpe\": 0.922, \"max_dd\": 0.383, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 4940.2, \"cagr_pct\": 23.36, \"sharpe\": 0.824, \"max_dd\": 0.492, \"n_weeks\": 966}, \"falsification_t\": 0.76, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "app",
+  "name": "app_champion_rank_k16_k16",
+  "config": {
+   "horizon": "4w",
+   "book": 3,
+   "floor": "halfgate",
+   "stop": null,
+   "cap": 2,
+   "train_years": 8,
+   "fills": "next open"
+  },
+  "terminal_100": 844.2,
+  "cagr_pct": 28.24,
+  "sharpe": 0.922,
+  "max_dd": 0.383,
+  "n_weeks": 446,
+  "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/labels/rank_k16 replayed by selection.simulate at K=16 for reports/champion_explorer.html: $844 (+28.2%/yr, SR 0.92, DD 38%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
  }
 ]

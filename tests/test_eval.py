@@ -96,14 +96,14 @@ def test_report_md_carries_the_table_the_verdicts_and_the_intervals():
            "confidence": {"2016-2024": ci_w, "2006-2024": ci_w, "2006-2015": ci_w,
                           "method": {"seed_draws": 200, "history_draws": 4000, "nested_per_seed": 20,
                                      "block_weeks": 8, "rng_seed": 1}},
-           "charts": ["reports/champion_vs_sp500_2006_2024.png"]}
+           "charts": ["reports/champion_vs_sp500_2016_2024.png"]}
     md = "\n".join(ev.report_md(res))
     assert md.startswith("# champion: the one look")
     assert "| sp500 |" in md and "t +1.32 on 446 weeks -> **not rejected**" in md
     assert "Leak audit: PASS." in md
     assert "| 2016-2024 | excess CAGR vs sp500 %/yr | +9.0 | +7.3 … +10.5 | -3.9 … +24.8 | -3.9 … +24.2 |" in md
     assert "| 2016-2024 | P(excess > 0), nested | 0.91 |" in md
-    assert "![champion vs sp500](champion_vs_sp500_2006_2024.png)" in md
+    assert "![champion vs sp500](champion_vs_sp500_2016_2024.png)" in md
 
 
 def test_run_is_the_champion_only_when_the_walk_is_the_specs(tmp_path, monkeypatch):

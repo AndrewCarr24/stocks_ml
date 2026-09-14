@@ -52,7 +52,14 @@ def walk_recipe(preds_path: Path) -> dict:
         raise RuntimeError(f"the walk was trained on {rec['label']!r}, which live/r5.py cannot "
                            f"train on (selection.LABELS_4W knows {tuple(LABELS_4W)})")
     return {"label": rec["label"], "train_years": int(rec["train_years"]),
+            "features": list(rec.get("features") or []), "params": dict(rec.get("params") or {}),
             "record": str(rec_path)}
+
+
+def model_params(model: dict) -> dict:
+    """The full parameter set a recipe runs: MODEL_PARAMS with its overrides."""
+    from stocks_ml.selection import MODEL_PARAMS
+    return {**MODEL_PARAMS, **(model.get("params") or {})}
 
 
 def mix_label(floor: str) -> str:
@@ -105,6 +112,13 @@ def live_strategy(spec: dict) -> dict:
         if have[k] != model[k]:
             raise RuntimeError(f"spec {k}={have[k]!r} but procedure.model.{k}={model[k]!r}: "
                                "the spec was edited by hand; run stocks-ml procedure")
+    if list(spec.get("features") or []) != list(model.get("features") or []):
+        raise RuntimeError(f"spec features {spec.get('features')} but the procedure's recipe has "
+                           f"{model.get('features')}: the spec was edited by hand; run stocks-ml procedure")
+    if {k: str(v) for k, v in spec["model"]["params"].items()} != \
+            {k: str(v) for k, v in model_params(model).items()}:
+        raise RuntimeError("spec model.params differ from the procedure's recipe: the spec was "
+                           "edited by hand; run stocks-ml procedure")
     from stocks_ml.selection import LABELS_4W
     if model["label"] not in LABELS_4W:
         raise RuntimeError(f"live/r5.py cannot train on the spec's label {model['label']!r} "
@@ -189,13 +203,15 @@ def decide(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], log=prin
 def apply(spec: dict, proc: dict) -> dict:
     """Write the decision into the spec's strategy and ballast blocks, the
     walk's recipe into its model fields (horizon.label, purge_days,
-    training_window_years), and attach the procedure record. Prose fields are
-    left alone."""
+    training_window_years, features, model.params), and attach the procedure
+    record. Prose fields are left alone."""
     from stocks_ml.selection import HORIZONS
     dec = proc["decision"]
     spec["horizon"]["label"] = proc["model"]["label"]
     spec["horizon"]["purge_days"] = HORIZONS[HORIZON]["purge"]
     spec["training_window_years"] = proc["model"]["train_years"]
+    spec["features"] = list(proc["model"].get("features") or [])
+    spec["model"]["params"] = model_params(proc["model"])
     spec["strategy"]["book_size"] = dec["book_size"]
     spec["strategy"]["stop_loss"] = dec["stop_loss"]
     spec["strategy"]["sector_cap"] = dec["sector_cap"]
@@ -214,6 +230,13 @@ def drift(spec: dict, proc: dict) -> dict:
     model = {"label": spec.get("horizon", {}).get("label"),
              "train_years": spec.get("training_window_years")}
     out.update({k: (model[k], proc["model"][k]) for k in MODEL_KEYS if model[k] != proc["model"][k]})
+    feats = list(spec.get("features") or [])
+    if feats != list(proc["model"].get("features") or []):
+        out["features"] = (feats, proc["model"].get("features") or [])
+    have_p = {k: str(v) for k, v in spec.get("model", {}).get("params", {}).items()}
+    want_p = {k: str(v) for k, v in model_params(proc["model"]).items()}
+    if have_p != want_p:
+        out["params"] = (have_p, want_p)
     return out
 
 
@@ -248,4 +271,8 @@ def run(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], check=False
                                          "changed": changed})}])
     log(f"procedure: wrote {spec_path} and PROCEDURE.md"
         + (f"; changed {changed}" if changed else "; no change"))
+    if changed:
+        log("adoption: now `stocks-ml eval --incumbent <previous walk>` (the champion's report, chart, "
+            "eval.json), then `stocks-ml procedure-card` (PROCEDURE.md + README's champion block), "
+            "then `stocks-ml app`")
     return proc

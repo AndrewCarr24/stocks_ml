@@ -18,30 +18,52 @@ maps what was removed to where it went.
 
 ## Current state (2026-09-13)
 
-- **Champion since 2026-09-12: the clean-improvement program's Stage E
-  package (`ls_w8`).** Depth-3 XGBoost, fixed parameters, on the panel's 64
-  `f_` columns (nominal price basis, last-print labels, no engineered
-  bundle), trained on **`label_4w_sector`** (the 4-week return minus the
-  same-week median of the stock's sector) over a **trailing 8-year window**,
-  16 copies averaged. Strategy layers decided by `stocks-ml procedure` on
-  the package's K=16 walk of 2006-2015: **top-10 / halfgate / no stop / no
-  cap**. The walk: `data/experiments/clean_program/stage_e/ls_w8/{select,extend}`
-  (`select` = 2006-2015, `extend` = 2016 → 2024-07-18).
-- **Record** (`stocks-ml eval`, reports/champion_eval.md; SPY on the same
-  weeks): 2006-2015 $302 vs $197 | 2016-2024 $660 (+24.6%/yr, SR 0.88, DD
-  33%) vs $316 | 2006-2024 $1,994 (+17.5%/yr, SR 0.70, DD 63%) vs $621;
-  paired weekly t vs SPY +1.90 (2006-2024) / +1.52 (2016-2024); nested 95%
-  CI on the 2016-2024 excess −3.9..+24.2 around +9.0%/yr, P(excess>0)
-  0.91; falsification test vs the previous champion (paired weekly excess
-  on 2016-2024, t < −2 rejects) t +1.32, not rejected; leak audit PASS.
-  Ledger rows `stage_e_ls_w8_k16`, `procedure_2006-01-01_2015-12-31_
-  clean_program_stage_e_ls_w8_select`, `eval_champion_ls_w8_k16`.
+- **Champion since 2026-09-14: the rank-label model (`label_4w_sector_rank`).**
+  Depth-3 XGBoost, fixed parameters, on the panel's 64 `f_` columns
+  (nominal price basis, last-print labels, no extra features), trained on
+  the stock's 4-week return minus its sector's same-week median **replaced
+  by its within-week rank as a normal score**, over a **trailing 8-year
+  window**, 16 copies averaged. Strategy layers decided by `stocks-ml
+  procedure` on its K=16 walk of 2006-2015: **top-3 per sleeve / halfgate /
+  no stop / cap 2**. The walk: `data/experiments/labels/rank_k16/{select,extend}`.
+  Chosen by the challenger flow (README "Challenging the champion") from
+  three tempered labels: rank beat the incumbent on the selection metric
+  (three-book mean +9.8 vs +8.7 at K=4; paired t +0.24 reported).
+- **Record** (`stocks-ml eval` 2026-09-14, reports/champion_eval.md; each
+  model at its own settings; SPY on the same weeks): 2006-2015 $585 vs $197
+  | 2016-2024 $844 (+28.2%/yr, SR 0.92, DD 38%) vs $316 | 2006-2024 $4,940
+  (+23.4%/yr, SR 0.82, DD 49%) vs $621; paired weekly t vs SPY +2.53
+  (2006-2024) / +1.71 (2016-2024); nested 95% CI on the 2016-2024 excess
+  −4.8..+33.1 around +12.2%/yr, P(excess>0) 0.92; falsification test vs
+  the previous champion (ls_w8) t +0.76, not rejected; leak audit PASS.
+  Ledger rows `label_test_2006_2015_k4_*`, `procedure_2006-01-01_2015-12-31_
+  labels_rank_k16_select`, `eval_champion_rank_k16_k16`.
+- **Before it** (2026-09-12 → 14): ls_w8 — the same model on the raw
+  sector-relative label, top-10 / halfgate / no cap: $302 / $660 / $1,994
+  (SR 0.53 / 0.88 / 0.70; DD 63 / 33 / 63%). Its walk stays at
+  `data/experiments/clean_program/stage_e/ls_w8` (with a 2002-2005 `pre`
+  segment for the rolling experiment).
+- **The rolling procedure (2026-09-13, `backtest --rolling` /
+  `procedure --lookback`, src/stocks_ml/rolling.py):** the strategy layers
+  re-decided every week on the trailing k years of the walk's own
+  out-of-sample predictions (the walk gained a 2002-2005 `pre` segment for
+  the burn-in), k chosen on 2010-2015 among {3, 5, 8, expanding}. Result
+  (ledger `rolling_lookback_2010-2015_trailing_5_c1`): the trailing rules
+  flip every 5-7 weeks and sit on the spec's configuration 0-6% of the
+  time; the expanding rule is stable (19 changes) but converges to
+  6 / halfgate / stop / cap 2, never the spec's; on 2010-2015 every rule
+  and the fixed settings (+7.8%/yr, in-sample) trailed SPY (+13.0%).
+  The chosen rule, trailing 5, on 2016-2024: $610 (+23.5%/yr, SR 0.89,
+  DD 41%) vs the fixed settings' $660 (+24.6%, 0.88, 33%), paired weekly
+  t −0.35. The layers are a coin flip on any window; the model carries the
+  edge. The spec is unchanged. Outputs under `<walk>/rolling/` (data/,
+  git-ignored).
 - **Before it** (2026-09-11 → 12): the same clean model with the
   week-centred label on a 5-year window, top-6 / 60-40 / cap 2: $229 /
   $449 / $1,028. Before 2026-09-11: a split-leak-contaminated bundle model
   ($4,256 on 2006-2024) — history for scale only, at the tag.
 - **The paper ledger** (ledger_r5.json, signals_r5/) has run since
-  2026-09-01; the first signal on the Stage E settings will be 2026-09-19.
+  2026-09-01; the first live signal on the rank-label champion will be 2026-09-19.
   Real money waits for the ledger to accumulate.
 - **The holdout (2024-07-19 →)** has never been read. It is graded once, on
   the owner's go, with the champion frozen; the result never feeds
@@ -91,17 +113,19 @@ docs/simplification_log.md       what the 2026-09-13 simplification removed and 
 uv sync                                  # Python 3.12; `uv sync --group eval` adds matplotlib
 uv run pytest                            # must stay green with zero warnings; no network
 uv run stocks-ml world [--dir data/r5_live] [--no-refresh] [--no-sec]
-uv run stocks-ml train --out <walk>/select --start 2006-01-01 --end 2015-12-31 [--label L] [--train-years N] [--k 16] [--every 1]
+uv run stocks-ml train --out <walk>/select --start 2006-01-01 --end 2015-12-31 [--label L] [--train-years N] [--k 16] [--every 1] [--features a,b] [--params name=v,...]
 uv run stocks-ml train --check <walk>/select/preds.parquet          # refit the first weeks, compare
 uv run stocks-ml backtest --preds <walk>/select/preds.parquet <walk>/extend/preds.parquet [--book/--floor/--stop/--cap/--k]
 uv run stocks-ml procedure --preds <walk>/select/preds.parquet [--check]   # writes the spec + PROCEDURE.md
 uv run stocks-ml eval [--walk W] [--incumbent I] [--ci-draws 200] [--no-charts]
 uv run stocks-ml app                                                 # reports/champion_explorer.html
+uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "params=name:v"] [--k16]
+uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 13] [--seed 0]   # the prototype: stratified sample, K=4, ranks only
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 /opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e  # the Playwright page test
 ```
 
-`train`, `backtest`, `procedure`, `eval` and `app` read the research world
+`train`, `backtest`, `procedure`, `eval`, `app`, `challenge` and `challenge-fast` read the research world
 `data/sharadar_world2000_nominal_dl` (nominal basis, last-print labels;
 built once, never refreshed). `r5-weekly` reads `data/r5_live` and needs
 the Sharadar key (`data/.sharadar_key` or `SHARADAR_API_KEY`). The Mac has
@@ -122,8 +146,12 @@ comes from the keychain through `git credential fill`; never print it).
 2. **The holdout (2024-07-19 onward) is untouchable.** `train`, `backtest`,
    `eval`, `leak_audit` and `app` refuse it in code. It is read once, on the
    owner's go, after every choice is frozen.
-3. **Selection is mechanical.** The label and window are the argmax of the
-   pre-registered metric on 2006-2015 alone; the strategy layers are
+3. **Selection is mechanical.** A candidate model is a recipe (label,
+   window, features, params): prototyped by `stocks-ml challenge-fast`
+   (stratified sample, K=4, ranks only), then `stocks-ml challenge`: the
+   argmax of the model score (the mean over the top-3/6/10 books of the
+   cost-adjusted compounded %/yr; owner's rule 2026-09-14) on 2006-2015
+   alone, incumbent included; the strategy layers are
    `selection.decide_strategy` (book by cost-adjusted compounded %/yr;
    floor, stop, cap by Sharpe, stop and cap adopted only if higher). t
    statistics are reported, not gated. A doubt about a winner becomes a
@@ -147,6 +175,10 @@ comes from the keychain through `git credential fill`; never print it).
 
 ## The owner's standing instructions
 
+- **Charts show 2016-2024 (out of sample) only.** Never a curve that
+  includes 2006-2015: those years chose the settings and the picture
+  overstates the model (owner, 2026-09-14). `stocks-ml eval` writes one
+  chart, the app replays 2016 -> holdout.
 - **Sample first.** Exploration runs on samples (`train --every N --k 4`);
   full-population runs only on an explicit go, and a go covers only the run
   the owner clearly saw — restate what runs, on which years, at what cost.

@@ -344,6 +344,48 @@ def sector_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Serie
     return fwd - sec_med.fillna(wk_med)
 
 
+# Tempered versions of the sector-relative target (the label test of
+# 2026-09-14): the raw difference lets a few huge rebounds dominate what the
+# model learns, so it chases volatile, beaten-down names. Each of these reads
+# the same fwd_ret_4w and sector map and is a challenger model, walked and
+# admitted by the selection metric like any other (selection.LABELS_4W).
+LABEL_CLIP = 0.20
+
+
+def sector_log_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Series:
+    """log(1 + the stock's return) minus log(1 + its sector's median): tames
+    the upside (+80% reads +0.59) and stretches the downside (-50% reads
+    -0.69). Returns are floored at -99% so a name graded to zero stays finite."""
+    sec_med = fwd.groupby([date, sector]).transform("median")
+    wk_med = fwd.groupby(date).transform("median")
+    med = sec_med.fillna(wk_med)
+    return np.log1p(fwd.clip(lower=-0.99)) - np.log1p(med.clip(lower=-0.99))
+
+
+def sector_clip_label(fwd: pd.Series, date: pd.Series, sector: pd.Series,
+                      cap: float = LABEL_CLIP) -> pd.Series:
+    """The sector-relative return capped at +/-cap: both tails tempered."""
+    return sector_label(fwd, date, sector).clip(-cap, cap)
+
+
+def sector_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Series:
+    """The sector-relative return replaced by its within-week rank as a normal
+    score: the model learns the ordering only, no magnitudes."""
+    from scipy.stats import norm
+    d = sector_label(fwd, date, sector)
+    r = d.groupby(date).rank(method="average")           # NaN stays NaN
+    n = d.groupby(date).transform("count")
+    return pd.Series(norm.ppf((r - 0.5) / n), index=d.index)
+
+
+# Every 4-week target a walk can train on, by column name; Ctx computes any
+# that a stored panel lacks from fwd_ret_4w and the membership sector map.
+LABEL_TRANSFORMS = {"label_4w_sector": sector_label,
+                    "label_4w_sector_log": sector_log_label,
+                    "label_4w_sector_clip": sector_clip_label,
+                    "label_4w_sector_rank": sector_rank_label}
+
+
 def sector_relative_momentum(panel: pd.DataFrame) -> pd.DataFrame:
     """Raw f_mom_4w/f_mom_12w minus their same-date same-sector median.
 

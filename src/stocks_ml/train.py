@@ -9,7 +9,8 @@ week's members. Copy c differs only by its whole-week bootstrap seed
 same fits. The walk writes
 
     <out>/preds.parquet    week, ticker, c1..cK
-    <out>/spec.json        the record: label, training window, K, store, weeks
+    <out>/spec.json        the record: the recipe (label, training window, extra
+                           features, param overrides), K, store, weeks
 
 and resumes by week under a guard on that record. This file is what
 `stocks-ml procedure`, `backtest`, `eval` and `app` read; a walk that lacks
@@ -53,33 +54,60 @@ def context(store: str = STORE):
     return sel, ctx, len(fc)
 
 
-def copy_preds(sel, ctx, t, c: int, label: str, train_years: int) -> pd.Series | None:
-    """Copy c's scores at rank week t: the champion model on the trailing
-    `train_years`, bootstrap seed c, trained on `label`."""
+def copy_preds(sel, ctx, t, c: int, label: str, train_years: int, features=(),
+               params: dict | None = None) -> pd.Series | None:
+    """Copy c's scores at rank week t: the champion model (MODEL_PARAMS with
+    `params` overriding) on the trailing `train_years`, bootstrap seed c,
+    trained on `label`, on the panel's f_ columns plus `features`."""
     from stocks_ml.models.replication import WeekBootstrapEstimator
     from stocks_ml.models.walk import walk_forward_predictions
     from stocks_ml.models.xgb import TimeTailEarlyStopXGB
     h = sel.HORIZONS["4w"]
-    est = WeekBootstrapEstimator(TimeTailEarlyStopXGB(**sel.MODEL_PARAMS, **sel.fixed(h["purge"])),
+    est = WeekBootstrapEstimator(TimeTailEarlyStopXGB(**{**sel.MODEL_PARAMS, **(params or {})},
+                                                      **sel.fixed(h["purge"])),
                                  bootstrap_seed=c)
     wf = walk_forward_predictions(ctx.pan, est, ctx.world_cfg(train_years), start=t, end=t,
                                   label_col=label, purge_days=h["purge"],
-                                  extra_features=tuple(ctx.extra))
+                                  extra_features=tuple(features or ctx.extra))
     return wf.preds.get(t)
 
 
+def recipe(label: str, train_years: int, features=(), params: dict | None = None) -> dict:
+    """A candidate model as `train` walks it: the label, the training window,
+    extra panel columns the model gets beyond the panel's f_ columns, and
+    overrides of selection.MODEL_PARAMS. Empty features/params are left out,
+    so the champion's recipe reads {label, train_years} as its records do."""
+    import stocks_ml.selection as sel
+    r = {"label": label, "train_years": int(train_years)}
+    if features:
+        r["features"] = list(features)
+    if params:
+        bad = [k for k in params if k not in sel.MODEL_PARAMS]
+        if bad:
+            raise ValueError(f"params {bad} are not in selection.MODEL_PARAMS {tuple(sel.MODEL_PARAMS)}")
+        r["params"] = {k: type(sel.MODEL_PARAMS[k])(v) for k, v in params.items()}
+    return r
+
+
 def record(store: str, lo, hi, label: str, train_years: int, k: int, every: int,
-           delist: str, price_basis: str) -> dict:
-    """The walk's record (spec.json): what made it, on what, over which weeks."""
+           delist: str, price_basis: str, features=(), params: dict | None = None,
+           sample: str | None = None) -> dict:
+    """The walk's record (spec.json): what made it, on what, over which weeks.
+    `sample` describes an explicit week list (challenge-fast's stratified
+    random sample); such a record is marked a sample like `every` > 1."""
     import stocks_ml.selection as sel
     span = f"{pd.Timestamp(lo).date()} -> {pd.Timestamp(hi).date()}"
-    return {"code": "stocks_ml.train.walk",
-            "recipe": {"label": label, "train_years": int(train_years)},
-            "k": int(k), "store": store, "delist": delist, "price_basis": price_basis,
-            "base_params": {p: str(v) for p, v in sel.MODEL_PARAMS.items()},
-            "every": int(every),
-            "weeks": (f"every week of {span}" if every == 1
-                      else f"every {every}th week of {span} (a sample)")}
+    rec = {"code": "stocks_ml.train.walk",
+           "recipe": recipe(label, train_years, features, params),
+           "k": int(k), "store": store, "delist": delist, "price_basis": price_basis,
+           "base_params": {p: str(v) for p, v in sel.MODEL_PARAMS.items()},
+           "every": int(every),
+           "weeks": (f"{sample} of {span} (a sample)" if sample else
+                     f"every week of {span}" if every == 1
+                     else f"every {every}th week of {span} (a sample)")}
+    if sample:
+        rec["sample"] = sample
+    return rec
 
 
 def guard(out: Path, rec: dict) -> None:
@@ -95,9 +123,11 @@ def guard(out: Path, rec: dict) -> None:
 
 
 def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
-         every: int = 1, checkpoint: int = CHECKPOINT, log=log) -> Path:
+         every: int = 1, checkpoint: int = CHECKPOINT, log=log, features=(),
+         params: dict | None = None, weeks=None, sample: str | None = None) -> Path:
     """Copies 1..k at every rank week of [lo, hi] (every `every`th week for a
-    sample), checkpointed and resumed by week under the record's guard."""
+    sample; or the explicit `weeks`, described by `sample`), checkpointed and
+    resumed by week under the record's guard."""
     from stocks_ml.selection import HOLDOUT_START, LABELS_4W
     if label not in LABELS_4W:
         raise SystemExit(f"label must be one of {tuple(LABELS_4W)}, got {label!r}")
@@ -106,9 +136,17 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
         raise SystemExit(f"--end {hi.date()} reaches the holdout ({HOLDOUT_START.date()}); "
                          "the holdout is never walked without the owner's go")
     sel, ctx, n_feat = context(store)
-    weeks = [t for t in ctx.weeks if lo <= t <= hi][::every]
+    missing = [c for c in features if c not in ctx.pan.columns]
+    if missing:
+        raise SystemExit(f"the panel lacks the recipe's feature columns {missing[:5]}")
+    if weeks is None:
+        weeks = [t for t in ctx.weeks if lo <= t <= hi][::every]
+    else:
+        weeks = sorted(pd.Timestamp(w) for w in weeks)
+        if not sample:
+            raise ValueError("an explicit week list must be described by `sample`")
     rec = record(store, lo, hi, label, train_years, k, every, ctx.delist_labels,
-                 getattr(ctx.cfg, "price_basis", "closeadj"))
+                 getattr(ctx.cfg, "price_basis", "closeadj"), features, params, sample)
     guard(out, rec)
     path = out / "preds.parquet"
     frames, done = [], set()
@@ -119,12 +157,14 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
         done = set(old["week"].unique())
     todo = [t for t in weeks if t not in done]
     log(f"train: {rec['weeks']}, {len(todo)} of {len(weeks)} weeks to do, K={k}, "
-        f"{label} / {train_years}y on {n_feat} features, store {store}")
+        f"{label} / {train_years}y on {n_feat} features"
+        + (f" + {len(features)} extra" if features else "")
+        + (f", params {rec['recipe']['params']}" if params else "") + f", store {store}")
     t0, pending = time.time(), []
     for i, t in enumerate(todo, 1):
         cols = {}
         for c in range(1, k + 1):
-            p = copy_preds(sel, ctx, t, c, label, train_years)
+            p = copy_preds(sel, ctx, t, c, label, train_years, features, params)
             if p is not None:
                 cols[f"c{c}"] = p
         df = pd.DataFrame(cols)
@@ -156,7 +196,9 @@ def check_reproduces(store: str, preds_path: Path, weeks: int = 2, copies=(1,), 
     for t in sorted(saved["week"].unique())[:weeks]:
         g = saved[saved.week == t].set_index("ticker")
         for c in copies:
-            p = copy_preds(sel, ctx, t, c, rec["recipe"]["label"], rec["recipe"]["train_years"])
+            r = rec["recipe"]
+            p = copy_preds(sel, ctx, t, c, r["label"], r["train_years"], r.get("features", ()),
+                           r.get("params"))
             a, b = p.align(g[f"c{c}"], join="inner")
             same = len(a) == len(g) and np.allclose(a.values, b.values, atol=1e-6)
             out[f"{pd.Timestamp(t).date()} c{c}"] = bool(same)

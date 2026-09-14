@@ -48,7 +48,7 @@ def test_walk_writes_week_ticker_copies_and_resumes(tmp_path, monkeypatch):
     monkeypatch.setattr(train, "context", lambda store: (sel, ctx, 64))
     fitted = []
 
-    def fake_copy(sel_, ctx_, t, c, label, train_years):
+    def fake_copy(sel_, ctx_, t, c, label, train_years, features=(), params=None):
         fitted.append((t, c))
         return pd.Series({"A": 1.0 * c, "B": 2.0 * c}, name=t)
     monkeypatch.setattr(train, "copy_preds", fake_copy)
@@ -87,3 +87,32 @@ def test_check_reproduces_compares_the_saved_copies(tmp_path, monkeypatch):
     assert train.check_reproduces("w", out / "preds.parquet", weeks=1, log=lambda m: None) == {"2006-01-06 c1": False}
     monkeypatch.setattr(train, "copy_preds", lambda *a: pd.Series({"A": 0.0}))     # a missing name differs
     assert train.check_reproduces("w", out / "preds.parquet", weeks=1, log=lambda m: None) == {"2006-01-06 c1": False}
+
+
+def test_recipe_carries_features_and_typed_params_only_when_given():
+    assert train.recipe("label_4w_sector", 8) == {"label": "label_4w_sector", "train_years": 8}
+    r = train.recipe("label_4w_sector_rank", 5, ["x_a", "x_b"], {"learning_rate": "0.01", "n_estimators": "300"})
+    assert r["features"] == ["x_a", "x_b"]
+    assert r["params"] == {"learning_rate": 0.01, "n_estimators": 300}     # typed like MODEL_PARAMS
+    with pytest.raises(ValueError):
+        train.recipe("label_4w_sector", 8, params={"depth": 3})           # not a MODEL_PARAMS key
+    rec = train.record("data/w", "2006-01-01", "2015-12-31", "label_4w_sector", 8, 16, 1, "last_print",
+                       "nominal", features=["x_a"], params={"max_depth": 4})
+    assert rec["recipe"] == {"label": "label_4w_sector", "train_years": 8, "features": ["x_a"],
+                             "params": {"max_depth": 4}}
+
+
+def test_walk_takes_an_explicit_week_list_described_as_a_sample(tmp_path, monkeypatch):
+    weeks = list(pd.date_range("2006-01-06", periods=6, freq="W-FRI"))
+    ctx = SimpleNamespace(weeks=weeks, delist_labels="last_print", cfg=SimpleNamespace(price_basis="nominal"))
+    monkeypatch.setattr(train, "context", lambda store: (sel, ctx, 64))
+    monkeypatch.setattr(train, "copy_preds", lambda *a, **k: pd.Series({"A": 1.0, "B": 2.0}))
+    with pytest.raises(ValueError):
+        train.walk("data/w", weeks[0], weeks[-1], "label_4w_sector", 8, 1, tmp_path / "x", weeks=weeks[::3],
+                   log=lambda m: None)
+    path = train.walk("data/w", weeks[0], weeks[-1], "label_4w_sector", 8, 1, tmp_path / "s", weeks=weeks[::3],
+                      sample="2 weeks, a stratified random sample (1 per year, seed 0)", log=lambda m: None)
+    df = pd.read_parquet(path)
+    assert sorted(df.week.unique()) == weeks[::3]
+    rec = json.loads((tmp_path / "s" / "spec.json").read_text())
+    assert rec["sample"].startswith("2 weeks") and "(a sample)" in rec["weeks"]

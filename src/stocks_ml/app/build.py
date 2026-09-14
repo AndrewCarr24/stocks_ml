@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stocks_ml.backtest import SELECT_START, load_preds, spec_settings
+from stocks_ml.backtest import EXTEND_START, load_preds, spec_settings
 from stocks_ml.eval import segments, spec_walk
 from stocks_ml.selection import HOLDOUT_START, HORIZONS, K_COPIES, metrics, simulate
 
@@ -44,7 +44,13 @@ WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 8: "eig
          16: "sixteen"}
 FLOOR_WORDS = {"none": "no trend ballast", "halfgate": "half-gate trend ballast"}
 LABEL_WORDS = {"label_4w": "the stock's 4-week return minus that week's median member's",
-               "label_4w_sector": "the stock's 4-week return minus its sector's median that week"}
+               "label_4w_sector": "the stock's 4-week return minus its sector's median that week",
+               "label_4w_sector_log": "log(1 + the stock's 4-week return) minus log(1 + its sector's "
+                                      "median that week)",
+               "label_4w_sector_clip": "the stock's 4-week return minus its sector's median that week, "
+                                       "capped at +/-20%",
+               "label_4w_sector_rank": "the within-week rank of the stock's 4-week return minus its "
+                                       "sector's median, as a normal score"}
 
 
 def describe(config: dict, train_years: int) -> str:
@@ -117,8 +123,9 @@ def verdict(spec: dict, ev: dict) -> str:
               f"around {c16['point']:+.1f} (2016–2024), {c06['nested_95'][0]:+.1f}..{c06['nested_95'][1]:+.1f} around "
               f"{c06['point']:+.1f} (2006–2024); {ci['2016-2024']['p_excess_positive_nested']:.0%} of resampled "
               f"2016–2024 histories beat the S&P 500.")
-    s += (f" Leak audit {ev['leak_audit']['VERDICT']}. In-sample: the book, ballast and cap were chosen on "
-          f"2006–2015, which this page includes; the holdout ({HOLDOUT_START.date()} →) is untouched.")
+    s += (f" Leak audit {ev['leak_audit']['VERDICT']}. This page shows 2016 onward only: the book, ballast "
+          f"and cap were chosen on 2006–2015, which it leaves out; the holdout ({HOLDOUT_START.date()} →) "
+          f"is untouched.")
     return s
 
 
@@ -136,9 +143,10 @@ def holdings(sel, ctx, walk: Path, k: int, log=print) -> pd.DataFrame:
     return h.sort_values("week").reset_index(drop=True)
 
 
-def replay(ctx, h: pd.DataFrame, config: dict, lo=SELECT_START, hi=HOLDOUT_START):
-    """The engine's trace: ranks before `hi` drive the book; the credited
-    weeks in [lo, hi) are kept."""
+def replay(ctx, h: pd.DataFrame, config: dict, lo=EXTEND_START, hi=HOLDOUT_START):
+    """The engine's trace: ranks before `hi` drive the book (the replay starts
+    at the walk's first week, so the book is warm); only the credited weeks
+    in [lo, hi) are kept — 2016 onward by default, the out-of-sample years."""
     trace = []
     rets = simulate(ctx, h[h.week < hi], config["horizon"], config["book"], config["cap"],
                     config["stop"], config["floor"], trace=trace)
@@ -197,7 +205,7 @@ def stopped(rec):
     return sorted({n for sl in rec["sleeves"] for n in sl if n not in rec["weights"]})
 
 
-def assemble(meta: dict, config: dict, trace, rets, spy, smap, names, lo=SELECT_START, hi=HOLDOUT_START):
+def assemble(meta: dict, config: dict, trace, rets, spy, smap, names, lo=EXTEND_START, hi=HOLDOUT_START):
     """The page's data: the meta paragraphs, the two NAV paths, every week's
     picks and sleeves, the tickers, the positions."""
     nav, positions = build_positions(trace)
@@ -273,13 +281,14 @@ def build(store: str = STORE, out: Path = OUT, spec_path: Path = SPEC_PATH, k: i
     sel, ctx, _ = context(store)
     h = holdings(sel, ctx, walk, k, log=log)
     trace, rets, spy = replay(ctx, h, config)
-    span = f"{SELECT_START.strftime('%Y-%m')} → {pd.Timestamp(trace[-1]['nxt']).strftime('%Y-%m')}"
+    span = f"{EXTEND_START.strftime('%Y-%m')} → {pd.Timestamp(trace[-1]['nxt']).strftime('%Y-%m')}"
     meta = {"title": TITLE, "crumb": "Champion chart", "scale": "log", "store": store,
             "intro": (f"The champion as deployed — {describe(config, train_years)}, {WORDS.get(k, k)} copies "
                       f"averaged, on the nominal price basis with delisting-honest labels — graded on {span} "
-                      f"against the S&P 500 (SPY), costs included, $100 start. In-sample: its book, ballast "
-                      f"and cap were chosen after reading these years; the holdout ({HOLDOUT_START.date()} →) "
-                      f"is untouched."),
+                      f"against the S&P 500 (SPY), costs included, $100 start. Out of sample: the label, "
+                      f"window, book, ballast and cap were chosen on 2006–2015, which this page leaves out "
+                      f"(a curve that includes those years overstates the model); the holdout "
+                      f"({HOLDOUT_START.date()} →) is untouched."),
             "verdict": verdict(spec, ev)}
     data = assemble(meta, config, trace, rets, spy, ctx.smap, company_names(tickers))
     out = render(data, Path(out))

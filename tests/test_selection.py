@@ -5,7 +5,8 @@ import pandas as pd
 import pytest
 
 from stocks_ml.selection import (COST, COST_BPS, compounded_pct, decide_book, floor_split, label_end,
-                                 next_open, pick_capped, price_frames, simulate, slice_row, week_slot)
+                                 next_open, pick_capped, price_frames, settings_at, simulate, slice_row,
+                                 week_slot)
 
 
 def _frame(weeks, top6, spy=0.0, rand=0.0, top3=None, top10=None):
@@ -345,3 +346,23 @@ def test_slice_row_universe_uses_lives_traded_rule_under_last_print():
     frames0 = price_frames(cl.copy(), op.copy())
     ctx0 = SimpleNamespace(**frames0, members={t: list(tickers)}, smap={}, delist_labels="drop")
     assert slice_row(ctx0, t, "4w", preds.drop("STALE")) is not None
+
+
+def test_simulate_settings_table_equals_the_fixed_call_and_switches_the_book():
+    ctx = _daily({"A": [100, 101, 102, 103, 104], "B": [100, 100, 101, 101, 102], "SPY": [100] * 5})
+    weeks = pd.to_datetime(["2015-12-04", "2015-12-11", "2015-12-18", "2015-12-25"])
+    holdings = pd.DataFrame({"week": weeks, "top15": ["A,B"] * 4})
+    fixed = simulate(ctx, holdings, "1w", 1, None, None, "none")
+    table = pd.DataFrame({"book": [1], "floor": ["none"], "stop": [None], "cap": [None]},
+                         index=[weeks[0]])
+    same = simulate(ctx, holdings, "1w", 9, 9, -0.9, "60/40", settings=table)   # scalars ignored
+    pd.testing.assert_series_equal(fixed, same)
+    switch = pd.DataFrame({"book": [1, 2], "floor": ["none"] * 2, "stop": [None] * 2,
+                           "cap": [None] * 2}, index=[weeks[0], weeks[2]])
+    trace = []
+    simulate(ctx, holdings, "1w", 1, None, None, "none", trace=trace, settings=switch)
+    sizes = [len(t["sleeves"][0]) for t in trace]
+    assert sizes[0] == 1 and sizes[-1] == 2                     # the book in force at each pick
+    with pytest.raises(ValueError):
+        simulate(ctx, holdings, "1w", 1, None, None, "none",
+                 settings=switch.iloc[1:])                        # no decision at the first week

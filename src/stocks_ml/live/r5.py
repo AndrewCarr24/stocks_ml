@@ -62,7 +62,8 @@ def load_spec(path: Path | None = None) -> dict:
     candidates) is the job's own; tests/test_procedure.py holds it to the spec."""
     from stocks_ml.procedure import live_strategy
     spec = json.loads((path or spec_path()).read_text())
-    return {**live_strategy(spec), "top_n": 15, "features": list(spec.get("features") or [])}
+    return {**live_strategy(spec), "top_n": 15, "features": list(spec.get("features") or []),
+            "params": dict(spec["model"]["params"])}
 
 
 SPEC = load_spec()
@@ -179,7 +180,8 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         raise RuntimeError(f"{t.date()} is not a panel date; latest is {ctx.weeks[-1].date()}")
     log(f"signal date {t.date()} (sleeve {due_sleeve(t, N_SLEEVES)} due); fitting {SPEC}")
     t1 = time.time()
-    preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"], label=SPEC["label"])
+    preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"], label=SPEC["label"],
+                           features=SPEC["features"], params=SPEC["params"])
     if preds is None:
         raise RuntimeError(f"no ensemble prediction for {t.date()}")
     ranked = rank_members(preds, ctx.prices, t)
@@ -254,7 +256,10 @@ def book_weights(sleeves: dict, gates: dict) -> tuple[float, dict[str, float]]:
 
 def label_text(label: str) -> str:
     """The target as the report names it."""
-    return {"label_4w": "4-week label", "label_4w_sector": "sector-relative 4-week label"}[label]
+    return {"label_4w": "4-week label", "label_4w_sector": "sector-relative 4-week label",
+            "label_4w_sector_log": "sector-relative 4-week log label",
+            "label_4w_sector_clip": "sector-relative 4-week label, clipped",
+            "label_4w_sector_rank": "sector-relative 4-week rank label"}[label]
 
 
 def render_markdown(sig: dict, smap: dict) -> str:

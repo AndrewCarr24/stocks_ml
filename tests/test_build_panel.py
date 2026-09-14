@@ -130,6 +130,31 @@ def test_sector_label_falls_back_to_the_week_median_without_a_sector():
     assert np.allclose(got, [-0.05, 0.05, -0.05, 0.05, 0.0])
 
 
+def test_tempered_labels_temper_the_tails_and_keep_the_order():
+    import pytest
+    from scipy.stats import norm
+
+    import stocks_ml.selection as sel
+    from stocks_ml.features.panel import LABEL_TRANSFORMS, sector_label
+    d = pd.Timestamp("2020-01-03")
+    pan = pd.DataFrame({"date": [d] * 6, "sector": ["A"] * 6,
+                        "fwd": [0.80, 0.10, 0.00, -0.05, -0.50, np.nan]})
+    args = (pan["fwd"], pan["date"], pan["sector"])
+    raw = sector_label(*args)                                      # sector median 0.00
+    log, clip, rank = (LABEL_TRANSFORMS[f"label_4w_sector_{k}"](*args) for k in ("log", "clip", "rank"))
+    assert raw.iloc[0] == pytest.approx(0.80)
+    assert log.iloc[0] == pytest.approx(np.log1p(0.80)) and log.iloc[0] < raw.iloc[0]   # upside tamed
+    assert log.iloc[4] == pytest.approx(np.log1p(-0.50)) and log.iloc[4] < raw.iloc[4]  # downside stretched
+    assert clip.max() == 0.20 and clip.min() == -0.20 and clip.iloc[1] == pytest.approx(0.10)
+    assert rank.iloc[0] == pytest.approx(norm.ppf(4.5 / 5)) and rank.iloc[4] == pytest.approx(norm.ppf(0.5 / 5))
+    assert abs(rank.dropna().mean()) < 1e-9
+    assert rank.dropna().rank().tolist() == raw.dropna().rank().tolist()   # ordering kept
+    for t in (log, clip, rank):
+        assert np.isnan(t.iloc[5]) and t.notna().sum() == 5
+    assert set(LABEL_TRANSFORMS) == set(sel.LABELS_4W) - {"label_4w"}     # every target Ctx can build
+    assert LABEL_TRANSFORMS["label_4w_sector"] is sector_label
+
+
 def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):
     panel = build_panel(synthetic_store, tiny_cfg)
     fcols = feature_cols(panel)

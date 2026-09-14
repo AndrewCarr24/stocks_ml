@@ -168,7 +168,13 @@ def test_walk_recipe_is_read_from_the_record_beside_the_walk(tmp_path):
     with pytest.raises(RuntimeError, match="cannot train on"):
         walk_recipe(preds)
     rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8}}))
-    assert walk_recipe(preds) == {"label": "label_4w_sector", "train_years": 8, "record": str(rec)}
+    assert walk_recipe(preds) == {"label": "label_4w_sector", "train_years": 8, "features": [],
+                                  "params": {}, "record": str(rec)}
+    rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8,
+                                                   "features": ["x_a"], "params": {"max_depth": 4}}}))
+    got = walk_recipe(preds)
+    assert got["features"] == ["x_a"] and got["params"] == {"max_depth": 4}
+    assert proc.model_params(got)["max_depth"] == 4 and proc.model_params(got)["learning_rate"] == 0.02
 
 
 # ---- the walk the procedure may read ----
