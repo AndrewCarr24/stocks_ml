@@ -35,8 +35,8 @@ def test_candidate_names_are_readable_and_distinct():
     assert a == "label_4w_sector_rank_8y" and b.startswith(a + "_") and c.startswith(a + "_") and b != c
 
 
-def _walk(path: Path, weeks, k, scale=1.0):
-    rows = [{"week": w, "ticker": t, **{f"c{c}": scale * c * (i + 1) for c in range(1, k + 1)}}
+def _walk(path: Path, weeks, k, scale=1.0, first=1):
+    rows = [{"week": w, "ticker": t, **{f"c{c}": scale * c * (i + 1) for c in range(first, first + k)}}
             for w in weeks for i, t in enumerate("ABC")]
     path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_parquet(path, index=False)
@@ -68,7 +68,8 @@ def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch)
     monkeypatch.setattr(ch, "context", lambda store: (None, ctx, 64))
     walked = []
 
-    def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None):
+    def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
+                  workers=1):
         walked.append((label, train_years, k, every, Path(out).name, tuple(features), params))
         return _walk(Path(out) / "preds.parquet", weeks[::every], k)
     monkeypatch.setattr(ch, "walk", fake_walk)
@@ -114,10 +115,10 @@ def test_run_refuses_the_incumbents_own_recipe(tmp_path, monkeypatch):
 
 def test_leak_audit_failure_removes_a_candidate_from_the_argmax(tmp_path, monkeypatch):
     weeks = list(pd.date_range("2006-01-06", periods=8, freq="W-FRI"))
-    inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, 4)
+    inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, ch.FULL_K)
     monkeypatch.setattr(ch, "context", lambda store: (None, SimpleNamespace(weeks=weeks), 64))
     monkeypatch.setattr(ch, "walk", lambda store, lo, hi, label, ty, k, out, every=1, log=None,
-                        features=(), params=None: _walk(Path(out) / "preds.parquet", weeks[::every], k))
+                        features=(), params=None, workers=1: _walk(Path(out) / "preds.parquet", weeks[::every], k))
     monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None:
                         ({n: {b: (9.0 if n != "incumbent" else 5.0) for b in (3, 6, 10)} for n in walks},
                          {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks},
@@ -151,34 +152,56 @@ def test_candidate_text_names_only_what_differs():
                               "params": {"max_depth": 4}}, base) == "train_years=5,features=x_a,params=max_depth:4"
 
 
-def test_run_fast_walks_the_sample_ranks_and_prints_the_promotion(tmp_path, monkeypatch):
+def test_run_fast_walks_the_sample_flags_by_the_null_and_prints_the_promotion(tmp_path, monkeypatch):
     weeks = list(pd.date_range("2006-01-06", periods=20, freq="W-FRI"))
     inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, 16)
     monkeypatch.setattr(ch, "context", lambda store: (None, SimpleNamespace(weeks=weeks), 64))
     walked = []
 
     def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
-                  weeks=None, sample=None):
+                  weeks=None, sample=None, workers=1, copies=None):
         walked.append((label, k, Path(out).name, len(weeks), sample))
         return _walk(Path(out) / "preds.parquet", weeks, k)
     monkeypatch.setattr(ch, "walk", fake_walk)
-    score = {"label_4w_sector_rank_8y": 4.9, "label_4w_sector_log_8y": -2.7, "incumbent": -5.2}
+    twin = _walk(tmp_path / "inc" / "twin" / "preds.parquet", weeks, 16, first=17)     # seeds 17..32
+    monkeypatch.setattr(ch, "ensure_twin", lambda *a, **k: twin)
+    null = np.concatenate([np.linspace(-6, 6, 99), [100.0]])            # centred: 90th percentile ~3.9
+    monkeypatch.setattr(ch, "null_gaps", lambda *a, **k: null)
+    score = {"label_4w_sector_rank_8y": 8.0, "label_4w_sector_log_8y": 3.0, "label_4w_sector_clip_8y": -2.0,
+             "incumbent": 1.0, "incumbent (twin seeds)": 2.0}            # the luckier seed set is the bar
     monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None:
                         ({n: {3: score[n], 6: score[n], 10: score[n]} for n in walks},
                          {n: pd.DataFrame({"week": weeks[:5], "top3": 0.02, "top6": 0.02, "top10": 0.02,
                                            "rand_mean": 0.01}) for n in walks}, 5))
-    monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0, 2.0, 3.0, 4.0])
+    monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0] * ch.FAST_K)
     monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.5)
     led, lines = [], []
     monkeypatch.setattr(ch, "record_trials", lambda rows: led.extend(rows))
-    cands = [ch.parse_candidate(f"label=label_4w_sector_{s}", BASE) for s in ("log", "rank")]
+    cands = [ch.parse_candidate(f"label=label_4w_sector_{s}", BASE) for s in ("log", "clip", "rank")]
     res = ch.run_fast(cands, inc, tmp_path / "fast", store="s", per_year=2, seed=3, log=lines.append)
-    assert [w[:3] for w in walked] == [("label_4w_sector_log", ch.SAMPLE_K, "fast_s3"),
-                                       ("label_4w_sector_rank", ch.SAMPLE_K, "fast_s3")]
-    assert walked[0][3] == 2 and "stratified random sample (2 per year, seed 3)" in walked[0][4]
-    assert res["order"] == ["label_4w_sector_rank_8y", "label_4w_sector_log_8y"]
-    assert res["better_than_incumbent"] == ["label_4w_sector_rank_8y", "label_4w_sector_log_8y"]
-    assert res["rows"]["incumbent"]["mean_excess_pp"] == pytest.approx(1.0)
-    assert any("stocks-ml challenge --out <dir> --candidate 'label=label_4w_sector_rank'" in l for l in lines)
-    assert (tmp_path / "fast" / "fast_s3.json").exists()
-    assert [r["kind"] for r in led] == ["challenge_fast", "challenge_fast"]
+    assert [w[:3] for w in walked] == [("label_4w_sector_log", ch.FAST_K, "fast_2x_s3"),
+                                       ("label_4w_sector_clip", ch.FAST_K, "fast_2x_s3"),
+                                       ("label_4w_sector_rank", ch.FAST_K, "fast_2x_s3")]
+    assert ch.FAST_K == 16 and walked[0][3] == 2 and "stratified random sample (2 per year, seed 3)" in walked[0][4]
+    assert res["order"] == ["label_4w_sector_rank_8y", "label_4w_sector_log_8y", "label_4w_sector_clip_8y"]
+    r = res["rows"]
+    assert r["label_4w_sector_rank_8y"]["gap"] == 6.0 and r["label_4w_sector_rank_8y"]["flagged"]      # 8 - 2 > ~3.9
+    assert r["label_4w_sector_rank_8y"]["gap_vs_incumbent_seeds_1_16"] == 7.0
+    assert r["label_4w_sector_log_8y"]["gap"] == 1.0 and not r["label_4w_sector_log_8y"]["flagged"]    # inside the null
+    assert r["incumbent (twin seeds)"]["gap"] is None and res["null"]["centred"]
+    assert r["label_4w_sector_clip_8y"]["null_percentile"] < 0.5 < r["label_4w_sector_rank_8y"]["null_percentile"]
+    assert res["flagged"] == ["label_4w_sector_rank_8y"] and res["null"]["flag_percentile"] == ch.FLAG_PERCENTILE
+    assert r["incumbent"]["gap"] is None and r["incumbent"]["mean_excess_pp"] == pytest.approx(1.0)
+    cut = ch.cut_walk(twin, weeks[:2], 16, copies=ch.twin_copies())
+    assert list(cut.columns) == ["week", "ticker", *[f"c{i}" for i in range(1, 17)]]                 # renamed
+    assert any("stocks-ml challenge --out <dir> --candidate 'label=label_4w_sector_rank' --k16" in l for l in lines)
+    assert (tmp_path / "fast" / "fast_2x_s3.json").exists()
+    assert [x["kind"] for x in led] == ["challenge_fast"] * 3
+
+
+def test_null_percentile_twin_dir_and_copies():
+    null = np.array([-3.0, -1.0, 0.0, 1.0, 3.0])
+    assert ch.null_percentile(2.0, null) == 0.8 and ch.null_percentile(-5.0, null) == 0.0
+    assert ch.twin_dir(Path("data/experiments/labels/rank_k16/select/preds.parquet")) == \
+        Path("data/experiments/labels/rank_k16/twin")
+    assert list(ch.twin_copies()) == list(range(17, 33))

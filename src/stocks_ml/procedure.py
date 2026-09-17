@@ -205,10 +205,10 @@ def apply(spec: dict, proc: dict) -> dict:
     walk's recipe into its model fields (horizon.label, purge_days,
     training_window_years, features, model.params), and attach the procedure
     record. Prose fields are left alone."""
-    from stocks_ml.selection import HORIZONS
+    from stocks_ml.selection import label_purge
     dec = proc["decision"]
     spec["horizon"]["label"] = proc["model"]["label"]
-    spec["horizon"]["purge_days"] = HORIZONS[HORIZON]["purge"]
+    spec["horizon"]["purge_days"] = label_purge(proc["model"]["label"], HORIZON)
     spec["training_window_years"] = proc["model"]["train_years"]
     spec["features"] = list(proc["model"].get("features") or [])
     spec["model"]["params"] = model_params(proc["model"])

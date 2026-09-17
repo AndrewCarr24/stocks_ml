@@ -9,7 +9,7 @@
                   charts                                                        eval.py
   app             the interactive explorer (reports/champion_explorer.html)    app/build.py
   challenge       the challenger protocol: candidate recipes vs the incumbent  challenge.py
-  challenge-fast  the prototype: candidates on a stratified random sample, K=4  challenge.py
+  challenge-fast  the prototype: candidates on a stratified random sample, K=16 challenge.py
   r5-weekly       the live weekly signal (GitHub Actions, every Saturday)      live/r5.py
 """
 from __future__ import annotations
@@ -45,9 +45,14 @@ def cmd_train(args, cfg):
         if not all(res.values()):
             raise SystemExit(f"the walk does not reproduce: {res}")
         return
-    walk(args.store, args.start, args.end, args.label, args.train_years, args.k, args.out,
+    copies = None
+    if args.copies:
+        a, b = (int(x) for x in args.copies.split("-"))
+        copies = list(range(a, b + 1))
+    walk(args.store, args.start, args.end, args.label, args.train_years,
+         len(copies) if copies else args.k, args.out,
          every=args.every, features=[f for f in (args.features or "").split(",") if f],
-         params=_params(args.params))
+         params=_params(args.params), workers=args.workers, copies=copies)
 
 
 def cmd_challenge(args, cfg):
@@ -55,7 +60,7 @@ def cmd_challenge(args, cfg):
     base = incumbent_recipe(args.incumbent)
     cands = [parse_candidate(c, base) for c in args.candidate]
     run(cands, args.incumbent, args.out, store=args.store, k16=args.k16, lo=args.sel_start,
-        hi=args.sel_end)
+        hi=args.sel_end, workers=args.workers)
 
 
 def cmd_challenge_fast(args, cfg):
@@ -63,7 +68,7 @@ def cmd_challenge_fast(args, cfg):
     base = incumbent_recipe(args.incumbent)
     cands = [parse_candidate(c, base) for c in args.candidate]
     run_fast(cands, args.incumbent, args.out, store=args.store, per_year=args.per_year,
-             seed=args.seed, lo=args.sel_start, hi=args.sel_end)
+             seed=args.seed, lo=args.sel_start, hi=args.sel_end, workers=args.workers)
 
 
 def cmd_backtest(args, cfg):
@@ -187,6 +192,9 @@ def main():
     p.add_argument("--check-weeks", type=int, default=2)
     p.add_argument("--features", default=None, help="extra panel columns, comma-separated")
     p.add_argument("--params", default=None, help="MODEL_PARAMS overrides, name=value,...")
+    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process)")
+    p.add_argument("--copies", default=None, metavar="A-B",
+                   help="walk copies (seeds) A..B instead of 1..K, e.g. 17-32 for a seed twin")
 
     p = sub.add_parser("challenge", help="the challenger protocol: candidate recipes vs the incumbent "
                        "(sample, every-week comparison, leak audit; --k16 adds the one look)")
@@ -200,9 +208,10 @@ def main():
     p.add_argument("--sel-start", default="2006-01-01")
     p.add_argument("--sel-end", default="2015-12-31")
     p.add_argument("--k16", action="store_true", help="the winner at K=16 on both segments + eval")
+    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process)")
 
     p = sub.add_parser("challenge-fast", help="the prototype: candidate recipes vs the incumbent on a "
-                       "stratified random sample of the selection window at K=4; ranks only")
+                       "stratified random sample of the selection window at K=16; ranks only")
     p.add_argument("--out", required=True, help="directory for the candidates' sample walks and fast_s<seed>.json")
     p.add_argument("--candidate", action="append", required=True, metavar="RECIPE",
                    help="as for challenge (repeatable)")
@@ -210,8 +219,9 @@ def main():
     p.add_argument("--store", default=STORE)
     p.add_argument("--sel-start", default="2006-01-01")
     p.add_argument("--sel-end", default="2015-12-31")
-    p.add_argument("--per-year", type=int, default=13, help="weeks drawn from each year")
+    p.add_argument("--per-year", type=int, default=26, help="weeks drawn from each year")
     p.add_argument("--seed", type=int, default=0, help="the draw's seed (the same weeks for every candidate)")
+    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process)")
 
     p = sub.add_parser("backtest", help="a walk through the strategy: the table vs the S&P 500 at the "
                        "walk's own settings (the spec's for the champion; the procedure's decision on "

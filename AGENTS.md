@@ -113,14 +113,15 @@ docs/simplification_log.md       what the 2026-09-13 simplification removed and 
 uv sync                                  # Python 3.12; `uv sync --group eval` adds matplotlib
 uv run pytest                            # must stay green with zero warnings; no network
 uv run stocks-ml world [--dir data/r5_live] [--no-refresh] [--no-sec]
-uv run stocks-ml train --out <walk>/select --start 2006-01-01 --end 2015-12-31 [--label L] [--train-years N] [--k 16] [--every 1] [--features a,b] [--params name=v,...]
+uv run stocks-ml train --out <walk>/select --start 2006-01-01 --end 2015-12-31 [--label L] [--train-years N] [--k 16] [--every 1] [--features a,b] [--params name=v,...] [--workers 4]
 uv run stocks-ml train --check <walk>/select/preds.parquet          # refit the first weeks, compare
+uv run stocks-ml train --out <walk>/twin --copies 17-32 ...         # the champion's seed twin (challenge-fast builds it)
 uv run stocks-ml backtest --preds <walk>/select/preds.parquet <walk>/extend/preds.parquet [--book/--floor/--stop/--cap/--k]
 uv run stocks-ml procedure --preds <walk>/select/preds.parquet [--check]   # writes the spec + PROCEDURE.md
 uv run stocks-ml eval [--walk W] [--incumbent I] [--ci-draws 200] [--no-charts]
 uv run stocks-ml app                                                 # reports/champion_explorer.html
 uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "params=name:v"] [--k16]
-uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 13] [--seed 0]   # the prototype: stratified sample, K=4, ranks only
+uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 26] [--seed 0]   # the prototype: stratified sample, K=16, seed-twin null, ranks only
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 /opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e  # the Playwright page test
 ```
@@ -148,7 +149,7 @@ comes from the keychain through `git credential fill`; never print it).
    owner's go, after every choice is frozen.
 3. **Selection is mechanical.** A candidate model is a recipe (label,
    window, features, params): prototyped by `stocks-ml challenge-fast`
-   (stratified sample, K=4, ranks only), then `stocks-ml challenge`: the
+   (stratified sample, 26/yr, K=16, gap vs the luckier of the incumbent's two seed sets, flagged above the 90th percentile of the centred seed-twin null; ranks only), then `stocks-ml challenge` (every week, K=16): the
    argmax of the model score (the mean over the top-3/6/10 books of the
    cost-adjusted compounded %/yr; owner's rule 2026-09-14) on 2006-2015
    alone, incumbent included; the strategy layers are
@@ -234,6 +235,16 @@ comes from the keychain through `git credential fill`; never print it).
   the miniconda Python (playwright is installed there).
 - `models/`, `reports/`, `signals_r5/`, `ledger_r5.json` are tracked;
   `data/` and `reports/champion_explorer.html` are not (licensed data).
+- **Seed luck is ~2.5 points on the model score at K=16.** The champion's
+  seeds 1-16 score +13.3 on the full 2006-2015 walk, seeds 17-32 (its
+  twin, `<walk>/twin/`) +15.8. No comparison at K=16 can call a gap inside
+  that; `challenge` and `challenge-fast` count both seed sets as the
+  incumbent (2026-09-16).
+- `train --workers N` fits copies in N spawned processes, each with
+  cpu_count // N XGBoost threads (a depth-3 hist fit cannot use 14 cores);
+  the fits are identical, only the wall time changes (bench 2026-09-14: 32 s/week
+  serial, 14 s at 4 workers, 12 s at 7, bit-identical). Default 7 on the CLI,
+  1 in-process for tests.
 - A DataFrame column built from a scalar `Timestamp` is datetime64[s] in
   pandas 2.3; `merge_asof` against [ns] fails — build it as a list.
 

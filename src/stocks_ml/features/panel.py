@@ -329,7 +329,20 @@ def market_macro_features(prices: pd.DataFrame, fred_lagged: pd.DataFrame,
     return pd.concat([mkt, macro, chg], axis=1).rename_axis("date").reset_index()
 
 
-def sector_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Series:
+WEEKS_13 = 13
+
+
+def fwd_ret_13w(prices: pd.DataFrame, dates, horizon_days: int, delist: str = "drop") -> pd.DataFrame:
+    """(date, ticker, fwd_ret_13w, label_end_date_13w): the 13-week forward
+    open-to-open return, built exactly like fwd_ret_4w (make_labels) at
+    13x the base horizon. A training target only — never a feature."""
+    lab = make_labels(prices, pd.DatetimeIndex(sorted(pd.unique(pd.Series(dates)))), horizon_days * WEEKS_13,
+                      delist=delist)
+    return lab[["date", "ticker", "fwd_ret", "label_end_date"]].rename(
+        columns={"fwd_ret": "fwd_ret_13w", "label_end_date": "label_end_date_13w"})
+
+
+def sector_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13: pd.Series | None = None) -> pd.Series:
     """A forward return minus its same-date same-sector median: the ls_w8
     package's target, label_4w_sector (Stage E, reports/clean_improvement.md).
 
@@ -352,7 +365,7 @@ def sector_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Serie
 LABEL_CLIP = 0.20
 
 
-def sector_log_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Series:
+def sector_log_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
     """log(1 + the stock's return) minus log(1 + its sector's median): tames
     the upside (+80% reads +0.59) and stretches the downside (-50% reads
     -0.69). Returns are floored at -99% so a name graded to zero stays finite."""
@@ -363,12 +376,12 @@ def sector_log_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.S
 
 
 def sector_clip_label(fwd: pd.Series, date: pd.Series, sector: pd.Series,
-                      cap: float = LABEL_CLIP) -> pd.Series:
+                      cap: float = LABEL_CLIP, fwd13=None) -> pd.Series:
     """The sector-relative return capped at +/-cap: both tails tempered."""
     return sector_label(fwd, date, sector).clip(-cap, cap)
 
 
-def sector_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.Series:
+def sector_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
     """The sector-relative return replaced by its within-week rank as a normal
     score: the model learns the ordering only, no magnitudes."""
     from scipy.stats import norm
@@ -378,12 +391,48 @@ def sector_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series) -> pd.
     return pd.Series(norm.ppf((r - 0.5) / n), index=d.index)
 
 
-# Every 4-week target a walk can train on, by column name; Ctx computes any
-# that a stored panel lacks from fwd_ret_4w and the membership sector map.
+def week_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
+    """The 4-week return replaced by its within-week rank as a normal score,
+    with no sector centring: the ordering among all members that week."""
+    from scipy.stats import norm
+    r = fwd.groupby(date).rank(method="average")
+    n = fwd.groupby(date).transform("count")
+    return pd.Series(norm.ppf((r - 0.5) / n), index=fwd.index)
+
+
+def sector_rank_label_13w(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
+    """The 13-week sector-relative return as a within-week rank (normal
+    score): the model ranks by the predicted quarter, the book still
+    rotates monthly. Momentum, quality and growth pay over quarters."""
+    if fwd13 is None:
+        raise ValueError("label_13w_sector_rank needs fwd_ret_13w")
+    return sector_rank_label(fwd13, date, sector)
+
+
+def blend_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
+    """The mean of the 4-week and 13-week sector-relative rank scores,
+    re-ranked within the week: one model that likes both a rebound and
+    continuation. NaN where either horizon is unrealized."""
+    if fwd13 is None:
+        raise ValueError("label_blend_rank needs fwd_ret_13w")
+    from scipy.stats import norm
+    m = (sector_rank_label(fwd, date, sector) + sector_rank_label(fwd13, date, sector)) / 2
+    r = m.groupby(date).rank(method="average")
+    n = m.groupby(date).transform("count")
+    return pd.Series(norm.ppf((r - 0.5) / n), index=m.index)
+
+
+# Every target a walk can train on, by column name; Ctx computes any that a
+# stored panel lacks from fwd_ret_4w (and fwd_ret_13w) and the membership
+# sector map. All are trained with the 4-week hold's purge or the label's
+# own, whichever is longer (selection.label_purge).
 LABEL_TRANSFORMS = {"label_4w_sector": sector_label,
                     "label_4w_sector_log": sector_log_label,
                     "label_4w_sector_clip": sector_clip_label,
-                    "label_4w_sector_rank": sector_rank_label}
+                    "label_4w_sector_rank": sector_rank_label,
+                    "label_4w_rank": week_rank_label,
+                    "label_13w_sector_rank": sector_rank_label_13w,
+                    "label_blend_rank": blend_rank_label}
 
 
 def sector_relative_momentum(panel: pd.DataFrame) -> pd.DataFrame:
@@ -552,6 +601,11 @@ def build_panel(store, cfg) -> pd.DataFrame:
     panel = panel.merge(labels_4w, on=["date", "ticker"], how="left")
     member_median_4w = panel.groupby("date")["fwd_ret_4w"].transform("median")
     panel["label_4w"] = panel["fwd_ret_4w"] - member_median_4w
+    # A 13-week forward return for the longer-horizon targets (the label
+    # test of 2026-09-16: label_13w_sector_rank, label_blend_rank). The hold
+    # stays 4 weeks; only what the model is trained to rank by changes.
+    panel = panel.merge(fwd_ret_13w(prices, dates, cfg.horizon_days,
+                                    getattr(cfg, "delist_labels", "drop")), on=["date", "ticker"], how="left")
 
     sector = membership.dropna(subset=["sector"]).drop_duplicates("ticker")
     panel["sector"] = panel["ticker"].map(dict(zip(sector["ticker"], sector["sector"])))

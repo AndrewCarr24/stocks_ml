@@ -116,3 +116,19 @@ def test_walk_takes_an_explicit_week_list_described_as_a_sample(tmp_path, monkey
     assert sorted(df.week.unique()) == weeks[::3]
     rec = json.loads((tmp_path / "s" / "spec.json").read_text())
     assert rec["sample"].startswith("2 weeks") and "(a sample)" in rec["weeks"]
+
+
+def test_walk_takes_an_explicit_copy_range_for_a_seed_twin(tmp_path, monkeypatch):
+    weeks = list(pd.date_range("2006-01-06", periods=3, freq="W-FRI"))
+    ctx = SimpleNamespace(weeks=weeks, delist_labels="last_print", cfg=SimpleNamespace(price_basis="nominal"))
+    monkeypatch.setattr(train, "context", lambda store: (sel, ctx, 64))
+    seen = []
+    monkeypatch.setattr(train, "copy_preds", lambda s_, c_, t, c, *a, **k: (seen.append(c), pd.Series({"A": float(c)}))[1])
+    path = train.walk("data/w", weeks[0], weeks[-1], "label_4w_sector", 8, 2, tmp_path / "twin",
+                      copies=range(17, 19), log=lambda m: None)
+    df = pd.read_parquet(path)
+    assert list(df.columns) == ["week", "ticker", "c17", "c18"] and sorted(set(seen)) == [17, 18]
+    assert json.loads((tmp_path / "twin" / "spec.json").read_text())["copies"] == [17, 18]
+    with pytest.raises(ValueError):
+        train.walk("data/w", weeks[0], weeks[-1], "label_4w_sector", 8, 3, tmp_path / "x", copies=range(17, 19),
+                   log=lambda m: None)

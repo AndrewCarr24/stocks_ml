@@ -65,7 +65,7 @@ world ──▶ train ──▶ procedure ──▶ eval ──▶ app
 | `stocks-ml eval` | the one look: the table, 95% intervals, the falsification test against an incumbent, the leak audit, the charts | `<walk>/eval.json`, `reports/champion_eval.md`, two charts | [eval.py](src/stocks_ml/eval.py), [leak_audit.py](src/stocks_ml/leak_audit.py) |
 | `stocks-ml app` | the interactive explorer of the champion's backtest, week by week | `reports/champion_explorer.html` (git-ignored) | [app/build.py](src/stocks_ml/app/build.py) |
 | `stocks-ml challenge` | the challenger protocol: candidate recipes vs the incumbent — sample, every-week comparison, leak audit, optionally K=16 and the one look | `<out>/challenge.json`, the candidates' walks | [challenge.py](src/stocks_ml/challenge.py) |
-| `stocks-ml challenge-fast` | the prototype: the same candidates on a stratified random sample of 2006–2015 at K=4 vs the incumbent on the same weeks; ranks only | `<out>/fast_s<seed>.json` | [challenge.py](src/stocks_ml/challenge.py) |
+| `stocks-ml challenge-fast` | the prototype: the same candidates on a stratified random sample of 2006–2015 at K=16 vs both seed sets of the incumbent, flagged against the seed-twin null; ranks only | `<out>/fast_<n>x_s<seed>.json` | [challenge.py](src/stocks_ml/challenge.py) |
 | `stocks-ml procedure-card` | PROCEDURE.md from the spec | `PROCEDURE.md` | [procedure_card.py](src/stocks_ml/procedure_card.py) |
 | `stocks-ml r5-weekly` | the live signal: refresh, rank, rotate a sleeve, keep the paper ledger | `signals_r5/`, `ledger_r5.json` | [live/r5.py](src/stocks_ml/live/r5.py) |
 
@@ -103,7 +103,8 @@ stocks-ml challenge --out data/experiments/challenges/labels \
 1. **Sample** (every 4th week of 2006–2015, K=4) for each candidate, and
    the incumbent's own walk cut to the same weeks and copies. It ranks
    only; the top two go on.
-2. **Every week** of 2006–2015 at K=4. The **model score** is the mean
+2. **Every week** of 2006–2015 at K=16, the deployed ensemble size (at K=4,
+   models that K=16 separates are coin flips). The **model score** is the mean
    over the top-3, top-6 and top-10 books of the cost-adjusted compounded
    %/yr (`selection.decide_book`: the same three numbers the procedure's
    book layer takes the argmax of), on the weeks all walks share. One book
@@ -113,7 +114,8 @@ stocks-ml challenge --out data/experiments/challenges/labels \
    leak audit must pass. The argmax of the score — incumbent included — is
    the frozen model. No significance is required in either direction: the
    incumbent never met such a bar either.
-3. **The one look** (`--k16`): the winner at K=16 on both segments, then
+3. **The one look** (`--k16`): the winner's 2016–2024 segment at K=16 (its
+   2006–2015 walk is the stage-2 one), then
    `stocks-ml eval --incumbent`: the table, the intervals, the
    falsification test (a challenger is rejected only if it is significantly
    *worse* than the incumbent on 2016–2024, paired weekly t < −2) and the
@@ -137,13 +139,26 @@ stocks-ml challenge-fast --out data/experiments/fast/labels \
     --candidate label=label_4w_sector_rank --candidate train_years=5 --candidate "params=max_depth:4"
 ```
 
-It walks each candidate on a stratified random sample of 2006–2015 (13
+It walks each candidate on a stratified random sample of 2006–2015 (26
 weeks from each year, one fixed seed, so every candidate sees the same
-weeks) at K=4, cuts the incumbent's own walk to those weeks and copies,
-and prints the three books' compounded %/yr and their mean (the model
-score), the three-book average's excess over the average stock, the
-single-copy spread and the paired t — minutes per candidate. It ranks and decides nothing; whatever beats the incumbent
-comes back as a ready `challenge` line. The selection window is always
+weeks) at K=16, the deployed ensemble size, and cuts the incumbent's own
+walk to those weeks and copies. Under an hour per candidate.
+
+Its calibration is the **seed twin**: the incumbent's own recipe walked
+again with sixteen fresh seeds, once per champion. Two seed sets of the
+same recipe differ by a couple of points on the score (the champion's:
++13.3 and +15.8 on the full walk), so the incumbent is represented by
+both, a candidate's gap is measured against the luckier one, and the twin
+against the incumbent on a thousand other draws of the same sample design,
+centred, is what a boost of zero looks like. Each gap is reported as a
+percentile of that null (its P(boost)) and flagged only above the 90th,
+so the false-positive rate is a measured 10%. A seven-point boost like
+the rank label's is caught about two times in three at 26 weeks a year;
+gaps of a point or two are inside seed noise, unflaggable by any fast
+method, and the 12-year-window case suggests not worth having. The full
+`challenge` counts both seed sets too: a winner must beat both. It ranks
+and decides nothing; what is flagged comes back as a ready `challenge`
+line. The selection window is always
 2006–2015; 2016–2024 is touched only by `challenge --k16`, once, for a
 winner. Strategy layers need no walk: prototype a menu change with
 `backtest --book/--floor/--stop/--cap` on the champion's saved walk.

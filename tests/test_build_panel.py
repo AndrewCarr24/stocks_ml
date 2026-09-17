@@ -97,6 +97,11 @@ def test_build_panel_four_week_label(synthetic_store, tiny_cfg):
     assert panel.loc[panel["date"] == last, "label_4w"].isna().all()
     # never admitted as a model feature
     assert {"label_4w", "fwd_ret_4w"}.isdisjoint(feature_cols(panel))
+    # the 13-week forward return: built like fwd_ret_4w, unrealized for the last 13 weeks, never a feature
+    assert "fwd_ret_13w" in panel.columns and "fwd_ret_13w" not in feature_cols(panel)
+    dates = sorted(panel["date"].unique())
+    assert panel.loc[panel["date"].isin(dates[-13:]), "fwd_ret_13w"].isna().all()
+    assert panel.loc[panel["date"] == dates[0], "fwd_ret_13w"].notna().any()
 
 
 def test_build_panel_sector_label_is_the_research_formula(synthetic_store, tiny_cfg):
@@ -135,7 +140,7 @@ def test_tempered_labels_temper_the_tails_and_keep_the_order():
     from scipy.stats import norm
 
     import stocks_ml.selection as sel
-    from stocks_ml.features.panel import LABEL_TRANSFORMS, sector_label
+    from stocks_ml.features.panel import LABEL_TRANSFORMS, sector_label, sector_rank_label
     d = pd.Timestamp("2020-01-03")
     pan = pd.DataFrame({"date": [d] * 6, "sector": ["A"] * 6,
                         "fwd": [0.80, 0.10, 0.00, -0.05, -0.50, np.nan]})
@@ -153,6 +158,19 @@ def test_tempered_labels_temper_the_tails_and_keep_the_order():
         assert np.isnan(t.iloc[5]) and t.notna().sum() == 5
     assert set(LABEL_TRANSFORMS) == set(sel.LABELS_4W) - {"label_4w"}     # every target Ctx can build
     assert LABEL_TRANSFORMS["label_4w_sector"] is sector_label
+    wr = LABEL_TRANSFORMS["label_4w_rank"](*args)                          # no sector centring
+    assert wr.dropna().rank().tolist() == pan["fwd"].dropna().rank().tolist() and np.isnan(wr.iloc[5])
+    assert wr.iloc[0] == pytest.approx(norm.ppf(4.5 / 5))
+    f13 = pd.Series([0.05, 0.30, 0.10, -0.20, -0.10, 0.02])               # a 13-week return
+    r13 = LABEL_TRANSFORMS["label_13w_sector_rank"](*args, fwd13=f13)
+    assert r13.rank().tolist() == f13.rank().tolist()                       # ranks by the quarter, ignores fwd
+    bl = LABEL_TRANSFORMS["label_blend_rank"](*args, fwd13=f13)
+    s4, s13 = sector_rank_label(*args), sector_rank_label(f13, pan["date"], pan["sector"])
+    assert np.isnan(bl.iloc[5]) and bl.dropna().rank().tolist() == ((s4 + s13) / 2).dropna().rank().tolist()
+    with pytest.raises(ValueError):
+        LABEL_TRANSFORMS["label_blend_rank"](*args)
+    assert sel.label_purge("label_4w_sector_rank") == 35 and sel.label_purge("label_13w_sector_rank") == 98
+    assert sel.label_purge("label_blend_rank") == 98
 
 
 def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):

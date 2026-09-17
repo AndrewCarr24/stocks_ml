@@ -259,7 +259,10 @@ def label_text(label: str) -> str:
     return {"label_4w": "4-week label", "label_4w_sector": "sector-relative 4-week label",
             "label_4w_sector_log": "sector-relative 4-week log label",
             "label_4w_sector_clip": "sector-relative 4-week label, clipped",
-            "label_4w_sector_rank": "sector-relative 4-week rank label"}[label]
+            "label_4w_sector_rank": "sector-relative 4-week rank label",
+            "label_4w_rank": "4-week rank label",
+            "label_13w_sector_rank": "sector-relative 13-week rank label (monthly rotation)",
+            "label_blend_rank": "blended 4-week + 13-week rank label"}[label]
 
 
 def render_markdown(sig: dict, smap: dict) -> str:

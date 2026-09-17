@@ -50,7 +50,12 @@ LABEL_WORDS = {"label_4w": "the stock's 4-week return minus that week's median m
                "label_4w_sector_clip": "the stock's 4-week return minus its sector's median that week, "
                                        "capped at +/-20%",
                "label_4w_sector_rank": "the within-week rank of the stock's 4-week return minus its "
-                                       "sector's median, as a normal score"}
+                                       "sector's median, as a normal score",
+               "label_4w_rank": "the within-week rank of the stock's 4-week return, as a normal score",
+               "label_13w_sector_rank": "the within-week rank of the stock's 13-week return minus its "
+                                        "sector's median, as a normal score",
+               "label_blend_rank": "the mean of the 4-week and 13-week sector-relative rank scores, "
+                                   "re-ranked within the week"}
 
 
 def describe(config: dict, train_years: int) -> str:

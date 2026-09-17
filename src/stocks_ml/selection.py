@@ -55,7 +55,23 @@ LABELS_4W = {"label_4w": "the stock's 4-week return minus that week's median mem
              "label_4w_sector_clip": "the stock's 4-week return minus the same-week median of its "
                                      "sector, capped at +/-20%",
              "label_4w_sector_rank": "the stock's 4-week return minus the same-week median of its "
-                                     "sector, replaced by its within-week rank as a normal score"}
+                                     "sector, replaced by its within-week rank as a normal score",
+             "label_4w_rank": "the stock's 4-week return replaced by its within-week rank as a normal "
+                              "score (no sector centring)",
+             "label_13w_sector_rank": "the stock's 13-week return minus the same-week median of its "
+                                      "sector, replaced by its within-week rank as a normal score "
+                                      "(ranks by the quarter, rotates monthly)",
+             "label_blend_rank": "the mean of the 4-week and 13-week sector-relative rank scores, "
+                                 "re-ranked within the week as a normal score"}
+# Labels whose forward span exceeds the 4-week hold's purge train with their
+# own (13 weeks + the fill week); the hold and the ledger are unchanged.
+LABEL_PURGE = {"label_13w_sector_rank": 13 * 7 + 7, "label_blend_rank": 13 * 7 + 7}
+
+
+def label_purge(label: str, horizon: str = "4w") -> int:
+    """Days between the last training label and the rank week: the hold's
+    purge or the label's own, whichever is longer."""
+    return max(HORIZONS[horizon]["purge"], LABEL_PURGE.get(label, 0))
 BOOKS = (3, 6, 10)
 # FLOORS / FLOOR_FRACTION / floor_split: stocks_ml.ledger, the one rule the
 # backtest and the live job share (halfgate runs live since 2026-09-12).
@@ -95,11 +111,23 @@ class Ctx:
         # 2026-09-12); every other 4-week target is the same fwd_ret_4w
         # recentred on build_panel's sector map and transformed here, so the
         # research walk and the live job train on identical columns.
-        from stocks_ml.features.panel import LABEL_TRANSFORMS
+        from stocks_ml.features.panel import LABEL_TRANSFORMS, fwd_ret_13w
+        if "fwd_ret_13w" not in self.pan.columns:
+            # Panels built before 2026-09-16 lack the 13-week forward return;
+            # it is a function of the store's prices alone, cached beside the panel.
+            cache = Path(data_dir) / "fwd_ret_13w.parquet"
+            if cache.exists():
+                f13 = pd.read_parquet(cache)
+            else:
+                f13 = fwd_ret_13w(self.prices, self.pan["date"].unique(), self.cfg.horizon_days,
+                                  getattr(self.cfg, "delist_labels", "drop"))
+                f13.to_parquet(cache, index=False)
+            f13["date"] = pd.to_datetime(f13["date"])
+            self.pan = self.pan.merge(f13[["date", "ticker", "fwd_ret_13w"]], on=["date", "ticker"], how="left")
         for name, fn in LABEL_TRANSFORMS.items():
             if name not in self.pan.columns:
                 self.pan[name] = fn(self.pan["fwd_ret_4w"], self.pan["date"],
-                                    self.pan["ticker"].map(self.smap))
+                                    self.pan["ticker"].map(self.smap), fwd13=self.pan["fwd_ret_13w"])
         daily = self.prices.sort_values("date")
         self.delist_labels = getattr(self.cfg, "delist_labels", "drop")
         self.__dict__.update(price_frames(
@@ -134,15 +162,16 @@ def ensemble_preds(ctx, t, horizon, train_years, label=None, features=None, para
     from stocks_ml.models.replication import WeekBootstrapEstimator
     h = HORIZONS[horizon]
     label = label or h["label"]
+    purge = label_purge(label, horizon)
     cfg2 = ctx.world_cfg(train_years)
     copies = []
     for c in range(1, K_COPIES + 1):
         est = WeekBootstrapEstimator(
-            TimeTailEarlyStopXGB(**{**MODEL_PARAMS, **(params or {})}, **fixed(h["purge"])),
+            TimeTailEarlyStopXGB(**{**MODEL_PARAMS, **(params or {})}, **fixed(purge)),
             bootstrap_seed=c)
         wf = walk_forward_predictions(ctx.pan, est, cfg2, start=t, end=t,
                                       label_col=label,
-                                      purge_days=h["purge"],
+                                      purge_days=purge,
                                       extra_features=tuple(ctx.extra if features is None else features))
         p = wf.preds.get(t)
         if p is not None:

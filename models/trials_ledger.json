@@ -24757,5 +24757,161 @@
   "max_dd": 0.383,
   "n_weeks": 446,
   "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/labels/rank_k16 replayed by selection.simulate at K=16 for reports/champion_explorer.html: $844 (+28.2%/yr, SR 0.92, DD 38%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_ideas1_s0_label_4w_sector_rank_12y",
+  "cv_metric": 6.743333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 12
+  },
+  "notes": "{\"metric\": {\"3\": 4.32, \"6\": 8.88, \"10\": 7.03}, \"mean_excess_pp\": 0.59, \"copies\": [-2.2600000000000002, 3.9533333333333336, 5.723333333333334, 2.06, 14.336666666666666, 3.3800000000000003, 2.9, 22.14, 2.22, 2.1766666666666667, 2.52, -0.5266666666666668, 23.790000000000003, 4.273333333333333, 0.029999999999999954, 10.293333333333335], \"paired_t_vs_incumbent\": 0.99, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": true}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_ideas1_s0_label_4w_sector_rank_8y_d213c2bd",
+  "cv_metric": 4.533333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "params": {
+    "learning_rate": 0.01,
+    "n_estimators": 3000
+   }
+  },
+  "notes": "{\"metric\": {\"3\": 4.17, \"6\": 4.94, \"10\": 4.49}, \"mean_excess_pp\": 0.2, \"copies\": [0.49, 5.760000000000001, -2.43, 18.61, 20.256666666666668, 9.363333333333335, 2.5366666666666666, 33.15, 14.01, 17.223333333333333, -0.48000000000000004, 16.94, 23.786666666666665, -8.256666666666666, 9.516666666666666, -10.1], \"paired_t_vs_incumbent\": 0.19, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": true}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_ideas1_s0_label_4w_sector_rank_5y",
+  "cv_metric": 2.7733333333333334,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 5
+  },
+  "notes": "{\"metric\": {\"3\": 4.85, \"6\": 2.33, \"10\": 1.14}, \"mean_excess_pp\": -0.18, \"copies\": [9.55, -3.7833333333333337, -3.8033333333333332, 6.1433333333333335, 2.983333333333333, 3.9499999999999997, 0.79, -6.580000000000001, 20.94333333333333, 11.933333333333335, 1.1066666666666667, 2.64, -4.010000000000001, -5.03, 6.103333333333333, -4.886666666666667], \"paired_t_vs_incumbent\": -0.48, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": true}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_ideas1_s0_label_4w_sector_rank_8y_b9c615fa",
+  "cv_metric": 0.42666666666666647,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "params": {
+    "max_depth": 4
+   }
+  },
+  "notes": "{\"metric\": {\"3\": -8.68, \"6\": 3.11, \"10\": 6.85}, \"mean_excess_pp\": -0.09, \"copies\": [-5.093333333333334, 29.900000000000002, 4.71, -10.416666666666666, 14.49, 16.29, -22.066666666666666, 6.913333333333333, 9.87, -5.666666666666667, 0.9499999999999998, 11.246666666666664, 10.593333333333334, 7.903333333333333, -0.5766666666666667, -6.090000000000001], \"paired_t_vs_incumbent\": -0.64, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": false}"
+ },
+ {
+  "date": "2026-09-14",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_ideas1_s0_label_4w_rank_8y",
+  "cv_metric": -1.1966666666666665,
+  "config": {
+   "label": "label_4w_rank",
+   "train_years": 8
+  },
+  "notes": "{\"metric\": {\"3\": -4.93, \"6\": -1.16, \"10\": 2.5}, \"mean_excess_pp\": -0.28, \"copies\": [6.859999999999999, 10.863333333333335, -5.216666666666668, 1.4533333333333334, 9.333333333333334, 4.776666666666666, 10.036666666666667, 23.27, 6.766666666666667, -4.083333333333333, -3.4466666666666668, -2.5866666666666664, 5.693333333333334, -2.9066666666666667, -4.743333333333333, -5.3566666666666665], \"paired_t_vs_incumbent\": -0.95, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": false}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_ideas2_s0_label_4w_sector_rank_12y_d213c2bd",
+  "cv_metric": -1.15,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 12,
+   "params": {
+    "learning_rate": 0.01,
+    "n_estimators": 3000
+   }
+  },
+  "notes": "{\"metric\": {\"3\": -4.5, \"6\": -0.14, \"10\": 1.19}, \"mean_excess_pp\": -0.2, \"copies\": [-1.97, 9.553333333333333, 4.03, 2.763333333333333, 23.27333333333333, 2.1233333333333335, -4.11, 31.716666666666665, 8.556666666666667, 4.013333333333333, 7.833333333333333, 6.93, 22.05333333333333, -2.3966666666666665, 1.2633333333333336, -2.3833333333333333], \"paired_t_vs_incumbent\": -0.73, \"sample\": \"130 weeks, a stratified random sample (13 per year, seed 0)\", \"better_than_incumbent\": false}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "challenge",
+  "name": "challenge_window12_stage1_label_4w_sector_rank_12y",
+  "cv_metric": -1.1433333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 12
+  },
+  "notes": "{\"metric\": {\"3\": -7.26, \"6\": 1.21, \"10\": 2.62}, \"weeks\": 131, \"advanced\": true, \"note\": \"sample; ranks only\"}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "challenge",
+  "name": "challenge_window12_stage2_label_4w_sector_rank_12y",
+  "cv_metric": 5.976666666666667,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 12
+  },
+  "notes": "{\"metric\": {\"3\": 1.01, \"6\": 8.82, \"10\": 8.1}, \"copies\": [9.243333333333334, 14.26, 15.276666666666666, 8.12], \"paired_t_vs_incumbent\": -1.12, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor -0.020 (t -3.7), IC +0.0062 (t +0.8), retention 0.98.\"}, \"weeks\": 522, \"winner\": false}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "challenge",
+  "name": "challenge_window12_k16_stage1_label_4w_sector_rank_12y",
+  "cv_metric": -1.1433333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 12
+  },
+  "notes": "{\"metric\": {\"3\": -7.26, \"6\": 1.21, \"10\": 2.62}, \"weeks\": 131, \"advanced\": true, \"note\": \"sample; ranks only\"}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "challenge",
+  "name": "challenge_window12_k16_stage2_label_4w_sector_rank_12y",
+  "cv_metric": 14.54,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 12
+  },
+  "notes": "{\"metric\": {\"3\": 16.06, \"6\": 15.52, \"10\": 12.04}, \"copies\": [9.243333333333334, 14.26, 15.276666666666666, 8.12, 17.939999999999998, 10.703333333333333, 15.436666666666667, 23.583333333333332, 10.833333333333334, 5.9799999999999995, -0.5033333333333333, 10.983333333333334, 17.01666666666667, 12.9, 5.1066666666666665, 14.113333333333335], \"paired_t_vs_incumbent\": 0.25, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor -0.023 (t -4.1), IC +0.0082 (t +1.1), retention 0.964.\"}, \"weeks\": 522, \"winner\": true}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "eval",
+  "name": "eval_label_4w_sector_rank_12y_label_4w_sector_rank_12y_k16",
+  "pre_holdout_sharpe": 0.872,
+  "notes": "{\"walk\": \"data/experiments/challenges/window12_k16/label_4w_sector_rank_12y\", \"settings\": {\"book\": 3, \"floor\": \"60/40\", \"stop\": null, \"cap\": 2}, \"2016_2024\": {\"terminal_100\": 797.5, \"cagr_pct\": 27.39, \"sharpe\": 1.054, \"max_dd\": 0.352, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 4393.7, \"cagr_pct\": 22.58, \"sharpe\": 0.872, \"max_dd\": 0.467, \"n_weeks\": 966}, \"falsification_t\": -0.45, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-15",
+  "kind": "decision",
+  "name": "keep_champion_over_rank_12y_2026-09-15",
+  "notes": "{\"decision\": \"the owner kept the 8-year champion (label_4w_sector_rank / 8y) over the 12-year-window challenger, which won the selection window by the registered argmax\", \"why\": \"a discretionary override, recorded as one: the gap was 1.3 points on the model score (t +0.25), came from 2009-2012 when the 12-year window was still truncated, and was nil on 2013-2015 (the only years that test a 12-year memory); on 2016-2024 the challenger read $798 vs $844, falsification t -0.45\", \"challenge\": \"data/experiments/challenges/window12_k16/challenge.json\", \"report\": \"reports/label_4w_sector_rank_12y_eval.md\"}"
+ },
+ {
+  "date": "2026-09-16",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_horizon_26x_s0_label_13w_sector_rank_8y",
+  "cv_metric": 25.45,
+  "config": {
+   "label": "label_13w_sector_rank",
+   "train_years": 8
+  },
+  "notes": "{\"metric\": {\"3\": 31.64, \"6\": 23.82, \"10\": 20.89}, \"score\": 25.45, \"gap\": 0.64, \"gap_vs_incumbent_seeds_1_16\": 3.92, \"null_percentile\": 0.586, \"flagged\": false, \"mean_excess_pp\": 1.69, \"copies\": [22.090000000000003, 13.156666666666666, 22.463333333333335, 10.806666666666667, 18.643333333333334, 20.223333333333333, 5.97, 16.893333333333334, 19.133333333333336, 20.266666666666666, 10.066666666666668, 17.53333333333333, 12.996666666666664, 19.24, 6.463333333333334, 24.036666666666672], \"paired_t_vs_incumbent\": 0.86, \"sample\": \"260 weeks, a stratified random sample (26 per year, seed 0)\", \"flag_threshold\": 4.18}"
+ },
+ {
+  "date": "2026-09-16",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_horizon_26x_s0_label_blend_rank_8y",
+  "cv_metric": 22.1,
+  "config": {
+   "label": "label_blend_rank",
+   "train_years": 8
+  },
+  "notes": "{\"metric\": {\"3\": 26.56, \"6\": 21.72, \"10\": 18.02}, \"score\": 22.1, \"gap\": -2.71, \"gap_vs_incumbent_seeds_1_16\": 0.57, \"null_percentile\": 0.199, \"flagged\": false, \"mean_excess_pp\": 1.34, \"copies\": [17.07, 14.36, 16.256666666666668, 17.086666666666662, 22.856666666666666, 36.63333333333333, 12.513333333333334, 29.819999999999997, 16.963333333333335, 20.023333333333337, 9.49, 27.53, 35.02333333333333, 18.66, 22.956666666666667, 19.48], \"paired_t_vs_incumbent\": -0.09, \"sample\": \"260 weeks, a stratified random sample (26 per year, seed 0)\", \"flag_threshold\": 4.18}"
  }
 ]

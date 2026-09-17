@@ -54,7 +54,9 @@ FALSIFY_T = -2.0
 LABELS_4W_SHORT = {"label_4w": "4w label", "label_4w_sector": "sector-relative 4w label",
                    "label_4w_sector_log": "sector-relative 4w log label",
                    "label_4w_sector_clip": "sector-relative 4w label, clipped",
-                   "label_4w_sector_rank": "sector-relative 4w rank label"}
+                   "label_4w_sector_rank": "sector-relative 4w rank label",
+                   "label_4w_rank": "4w rank label", "label_13w_sector_rank": "sector-relative 13w rank label",
+                   "label_blend_rank": "4w+13w blended rank label"}
 
 
 def log(msg):

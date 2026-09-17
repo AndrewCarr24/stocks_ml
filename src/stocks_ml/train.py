@@ -26,7 +26,10 @@ Rules: nothing at or past the holdout (selection.HOLDOUT_START) is walked;
 from __future__ import annotations
 
 import json
+import multiprocessing
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -34,6 +37,7 @@ import pandas as pd
 
 STORE = "data/sharadar_world2000_nominal_dl"    # the research world (nominal basis, last-print labels)
 CHECKPOINT = 10                                 # weeks between writes of preds.parquet
+WORKERS = 7                                     # fits in parallel processes (each gets cpu_count // WORKERS threads): 2.7x on 14 cores
 
 
 def log(msg):
@@ -55,19 +59,23 @@ def context(store: str = STORE):
 
 
 def copy_preds(sel, ctx, t, c: int, label: str, train_years: int, features=(),
-               params: dict | None = None) -> pd.Series | None:
+               params: dict | None = None, n_jobs: int | None = None) -> pd.Series | None:
     """Copy c's scores at rank week t: the champion model (MODEL_PARAMS with
     `params` overriding) on the trailing `train_years`, bootstrap seed c,
-    trained on `label`, on the panel's f_ columns plus `features`."""
+    trained on `label`, on the panel's f_ columns plus `features`. `n_jobs`
+    caps the fit's threads (a worker's share of the cores); the fit is the
+    same either way."""
     from stocks_ml.models.replication import WeekBootstrapEstimator
     from stocks_ml.models.walk import walk_forward_predictions
     from stocks_ml.models.xgb import TimeTailEarlyStopXGB
-    h = sel.HORIZONS["4w"]
-    est = WeekBootstrapEstimator(TimeTailEarlyStopXGB(**{**sel.MODEL_PARAMS, **(params or {})},
-                                                      **sel.fixed(h["purge"])),
+    purge = sel.label_purge(label, "4w")
+    fixed = sel.fixed(purge)
+    if n_jobs is not None:
+        fixed = {**fixed, "n_jobs": int(n_jobs)}
+    est = WeekBootstrapEstimator(TimeTailEarlyStopXGB(**{**sel.MODEL_PARAMS, **(params or {})}, **fixed),
                                  bootstrap_seed=c)
     wf = walk_forward_predictions(ctx.pan, est, ctx.world_cfg(train_years), start=t, end=t,
-                                  label_col=label, purge_days=h["purge"],
+                                  label_col=label, purge_days=purge,
                                   extra_features=tuple(features or ctx.extra))
     return wf.preds.get(t)
 
@@ -91,7 +99,7 @@ def recipe(label: str, train_years: int, features=(), params: dict | None = None
 
 def record(store: str, lo, hi, label: str, train_years: int, k: int, every: int,
            delist: str, price_basis: str, features=(), params: dict | None = None,
-           sample: str | None = None) -> dict:
+           sample: str | None = None, copies=None) -> dict:
     """The walk's record (spec.json): what made it, on what, over which weeks.
     `sample` describes an explicit week list (challenge-fast's stratified
     random sample); such a record is marked a sample like `every` > 1."""
@@ -107,6 +115,9 @@ def record(store: str, lo, hi, label: str, train_years: int, k: int, every: int,
                      else f"every {every}th week of {span} (a sample)")}
     if sample:
         rec["sample"] = sample
+    copies = list(copies) if copies is not None else list(range(1, int(k) + 1))
+    if copies != list(range(1, int(k) + 1)):
+        rec["copies"] = [int(copies[0]), int(copies[-1])]      # e.g. a seed twin: 17..32
     return rec
 
 
@@ -122,12 +133,31 @@ def guard(out: Path, rec: dict) -> None:
         path.write_text(json.dumps(rec, indent=1, sort_keys=True))
 
 
+_W: dict = {}
+
+
+def _init_worker(store: str, n_jobs: int) -> None:
+    sel, ctx, _ = context(store)
+    _W.update(sel=sel, ctx=ctx, n_jobs=n_jobs)
+
+
+def _fit_task(args):
+    t, c, label, train_years, features, params = args
+    p = copy_preds(_W["sel"], _W["ctx"], t, c, label, train_years, features, params,
+                   n_jobs=_W["n_jobs"])
+    return t, c, p
+
+
 def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
          every: int = 1, checkpoint: int = CHECKPOINT, log=log, features=(),
-         params: dict | None = None, weeks=None, sample: str | None = None) -> Path:
-    """Copies 1..k at every rank week of [lo, hi] (every `every`th week for a
-    sample; or the explicit `weeks`, described by `sample`), checkpointed and
-    resumed by week under the record's guard."""
+         params: dict | None = None, weeks=None, sample: str | None = None,
+         workers: int = 1, copies=None) -> Path:
+    """Copies 1..k (or the explicit `copies`, e.g. seeds 17..32 for a seed
+    twin) at every rank week of [lo, hi] (every `every`th week for a sample;
+    or the explicit `weeks`, described by `sample`), checkpointed and
+    resumed by week under the record's guard. `workers` > 1 fits the copies
+    in that many processes, each with cpu_count // workers threads — the
+    same fits, assembled in the same order; only the wall time changes."""
     from stocks_ml.selection import HOLDOUT_START, LABELS_4W
     if label not in LABELS_4W:
         raise SystemExit(f"label must be one of {tuple(LABELS_4W)}, got {label!r}")
@@ -145,8 +175,11 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
         weeks = sorted(pd.Timestamp(w) for w in weeks)
         if not sample:
             raise ValueError("an explicit week list must be described by `sample`")
+    copies = list(copies) if copies is not None else list(range(1, k + 1))
+    if len(copies) != k:
+        raise ValueError(f"k={k} but {len(copies)} copies given")
     rec = record(store, lo, hi, label, train_years, k, every, ctx.delist_labels,
-                 getattr(ctx.cfg, "price_basis", "closeadj"), features, params, sample)
+                 getattr(ctx.cfg, "price_basis", "closeadj"), features, params, sample, copies)
     guard(out, rec)
     path = out / "preds.parquet"
     frames, done = [], set()
@@ -160,24 +193,39 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
         f"{label} / {train_years}y on {n_feat} features"
         + (f" + {len(features)} extra" if features else "")
         + (f", params {rec['recipe']['params']}" if params else "") + f", store {store}")
-    t0, pending = time.time(), []
-    for i, t in enumerate(todo, 1):
-        cols = {}
-        for c in range(1, k + 1):
-            p = copy_preds(sel, ctx, t, c, label, train_years, features, params)
-            if p is not None:
-                cols[f"c{c}"] = p
-        df = pd.DataFrame(cols)
-        df.index.name = "ticker"
-        df = df.reset_index()
-        df.insert(0, "week", t)
-        pending.append(df)
-        if i % checkpoint == 0 or i == len(todo):
-            frames.extend(pending)
-            pending = []
+    t0 = time.time()
+    ex = None
+    if workers > 1 and todo:
+        n_jobs = max(1, (os.cpu_count() or workers) // workers)
+        ex = ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn"),
+                                 initializer=_init_worker, initargs=(store, n_jobs))
+        log(f"  {workers} worker processes x {n_jobs} threads")
+    try:
+        done_n = 0
+        for b in range(0, len(todo), checkpoint):
+            batch = todo[b:b + checkpoint]
+            tasks = [(t, c, label, train_years, tuple(features), params) for t in batch
+                     for c in copies]
+            if ex is not None:
+                results = list(ex.map(_fit_task, tasks))          # in task order
+            else:
+                results = [(t, c, copy_preds(sel, ctx, t, c, label, train_years, features, params))
+                           for t, c, *_ in tasks]
+            for t in batch:
+                cols = {f"c{c}": p for tt, c, p in results if tt == t and p is not None}
+                df = pd.DataFrame(cols)
+                df.index.name = "ticker"
+                df = df.reset_index()
+                df.insert(0, "week", t)
+                frames.append(df)
+            done_n += len(batch)
             pd.concat(frames, ignore_index=True).to_parquet(path, index=False)
             el = time.time() - t0
-            log(f"  {i}/{len(todo)} weeks, {el / i:.0f} s/week, ~{el / i * (len(todo) - i) / 60:.0f} min left")
+            log(f"  {done_n}/{len(todo)} weeks, {el / done_n:.0f} s/week, "
+                f"~{el / done_n * (len(todo) - done_n) / 60:.0f} min left")
+    finally:
+        if ex is not None:
+            ex.shutdown()
     log(f"train: done in {(time.time() - t0) / 60:.1f} min -> {path}")
     return path
 
