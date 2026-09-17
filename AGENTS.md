@@ -235,6 +235,47 @@ comes from the keychain through `git credential fill`; never print it).
   the miniconda Python (playwright is installed there).
 - `models/`, `reports/`, `signals_r5/`, `ledger_r5.json` are tracked;
   `data/` and `reports/champion_explorer.html` are not (licensed data).
+- **The research panel is frozen; new columns are appended, never rebuilt
+  (2026-09-16).** `data/sharadar_world2000_nominal_dl/panel_sf.parquet` is
+  the 2026-09-10 build (backup `panel_sf.frozen_2026-09-10.parquet`) plus
+  appended `x_hl_*` range columns. A rebuild no longer reproduces it:
+  Sharadar revises its own SF1 history (~0.2% of pre-2016 rows: share
+  counts, per-share values; a few tickers gain rows), which moved 11
+  `f_sf_*`/`f_sfi_*` columns by up to 1.4 on the rank scale. The live store
+  refetches SF1 every Saturday and always has tracked those revisions. The
+  fundamentals table is a symlink shared by both research stores and now
+  carries the wider FUND_COLS (72 columns).
+- **Extra Sharadar tables (`stocks-ml world --extras`, 2026-09-16):**
+  `sharadar_tickers` (11 Sharadar sectors, 135 industries; the
+  `label_4w_sector11_rank` target), `holdings` (SF3A, starts 2013-06 — 24%
+  coverage of 2006-2015, so it cannot drive a selection-window decision),
+  `prices_hl` (SEP high/low; the live store derives the same from its raw
+  `sharadar_prices`). Screened on 2006-2015 within the champion's top-30:
+  dividends, 8-K item families, accruals, R&D, buybacks and the other SF1
+  extras gave nothing. The range family (`features/panel.high_low_features`,
+  `x_hl_*` columns a recipe must name) first looked like a lead (t up to 3)
+  — it was the SPLIT LEAK again: SEP high/low are split-adjusted and the
+  first version divided the unadjusted close by them, giving three columns
+  a 0.6 correlation with the future split factor (owner: "be very careful
+  the feature doesn't introduce leakage", 2026-09-17). Fixed to one basis
+  (close_split): the "buying pressure" signal vanished; only Parkinson
+  volatility (t -2.1, a volatility measure) and the intraday share of
+  volatility (t +2.1, universe IC 0) remain. `challenge` and
+  `challenge-fast` now refuse any named feature whose correlation with the
+  future split factor exceeds 0.15 (`leak_audit.feature_factor_check`)
+  before a single copy is fit; the panel's own features sit within ±0.05.
+- **Volatility in context (2026-09-17, the owner's lead):** the model has no
+  sector input (f_sec_ dummies are excluded), and within-week ranks already
+  remove the market's volatility level, so the contexts that can add
+  information are the sector, size peers and the name's own history.
+  Screened within the champion's top-30 on 2006-2015: volatility relative
+  to the sector median (t -2.7..-3.2, `x_sv_<measure>_{sic,s11}`) and the
+  volatility x size rank product (t +2.8..+3.0, `x_vx_<measure>_x_size`:
+  small-and-volatile is the bad corner) beat raw volatility (t -2.4); the
+  sector's own level, beta, liquidity and market-volatility products carry
+  nothing. Both families are panel columns in both stores
+  (`features/panel.sector_relative_volatility`, `volatility_size_interactions`)
+  and went to `challenge-fast` as named features.
 - **Seed luck is ~2.5 points on the model score at K=16.** The champion's
   seeds 1-16 score +13.3 on the full 2006-2015 walk, seeds 17-32 (its
   twin, `<walk>/twin/`) +15.8. No comparison at K=16 can call a gap inside

@@ -441,3 +441,28 @@ def test_cik_map_falls_back_to_previous_symbols():
     out = world.sharadar_cik_map(["AAA", "VMRK", "BRK.B", "ZZZ"], "ua",
                                  related={"VMRK": ["EQR"]}, cik_map=ciks)
     assert out == {"AAA": 1, "VMRK": 2, "BRK.B": 3}
+
+
+def test_refresh_extras_pulls_tickers_holdings_high_low_and_the_wider_fundamentals(tmp_path):
+    store = stored_world(tmp_path)
+    tables = api_tables()
+    tables["holdings_ticker"] = [{"ticker": "AAA", "date": "2013-06-30", "shrholders": 10, "shrunits": 100.0,
+                                  "shrvalue": 1000.0, "totalvalue": 1100.0, "percentoftotal": 0.5,
+                                  "cllholders": 1, "putholders": 1, "cllunits": 1.0, "putunits": 2.0},
+                                 {"ticker": "AAA", "date": "2013-09-30", "shrholders": 12, "shrunits": 120.0,
+                                  "shrvalue": 1300.0, "totalvalue": 1400.0, "percentoftotal": 0.6,
+                                  "cllholders": 1, "putholders": 1, "cllunits": 1.0, "putunits": 2.0}]
+    for r in tables["fundamentals"]:
+        r.setdefault("receivables", 5.0); r.setdefault("inventory", 3.0); r.setdefault("payables", 2.0)
+    calls = []
+    rep = world.refresh_extras(store, "k", fetch_fn=make_fake_fetch(tables, calls), log=lambda m: None)
+    assert store.exists("sharadar_tickers") and rep["tickers"]["rows"] >= 1
+    hold = store.read("holdings")
+    assert list(hold.columns) == world.HOLDINGS_COLS and len(hold) == 2 and rep["holdings"]["from"] == "2013-06-30"
+    hl = store.read("prices_hl")
+    assert list(hl.columns) == world.PRICES_HL_COLS and set(hl["ticker"]) <= set(store.read("membership")["ticker"])
+    assert [p for t, p in calls if t == "stocks"][0]["fields"] == "ticker,date,high,low"
+    fund = store.read("fundamentals")
+    assert {"receivables", "inventory", "payables"} <= set(fund.columns)
+    assert (fund["dimension"].isin(["ARQ", "ART"])).all()                   # MR* rows never ingested
+    assert store.manifest["extras"]["holdings"]["rows"] == 2

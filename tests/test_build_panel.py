@@ -171,6 +171,11 @@ def test_tempered_labels_temper_the_tails_and_keep_the_order():
         LABEL_TRANSFORMS["label_blend_rank"](*args)
     assert sel.label_purge("label_4w_sector_rank") == 35 and sel.label_purge("label_13w_sector_rank") == 98
     assert sel.label_purge("label_blend_rank") == 98
+    s11 = pd.Series(["T", "T", "H", "H", "H", "T"])                        # a finer sector map
+    r11 = LABEL_TRANSFORMS["label_4w_sector11_rank"](*args, sector11=s11)
+    pd.testing.assert_series_equal(r11, sector_rank_label(pan["fwd"], pan["date"], s11))
+    with pytest.raises(ValueError):
+        LABEL_TRANSFORMS["label_4w_sector11_rank"](*args)
 
 
 def test_build_panel_v2_features_present_and_bounded(synthetic_store, tiny_cfg):
@@ -288,3 +293,67 @@ def test_rebalance_dates_reach_a_holiday_fridays_thursday():
     end = cal.max() + pd.Timedelta(days=(4 - cal.max().weekday()) % 7)
     assert list(rebalance_dates(cal, cal.min(), end)[-2:]) == \
         [pd.Timestamp("2026-12-18"), pd.Timestamp("2026-12-24")]
+
+
+def test_high_low_features_are_point_in_time_and_read_the_range():
+    import pytest
+
+    from stocks_ml.features.panel import HL_COLS, high_low_features
+    days = pd.bdate_range("2020-01-01", periods=70)                             # days[32] is a Friday
+    n = len(days)
+    close = pd.Series(100.0 + np.arange(n), index=days)                       # rising 1 a day
+    hl = pd.DataFrame({"date": days, "ticker": "A", "high": close.values + 1.0, "low": close.values - 1.0})
+    prices = pd.DataFrame({"date": days, "ticker": "A", "closeunadj": close.values, "close": close.values,
+                           "close_split": close.values})
+    fri = days[32]
+    assert fri.weekday() == 4
+    rows = pd.DataFrame({"date": [fri, days[69]], "ticker": ["A", "A"]})
+    x = high_low_features(hl, prices, rows)
+    assert list(x.columns) == HL_COLS and len(x) == 2
+    assert x["x_hl_pos_day_4w"].iloc[0] == pytest.approx(0.5)                  # closes mid-range every day
+    lo20, hi20 = close[days[13]] - 1, close[fri] + 1                           # the 20 sessions ending Friday
+    assert x["x_hl_range_pos_20d"].iloc[0] == pytest.approx((close[fri] - lo20) / (hi20 - lo20))
+    assert x["x_hl_range_20d"].iloc[0] == pytest.approx((hi20 - lo20) / close[fri])
+    assert x["x_hl_park_vol_12w"].iloc[1] > 0 and x["x_hl_intraday_share"].iloc[1] > 0
+    # point in time: a later day's range cannot move an earlier row
+    hl2 = hl.copy(); hl2.loc[hl2.date > fri, "high"] += 50
+    x2 = high_low_features(hl2, prices, rows)
+    assert x2.iloc[0].equals(x.iloc[0]) and x2["x_hl_range_20d"].iloc[1] > x["x_hl_range_20d"].iloc[1]
+    # a rank date that is not a session (Saturday) takes the last session before it
+    rows2 = pd.DataFrame({"date": [fri + pd.Timedelta(days=1)], "ticker": ["A"]})
+    assert high_low_features(hl, prices, rows2).iloc[0].equals(x.iloc[0])
+    # the unadjusted close is never read: high/low are split-adjusted, so mixing bases leaks future splits
+    p3 = prices.copy(); p3["closeunadj"] = p3["close"] * 4.0
+    assert high_low_features(hl, p3, rows).equals(x)
+    with pytest.raises(ValueError):
+        high_low_features(hl, prices.drop(columns=["close_split"]), rows)
+
+
+def test_sector_relative_volatility_is_the_gap_to_the_same_week_sector_median():
+    import pytest
+
+    from stocks_ml.features.panel import SV_MEASURES, sector_relative_volatility
+    d1, d2 = pd.Timestamp("2020-01-03"), pd.Timestamp("2020-01-10")
+    pan = pd.DataFrame({"date": [d1] * 4 + [d2] * 2, "ticker": list("ABCDAB"),
+                        "f_vol_4w": [0.8, 0.2, -0.4, -0.6, 0.0, 1.0], "f_vol_12w": [0.5, 0.5, 0.5, -0.5, 0.3, 0.1],
+                        "f_downside_dev": [1.0, -1.0, 0.0, 0.0, 0.2, 0.4], "f_idio_vol_60d": [0.1, 0.3, 0.5, 0.7, -0.1, 0.9]})
+    sector = pd.Series(["T", "T", "U", "U", "T", "T"])
+    x = sector_relative_volatility(pan, sector, "s11")
+    assert list(x.columns) == [f"x_sv_{m[2:]}_s11" for m in SV_MEASURES]
+    assert x["x_sv_vol_4w_s11"].tolist() == pytest.approx([0.3, -0.3, 0.1, -0.1, -0.5, 0.5])   # A,B share T; C,D share U
+    assert x["x_sv_vol_12w_s11"].iloc[0] == pytest.approx(0.0)                                  # equal to its sector median
+    # a stock without a sector gets NaN, never a cross-sector median
+    x2 = sector_relative_volatility(pan, sector.where(sector != "U"), "sic")
+    assert x2["x_sv_vol_4w_sic"].iloc[2:4].isna().all() and x2["x_sv_vol_4w_sic"].iloc[0] == pytest.approx(0.3)
+
+
+def test_volatility_size_interactions_are_products_of_the_two_ranks():
+    import pytest
+
+    from stocks_ml.features.panel import VX_COLS, volatility_size_interactions
+    pan = pd.DataFrame({"f_vol_4w": [0.8, -0.5], "f_vol_12w": [0.5, 0.5], "f_downside_dev": [1.0, -1.0],
+                        "f_idio_vol_60d": [0.2, 0.4], "f_log_mktcap": [-0.5, 0.5]})
+    x = volatility_size_interactions(pan)
+    assert list(x.columns) == VX_COLS
+    assert x["x_vx_vol_4w_x_size"].tolist() == pytest.approx([-0.4, -0.25])      # small-and-volatile is negative
+    assert x["x_vx_downside_dev_x_size"].tolist() == pytest.approx([-0.5, -0.5])

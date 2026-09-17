@@ -262,7 +262,8 @@ def label_text(label: str) -> str:
             "label_4w_sector_rank": "sector-relative 4-week rank label",
             "label_4w_rank": "4-week rank label",
             "label_13w_sector_rank": "sector-relative 13-week rank label (monthly rotation)",
-            "label_blend_rank": "blended 4-week + 13-week rank label"}[label]
+            "label_blend_rank": "blended 4-week + 13-week rank label",
+            "label_4w_sector11_rank": "Sharadar-sector-relative 4-week rank label"}[label]
 
 
 def render_markdown(sig: dict, smap: dict) -> str:

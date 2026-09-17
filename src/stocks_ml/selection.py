@@ -62,7 +62,10 @@ LABELS_4W = {"label_4w": "the stock's 4-week return minus that week's median mem
                                       "sector, replaced by its within-week rank as a normal score "
                                       "(ranks by the quarter, rotates monthly)",
              "label_blend_rank": "the mean of the 4-week and 13-week sector-relative rank scores, "
-                                 "re-ranked within the week as a normal score"}
+                                 "re-ranked within the week as a normal score",
+             "label_4w_sector11_rank": "the stock's 4-week return minus the same-week median of its "
+                                       "Sharadar sector (11 groups), replaced by its within-week rank "
+                                       "as a normal score"}
 # Labels whose forward span exceeds the 4-week hold's purge train with their
 # own (13 weeks + the fill week); the hold and the ledger are unchanged.
 LABEL_PURGE = {"label_13w_sector_rank": 13 * 7 + 7, "label_blend_rank": 13 * 7 + 7}
@@ -124,10 +127,22 @@ class Ctx:
                 f13.to_parquet(cache, index=False)
             f13["date"] = pd.to_datetime(f13["date"])
             self.pan = self.pan.merge(f13[["date", "ticker", "fwd_ret_13w"]], on=["date", "ticker"], how="left")
+        # the Sharadar 11-sector map, when the store carries the tickers table
+        self.smap11 = {}
+        if world.exists("sharadar_tickers"):
+            tk = world.read("sharadar_tickers")
+            if "sector" in tk.columns:
+                self.smap11 = dict(tk.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)
+        import inspect
+        extra = {"fwd13": self.pan["fwd_ret_13w"],
+                 "sector11": self.pan["ticker"].map(self.smap11) if self.smap11 else None}
         for name, fn in LABEL_TRANSFORMS.items():
-            if name not in self.pan.columns:
-                self.pan[name] = fn(self.pan["fwd_ret_4w"], self.pan["date"],
-                                    self.pan["ticker"].map(self.smap), fwd13=self.pan["fwd_ret_13w"])
+            if name in self.pan.columns:
+                continue
+            kw = {k: v for k, v in extra.items() if k in inspect.signature(fn).parameters}
+            if "sector11" in kw and kw["sector11"] is None:
+                continue                       # no tickers table: the label stays unavailable
+            self.pan[name] = fn(self.pan["fwd_ret_4w"], self.pan["date"], self.pan["ticker"].map(self.smap), **kw)
         daily = self.prices.sort_values("date")
         self.delist_labels = getattr(self.cfg, "delist_labels", "drop")
         self.__dict__.update(price_frames(

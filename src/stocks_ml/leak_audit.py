@@ -166,6 +166,33 @@ def audit(store: str, preds_path: str, ctx=None) -> dict:
     }
 
 
+FEATURE_FACTOR_LIMIT = 0.15      # |mean weekly Spearman(feature, future split factor)| above this = leaky
+
+
+def feature_factor_check(ctx, features, lo="2006-01-01", hi="2015-12-31") -> dict:
+    """Each named extra feature's mean weekly Spearman with the vendor's
+    future adjustment factor log(close_split / closeunadj) at the rank date
+    on the selection window — the channel of the 2026-09 split leak. The
+    panel's own f_ columns sit within ±0.05; a mixed-basis level feature
+    reads ±0.6. `challenge` and `challenge-fast` refuse a recipe whose
+    feature exceeds FEATURE_FACTOR_LIMIT."""
+    from scipy.stats import spearmanr
+    lo, hi = pd.Timestamp(lo), pd.Timestamp(hi)
+    px = ctx.prices[["date", "ticker", "close_split", "closeunadj"]].copy()
+    px["factor"] = np.log(px["close_split"] / px["closeunadj"])
+    pan = ctx.pan[(ctx.pan.date >= lo) & (ctx.pan.date <= hi)][["date", "ticker", *features]]
+    j = pan.merge(px[["date", "ticker", "factor"]], on=["date", "ticker"])
+    out = {}
+    for c in features:
+        ic = j.groupby("date")[[c, "factor"]].apply(
+            lambda g: spearmanr(g[c], g["factor"]).correlation
+            if g["factor"].nunique() > 5 and g[c].nunique() > 5 else np.nan).dropna()
+        out[c] = {"corr_with_future_split_factor": round(float(ic.mean()), 4), "weeks": int(len(ic)),
+                  "verdict": "PASS" if abs(ic.mean()) <= FEATURE_FACTOR_LIMIT else "FAIL"}
+    out["VERDICT"] = "PASS" if all(v["verdict"] == "PASS" for k, v in out.items() if k != "VERDICT") else "FAIL"
+    return out
+
+
 def audit_segments(store: str, preds_paths, ctx=None) -> dict:
     """One audit PER segment; the verdict is the identity check on every
     segment. The factor numbers are reported per segment, never pooled:

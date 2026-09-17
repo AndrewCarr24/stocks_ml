@@ -61,7 +61,20 @@ FUND_COLS = [
     "fcf", "ncfo", "capex", "currentratio", "de", "sharesbas", "shareswa",
     "bvps", "eps", "epsusd", "marketcap", "liabilities", "cashneq",
     "divyield", "dps", "grossmargin", "ebitdamargin", "netmargin", "roe",
+    # 2026-09-16, the feature search: raw dollar totals only — never the
+    # vendor's per-share or ratio fields (bvps/eps/dps are the exception,
+    # kept as they were; the panel cancels their split restatement against
+    # close_split). Ratios are computed here, point-in-time, from these.
+    "receivables", "inventory", "payables", "deferredrev", "depamor", "intangibles",
+    "ppnenet", "investments", "retearn", "cor", "opex", "opinc", "sgna", "rnd", "sbcomp",
+    "taxexp", "intexp", "ebt", "ncf", "ncfi", "ncff", "ncfdiv", "ncfcommon", "ncfdebt",
+    "ncfbus", "ncfinv", "netinccmn", "workingcapital", "tangibles", "invcap", "roa", "roic",
+    "assetturnover", "payoutratio", "assetsc", "liabilitiesc", "debtc", "debtnc",
+    "fiscalperiod", "lastupdated",
 ]
+HOLDINGS_COLS = ["ticker", "date", "shrholders", "shrunits", "shrvalue", "totalvalue", "percentoftotal",
+                 "cllholders", "putholders", "cllunits", "putunits"]
+PRICES_HL_COLS = ["ticker", "date", "high", "low"]
 INSIDER_COLS = ["ticker", "date", "transactiondate", "transactioncode",
                 "transactionshares", "transactionvalue", "ownername"]
 FORM4_COLS = ["ticker", "filed", "trans_date", "code", "shares", "value"]
@@ -460,6 +473,73 @@ def refresh_sharadar(store: DataStore, key: str, fetch_fn=None, log=_log,
     return report
 
 
+def refresh_extras(store: DataStore, key: str, fetch_fn=None, log=_log,
+                   full_fundamentals: bool = True) -> dict:
+    """The extra Sharadar tables of the 2026-09-16 feature search, for any
+    store: `sharadar_tickers` (metadata: Sharadar sector/industry beside the
+    SIC division the membership table carries), `holdings` (SF3A —
+    institutional holdings by security, quarterly; the vendor's series
+    starts 2013, so it cannot drive a model selected on 2006-2015),
+    `prices_hl` (SEP high/low, the nominal tape, for range/gap features) and
+    the fundamentals table refetched with FUND_COLS' wider field list.
+    Every table is filtered to the store's membership universe."""
+    mem = store.read("membership")
+    universe = sorted(set(mem["ticker"]))
+    report = {}
+    tk = pd.concat([_fetch("tickers", key, fetch_fn, ticker=",".join(b))
+                    for b in _chunks(universe, 100)], ignore_index=True)
+    tk = tk.drop_duplicates("ticker", keep="last")
+    store.write("sharadar_tickers", tk)
+    report["tickers"] = {"rows": int(len(tk)),
+                         "sectors": int(tk["sector"].nunique()) if "sector" in tk.columns else 0,
+                         "industries": int(tk["industry"].nunique()) if "industry" in tk.columns else 0}
+    log(f"tickers: {len(tk)} rows, {report['tickers']['sectors']} sectors, "
+        f"{report['tickers']['industries']} industries")
+    frames = [_fetch("holdings_ticker", key, fetch_fn, ticker=",".join(b)) for b in _chunks(universe, 100)]
+    hold = pd.concat([f for f in frames if not f.empty], ignore_index=True)
+    hold = hold[[c for c in HOLDINGS_COLS if c in hold.columns]].copy()
+    hold["date"] = pd.to_datetime(hold["date"])
+    for c in hold.columns:
+        if c not in ("ticker", "date"):
+            hold[c] = pd.to_numeric(hold[c], errors="coerce")     # the API serves some counts as strings
+    hold = hold.drop_duplicates(["ticker", "date"], keep="last").sort_values(["ticker", "date"]).reset_index(drop=True)
+    store.write("holdings", hold)
+    report["holdings"] = {"rows": int(len(hold)), "from": str(hold["date"].min().date()),
+                          "through": str(hold["date"].max().date()), "tickers": int(hold["ticker"].nunique())}
+    log(f"holdings: {len(hold)} rows, {report['holdings']['from']} -> {report['holdings']['through']}")
+    frames = []
+    for b in _chunks(universe, 40):
+        frames.append(_fetch("stocks", key, fetch_fn, ticker=",".join(b), fields="ticker,date,high,low",
+                             **{"from": UNIVERSE_START}))
+    hl = pd.concat([f for f in frames if not f.empty], ignore_index=True)
+    hl = hl[PRICES_HL_COLS].copy(); hl["date"] = pd.to_datetime(hl["date"])
+    for c in ("high", "low"):
+        hl[c] = pd.to_numeric(hl[c], errors="coerce")
+    hl = hl.drop_duplicates(["ticker", "date"], keep="last").sort_values(["ticker", "date"]).reset_index(drop=True)
+    store.write("prices_hl", hl)
+    report["prices_hl"] = {"rows": int(len(hl)), "through": str(hl["date"].max().date())}
+    log(f"prices_hl: {len(hl)} rows through {report['prices_hl']['through']}")
+    if full_fundamentals:
+        frames = []
+        for b in _chunks(universe, 100):
+            for dim in ("ARQ", "ART"):
+                frames.append(_fetch("fundamentals", key, fetch_fn, ticker=",".join(b),
+                                     dimension=dim, **{"from": FUNDAMENTALS_START}))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            raw_sf1 = pd.concat([f for f in frames if not f.empty], ignore_index=True)
+        fund = fundamentals_from_sf1(raw_sf1, set(universe))
+        old_fund = store.read("fundamentals")
+        if len(fund) < 0.98 * len(old_fund):
+            raise RuntimeError(f"fundamentals refetch returned {len(fund)} rows vs {len(old_fund)} stored")
+        store.write("fundamentals", fund)
+        report["fundamentals"] = {"rows": int(len(fund)), "columns": int(fund.shape[1]),
+                                  "filed_through": str(fund["date"].max().date())}
+        log(f"fundamentals: {len(fund)} rows x {fund.shape[1]} columns (was {old_fund.shape[1]})")
+    store.set_manifest("extras", {"at": str(pd.Timestamp.today().normalize().date()), **report})
+    return report
+
+
 def sharadar_cik_map(tickers, user_agent, related=None, cik_map=None) -> dict:
     """SEC CIK lookup keyed by Sharadar tickers (BRK.B), via the normalized
     form the SEC map uses (BRK-B); falls back to a ticker's previous symbols
@@ -569,6 +649,36 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     shares = _asof(panel, fund[fund["dimension"] == "ARQ"], ["sharesbas"])["sharesbas"]
     fi = sharadar_insider_features(ins, panel, mktcap=close * shares)
     panel_sf = rank_normalize(pd.concat([panel, ff, fi], axis=1), SF_RAW_COLS + SFI_RAW_COLS)
+    # the range family (features/panel.high_low_features) from SEP high/low:
+    # prices_hl (world --extras) or the raw SEP rows the live refresh keeps
+    hl = None
+    if store.exists("prices_hl"):
+        hl = store.read("prices_hl")
+    elif store.exists("sharadar_prices"):
+        raw_hl = store.read("sharadar_prices")
+        if {"high", "low"} <= set(raw_hl.columns):
+            hl = raw_hl[["ticker", "date", "high", "low"]].copy()
+            hl["date"] = pd.to_datetime(hl["date"])
+    if hl is not None:
+        from stocks_ml.features.panel import HL_COLS, high_low_features
+        x = high_low_features(hl, prices, panel_sf)
+        panel_sf = rank_normalize(pd.concat([panel_sf, x], axis=1), HL_COLS)
+        log(f"panel_sf: + {len(HL_COLS)} high/low columns (x_hl_*)")
+    # sector-relative volatility (features/panel.sector_relative_volatility) on the
+    # membership's SIC divisions and, when the tickers table is stored, Sharadar's 11 sectors
+    from stocks_ml.features.panel import sector_relative_volatility
+    mem = store.read("membership")
+    maps = {"sic": dict(mem.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)}
+    if store.exists("sharadar_tickers"):
+        tk = store.read("sharadar_tickers")
+        if "sector" in tk.columns:
+            maps["s11"] = dict(tk.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)
+    sv = pd.concat([sector_relative_volatility(panel_sf, panel_sf["ticker"].map(m), tag) for tag, m in maps.items()], axis=1)
+    panel_sf = rank_normalize(pd.concat([panel_sf, sv], axis=1), list(sv.columns))
+    log(f"panel_sf: + {sv.shape[1]} sector-relative volatility columns (x_sv_*: {', '.join(maps)})")
+    from stocks_ml.features.panel import VX_COLS, volatility_size_interactions
+    panel_sf = rank_normalize(pd.concat([panel_sf, volatility_size_interactions(panel_sf)], axis=1), VX_COLS)
+    log(f"panel_sf: + {len(VX_COLS)} volatility x size columns (x_vx_*)")
     panel_sf.to_parquet(Path(live_dir) / "panel_sf.parquet", index=False)
     log(f"panel_sf: {panel_sf.shape[0]:,} x {panel_sf.shape[1]} ({time.time() - t0:.0f}s)")
     return panel_sf

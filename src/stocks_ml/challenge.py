@@ -128,6 +128,27 @@ def candidate_name(rec: dict) -> str:
     return name
 
 
+def refuse_leaky_features(ctx, candidates: list, lo, hi, log=print) -> None:
+    """Every feature a candidate names is checked against the future split
+    factor on the selection window (leak_audit.feature_factor_check) before
+    a single copy is fit; a failing feature ends the run."""
+    from stocks_ml.leak_audit import FEATURE_FACTOR_LIMIT, feature_factor_check
+    feats = sorted({f for c in candidates for f in (c.get("features") or [])})
+    if not feats:
+        return
+    missing = [f for f in feats if f not in ctx.pan.columns]
+    if missing:
+        raise SystemExit(f"the panel lacks the recipe's feature columns {missing}")
+    res = feature_factor_check(ctx, feats, lo, hi)
+    for f in feats:
+        r = res[f]
+        log(f"feature leak check: {f} corr with the future split factor {r['corr_with_future_split_factor']:+.3f} "
+            f"({r['weeks']} weeks) -> {r['verdict']}")
+    if res["VERDICT"] == "FAIL":
+        raise SystemExit(f"feature(s) correlate with the FUTURE split factor beyond {FEATURE_FACTOR_LIMIT}: "
+                         f"{[f for f in feats if res[f]['verdict'] == 'FAIL']} — a look-ahead; not walked")
+
+
 def incumbent_recipe(preds_path: Path) -> dict:
     rec = json.loads((Path(preds_path).parent / "spec.json").read_text())
     if not rec.get("recipe"):
@@ -306,6 +327,7 @@ def run_fast(candidates: list, incumbent: Path, out: Path, store: str = STORE,
     if len(names) != len(candidates):
         raise SystemExit("two candidates have the same recipe")
     sel, ctx, _ = context(store)
+    refuse_leaky_features(ctx, list(names.values()), lo, hi, log)
     weeks = stratified_weeks(ctx, lo, hi, per_year, seed)
     desc = f"{len(weeks)} weeks, a stratified random sample ({per_year} per year, seed {seed})"
     log(f"challenge-fast: {len(names)} candidates vs the incumbent {incumbent} ({inc_rec}) on {desc} "
@@ -416,6 +438,7 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
                        inc_rec.get("params")):
             raise SystemExit(f"candidate {n} is the incumbent's own recipe")
     sel, ctx, _ = context(store)
+    refuse_leaky_features(ctx, list(names.values()), lo, hi, log)
     res = {"out": str(out), "store": store, "selection_window": [str(lo.date()), str(hi.date())],
            "rules": {"sample_every": SAMPLE_EVERY, "sample_k": SAMPLE_K, "full_k": FULL_K,
                      "advance": ADVANCE, "score_books": SCORE_BOOKS, "final_k": FINAL_K},

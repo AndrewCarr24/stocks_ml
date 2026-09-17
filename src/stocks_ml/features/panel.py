@@ -422,17 +422,30 @@ def blend_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=N
     return pd.Series(norm.ppf((r - 0.5) / n), index=m.index)
 
 
+def sector11_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None,
+                        sector11: pd.Series | None = None) -> pd.Series:
+    """label_4w_sector_rank centred on Sharadar's 11-sector classification
+    (sharadar_tickers.sector: Technology, Healthcare, ...) instead of the
+    membership table's 9 SIC divisions, where Manufacturing is 44% of the
+    universe and lumps pharma with semis and food. A store without the
+    tickers table cannot build it."""
+    if sector11 is None:
+        raise ValueError("label_4w_sector11_rank needs the Sharadar sector map (sharadar_tickers)")
+    return sector_rank_label(fwd, date, sector11)
+
+
 # Every target a walk can train on, by column name; Ctx computes any that a
-# stored panel lacks from fwd_ret_4w (and fwd_ret_13w) and the membership
-# sector map. All are trained with the 4-week hold's purge or the label's
-# own, whichever is longer (selection.label_purge).
+# stored panel lacks from fwd_ret_4w (and fwd_ret_13w), the membership
+# sector map (and the Sharadar one). All are trained with the 4-week hold's
+# purge or the label's own, whichever is longer (selection.label_purge).
 LABEL_TRANSFORMS = {"label_4w_sector": sector_label,
                     "label_4w_sector_log": sector_log_label,
                     "label_4w_sector_clip": sector_clip_label,
                     "label_4w_sector_rank": sector_rank_label,
                     "label_4w_rank": week_rank_label,
                     "label_13w_sector_rank": sector_rank_label_13w,
-                    "label_blend_rank": blend_rank_label}
+                    "label_blend_rank": blend_rank_label,
+                    "label_4w_sector11_rank": sector11_rank_label}
 
 
 def sector_relative_momentum(panel: pd.DataFrame) -> pd.DataFrame:
@@ -500,6 +513,92 @@ def make_labels(prices: pd.DataFrame, dates: pd.DatetimeIndex, horizon: int,
     med = labels.groupby("date")["fwd_ret"].transform("median")
     labels["label"] = labels["fwd_ret"] - med
     return labels
+
+
+HL_COLS = ["x_hl_pos_day_4w", "x_hl_range_pos_20d", "x_hl_range_20d", "x_hl_park_vol_12w",
+           "x_hl_intraday_share"]
+
+
+def high_low_features(hl: pd.DataFrame, prices: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
+    """The 2026-09-16 feature search's range family from SEP high/low and the
+    split-adjusted close (one basis; see the note below), aligned to the panel's (date,
+    ticker) rows as the last daily value at or before each rank date — so
+    every value uses only past sessions. Experimental (x_hl_) columns: a
+    model gets them only when a recipe names them.
+
+      x_hl_pos_day_4w      mean over 20 sessions of (close - low) / (high - low): where the
+                           day closes inside its range (buying pressure)
+      x_hl_range_pos_20d   (close - 20-session low) / (20-session high - low)
+      x_hl_range_20d       (20-session high - low) / close
+      x_hl_park_vol_12w    Parkinson volatility over 60 sessions, sqrt(mean(ln(high/low)^2) / 4 ln 2)
+      x_hl_intraday_share  Parkinson volatility over 20 sessions / close-to-close volatility over 20
+    """
+    # SEP high/low are SPLIT-adjusted (AAPL's high read 125 the week before its
+    # 2020 4:1 split while the tape showed 499). Every level here is therefore
+    # taken against close_split, the same basis, so the split factor cancels
+    # in each ratio. Mixing in closeunadj gave three of these columns a
+    # correlation of 0.6 with the FUTURE split factor (2026-09-17) — the
+    # look-ahead the nominal-basis rebuild removed, back through another door.
+    if "close_split" not in prices.columns:
+        raise ValueError("high_low_features needs close_split (SEP's split-adjusted close) in prices")
+    d = hl[["date", "ticker", "high", "low"]].merge(
+        prices[["date", "ticker", "close_split", "close"]], on=["date", "ticker"], how="inner")
+    d = d.sort_values(["ticker", "date"]).reset_index(drop=True)
+    g = d.groupby("ticker", sort=False)
+    rng = (d["high"] - d["low"]).replace(0, np.nan)
+    d["pos_day"] = (d["close_split"] - d["low"]) / rng
+    d["lhl2"] = np.log(d["high"] / d["low"]) ** 2
+    d["lret"] = np.log(d["close"]).groupby(d["ticker"]).diff()
+    roll = lambda col, n, mp: g[col].transform(lambda x: x.rolling(n, min_periods=mp))  # noqa: E731
+    d["x_hl_pos_day_4w"] = g["pos_day"].transform(lambda x: x.rolling(20, min_periods=15).mean())
+    hi20 = g["high"].transform(lambda x: x.rolling(20, min_periods=15).max())
+    lo20 = g["low"].transform(lambda x: x.rolling(20, min_periods=15).min())
+    d["x_hl_range_pos_20d"] = (d["close_split"] - lo20) / (hi20 - lo20).replace(0, np.nan)
+    d["x_hl_range_20d"] = (hi20 - lo20) / d["close_split"].replace(0, np.nan)
+    d["x_hl_park_vol_12w"] = np.sqrt(g["lhl2"].transform(lambda x: x.rolling(60, min_periods=45).mean()) / (4 * np.log(2)))
+    park4 = np.sqrt(g["lhl2"].transform(lambda x: x.rolling(20, min_periods=15).mean()) / (4 * np.log(2)))
+    cc4 = g["lret"].transform(lambda x: x.rolling(20, min_periods=15).std())
+    d["x_hl_intraday_share"] = park4 / cc4.replace(0, np.nan)
+    daily = d[["date", "ticker"] + HL_COLS].sort_values("date")
+    base = rows[["date", "ticker"]].copy(); base["_i"] = np.arange(len(base))
+    out = pd.merge_asof(base.sort_values("date"), daily, on="date", by="ticker").sort_values("_i")
+    return out[HL_COLS].reset_index(drop=True)
+
+
+SV_MEASURES = ("f_vol_4w", "f_vol_12w", "f_downside_dev", "f_idio_vol_60d")
+
+
+def sector_relative_volatility(panel: pd.DataFrame, sector: pd.Series, tag: str) -> pd.DataFrame:
+    """The 2026-09-17 feature search: each volatility rank minus the
+    same-week median of the stock's sector — "volatile for where it lives".
+    Within the champion's top-30 on 2006-2015 this separated the winners a
+    little better than volatility itself (t -2.7..-3.2 vs -2.4); the
+    sector's own level carried nothing. Same-week medians only, so nothing
+    future enters; ranks of ranked features, so no price basis to leak.
+    Experimental (x_sv_<measure>_<tag>) columns a recipe must name; `tag`
+    names the sector map (sic: the membership table's 9 SIC divisions;
+    s11: Sharadar's 11 sectors)."""
+    out = {}
+    for m in SV_MEASURES:
+        med = panel[m].groupby([panel["date"], sector]).transform("median")
+        out[f"x_sv_{m[2:]}_{tag}"] = panel[m] - med
+    return pd.DataFrame(out, index=panel.index)
+
+
+VX_COLS = [f"x_vx_{m[2:]}_x_size" for m in SV_MEASURES]
+
+
+def volatility_size_interactions(panel: pd.DataFrame) -> pd.DataFrame:
+    """The 2026-09-17 feature search (the owner's "context for the
+    volatility"): each volatility rank times the size rank. Both live in
+    [-1, 1], so the product is positive for volatile-and-large or
+    calm-and-small names and negative for the small-and-volatile corner —
+    within the champion's top-30 on 2006-2015 the product's correlation with
+    the next hold was +0.05 (t 2.8-3.0): volatility is punished when the
+    name is small. Products of two same-week ranks; nothing future, no price
+    basis. Experimental (x_vx_*) columns a recipe must name."""
+    return pd.DataFrame({f"x_vx_{m[2:]}_x_size": panel[m] * panel["f_log_mktcap"] for m in SV_MEASURES},
+                        index=panel.index)
 
 
 def build_panel(store, cfg) -> pd.DataFrame:

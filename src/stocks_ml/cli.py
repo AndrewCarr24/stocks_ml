@@ -26,6 +26,12 @@ def cmd_world(args, cfg):
     panel.parquet + panel_sf.parquet under config.yaml's price basis and
     delisting rule. The live job runs the same two steps every Saturday."""
     from stocks_ml.data.world import build_world_panel, refresh_world
+    if args.extras:
+        from stocks_ml.data.sharadar import api_key
+        from stocks_ml.data.store import DataStore
+        from stocks_ml.data.world import refresh_extras
+        refresh_extras(DataStore(args.dir), api_key())
+        return
     if not args.no_refresh:
         refresh_world(args.dir, cfg, sec=not args.no_sec)
     build_world_panel(args.dir, cfg)
@@ -177,6 +183,9 @@ def main():
     p.add_argument("--dir", default="data/r5_live", help="the store (default: the live world)")
     p.add_argument("--no-refresh", action="store_true", help="rebuild the panel only")
     p.add_argument("--no-sec", action="store_true", help="refresh Sharadar only")
+    p.add_argument("--extras", action="store_true",
+                   help="pull the extra Sharadar tables (tickers metadata, holdings, high/low, the wider "
+                        "fundamentals) into the store and stop")
 
     p = sub.add_parser("train", help="the walk: refit the model every week of a window, K copies")
     p.add_argument("--out", help="directory for preds.parquet + spec.json (a walk segment)")

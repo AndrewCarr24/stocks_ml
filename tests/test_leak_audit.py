@@ -63,3 +63,24 @@ def test_audit_refuses_the_holdout(tmp_path):
     pd.DataFrame({"week": [HOLDOUT_START], "ticker": ["A"], "c1": [1.0]}).to_parquet(tmp_path / "p.parquet")
     with pytest.raises(RuntimeError, match="pre-holdout"):
         la.audit("unused", tmp_path / "p.parquet")
+
+
+def test_feature_factor_check_flags_a_column_that_tracks_future_splits():
+    from types import SimpleNamespace
+
+    from stocks_ml.leak_audit import FEATURE_FACTOR_LIMIT, feature_factor_check
+    rng = np.random.default_rng(0)
+    dates = pd.date_range("2006-01-06", periods=30, freq="W-FRI")
+    rows = []
+    for d in dates:
+        for i in range(40):
+            factor = 0.0 if i % 2 else float(rng.uniform(0.1, 0.7))        # half the names split later
+            rows.append({"date": d, "ticker": f"T{i}", "factor": factor,
+                         "leaky": -factor + rng.normal(0, 0.01), "clean": rng.normal()})
+    df = pd.DataFrame(rows)
+    ctx = SimpleNamespace(pan=df[["date", "ticker", "leaky", "clean"]],
+                          prices=pd.DataFrame({"date": df["date"], "ticker": df["ticker"],
+                                               "close_split": np.exp(df["factor"]), "closeunadj": 1.0}))
+    res = feature_factor_check(ctx, ["leaky", "clean"], "2006-01-01", "2006-12-31")
+    assert res["leaky"]["verdict"] == "FAIL" and abs(res["leaky"]["corr_with_future_split_factor"]) > FEATURE_FACTOR_LIMIT
+    assert res["clean"]["verdict"] == "PASS" and res["VERDICT"] == "FAIL"
