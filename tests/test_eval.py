@@ -36,7 +36,8 @@ def test_walk_settings_are_decided_once_and_cached_by_the_files_hash(tmp_path, m
 
     def fake_decide(path, store, k, log=None):
         calls.append(path)
-        return {"decision": {"book_size": 10, "floor": "halfgate", "stop_loss": None, "sector_cap": None},
+        return {"decision": {"book_size": 10, "floor": "halfgate", "stop_loss": None, "sector_cap": None,
+                             "vol_cut": None},
                 "evidence": {}, "preds": {"sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest()},
                 "decided_at": "now", "k_copies": k or 16}
     import stocks_ml.procedure as proc
@@ -50,7 +51,7 @@ def test_walk_settings_are_decided_once_and_cached_by_the_files_hash(tmp_path, m
     p.write_bytes(b"walk-2")                                            # the file changed: decide again
     ev.walk_settings(tmp_path, "w", 4, log=lambda m: None)
     assert len(calls) == 3
-    assert ev.settings_of(got) == dict(book=10, floor="halfgate", stop=None, cap=None)
+    assert ev.settings_of(got) == dict(book=10, floor="halfgate", stop=None, cap=None, vol_cut=None)
     assert ev.who({"recipe": {"label": "label_4w_sector", "train_years": 8}}, ev.settings_of(got)) == \
         "sector-relative 4w label / 8y / top-10 / halfgate / cap none"
 

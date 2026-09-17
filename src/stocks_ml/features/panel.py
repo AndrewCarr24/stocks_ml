@@ -601,6 +601,59 @@ def volatility_size_interactions(panel: pd.DataFrame) -> pd.DataFrame:
                         index=panel.index)
 
 
+PEER_COLS = ["x_cm_dip_1w", "x_cm_dip_4w", "x_cm_mom_4w", "x_cm_corr"]
+PEER_N, PEER_LOOK = 20, 52
+
+
+def comovement_peer_features(prices: pd.DataFrame, rows: pd.DataFrame, npeer: int = PEER_N,
+                             look: int = PEER_LOOK) -> pd.DataFrame:
+    """The 2026-09-17 feature search: each member's co-movement peers — the
+    `npeer` names whose weekly returns over the trailing `look` weeks
+    correlate with it most — and its own return minus theirs:
+
+      x_cm_dip_1w   last week's return minus the peers' (fell while the
+                      names that trade with it did not: idiosyncratic
+                      reversal; universe IC -0.013, t -3 on 2006-2015)
+      x_cm_dip_4w   the same over the trailing 4 weeks
+      x_cm_mom_4w   the peers' own trailing 4-week return
+      x_cm_corr     the mean correlation with the peers (how tight the group is)
+
+    Peers and returns use weekly closes at or before each rank date only
+    (the total-return close, so a split never enters). Members with fewer
+    than 40 of the trailing weeks priced get NaN. Experimental (x_cm_, co-movement)
+    columns a recipe must name; the retired ideas bundle already occupies
+    x_peer_* in the frozen research panel."""
+    close = prices.pivot(index="date", columns="ticker", values="close").sort_index()
+    grid = pd.DatetimeIndex(sorted(rows["date"].unique()))
+    allw = pd.DatetimeIndex(sorted(set(grid) | set(close.index[close.index.weekday == 4])))
+    wk = close.reindex(close.index.union(allw)).ffill().reindex(allw)
+    wret = wk.pct_change()
+    out = []
+    for t, g in rows.groupby("date"):
+        hist = wret[wret.index <= t].tail(look)
+        names = [x for x in g["ticker"] if x in hist.columns]
+        R = hist[names]
+        ok = R.notna().sum() >= 40
+        R = R.loc[:, ok]
+        if R.shape[1] <= npeer:
+            continue
+        Z = ((R - R.mean()) / R.std()).fillna(0.0)
+        n = R.notna().astype(float).values
+        C = (Z.T.values @ Z.values) / (n.T @ n).clip(min=1)
+        np.fill_diagonal(C, -np.inf)
+        idx = np.argsort(-C, axis=1)[:, :npeer]
+        r1 = R.iloc[-1].values
+        r4 = ((1 + R.tail(4)).prod() - 1).values
+        out.append(pd.DataFrame({"date": t, "ticker": list(R.columns),
+                                 "x_cm_dip_1w": r1 - r1[idx].mean(axis=1),
+                                 "x_cm_dip_4w": r4 - r4[idx].mean(axis=1),
+                                 "x_cm_mom_4w": r4[idx].mean(axis=1),
+                                 "x_cm_corr": np.take_along_axis(C, idx, axis=1).mean(axis=1)}))
+    feats = pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["date", "ticker", *PEER_COLS])
+    base = rows[["date", "ticker"]].reset_index(drop=True)
+    return base.merge(feats, on=["date", "ticker"], how="left")[PEER_COLS]
+
+
 def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.fred import load_fred_lagged
     from stocks_ml.data.membership import members_asof

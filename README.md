@@ -20,12 +20,12 @@ edited by hand.
 <!-- champion:begin (stocks-ml procedure-card) -->
 | Component | Setting |
 |---|---|
-| Model | simple-DT: depth-3 gbtree, untuned by design (config search measured as noise) (`selection.MODEL_PARAMS`) |
+| Model | XGBoost: gradient-boosted trees of depth 3, learning rate 0.02, up to 1,500 rounds with early stopping on a time-ordered tail (weekly rank correlation), 16 bootstrap-seeded copies averaged; parameters fixed, never tuned (tuning measured as noise) (`selection.MODEL_PARAMS`) |
 | Target | the stock's 4-week return minus the same-week median of its sector, replaced by its within-week rank as a normal score; 35-day purge |
 | Training | refit every week on the trailing 8 years; early stopping on a purged, time-ordered tail |
 | Ensemble | 16 copies (seed + whole-week bootstrap), scores averaged |
 | Features | the point-in-time panel's `f_` columns: prices, fundamentals, filings, insider trades, short interest, macro |
-| Book | top-3 per sleeve, equal weight, 4 staggered sleeves — one rotates each week, so every name is held 4 weeks; at most 2 per sector; no stop-loss |
+| Book | top-3 per sleeve, equal weight, 4 staggered sleeves — one rotates each week, so every name is held 4 weeks; at most 2 per sector; no stop-loss; no volatility cut |
 | Ballast | halfgate: book 100/83/67/50% of NAV by SPY trend gates down (30/40/52w), rest IEF — the book shrinks one sixth of NAV per breached SPY trailing MA, the freed money sits in IEF (no fixed SPY ballast) |
 | Costs | 5 bp one-way, fills at the next session's open |
 
@@ -45,7 +45,7 @@ The chart shows the out-of-sample years only. 2006–2015 chose the settings, so
 
 ## The processes
 
-Everything the project does is one of ten commands
+Everything the project does is one of eleven commands
 ([src/stocks_ml/cli.py](src/stocks_ml/cli.py)). Each reads
 [config/config.yaml](config/config.yaml) and the research world under
 `data/` (git-ignored, licensed).
@@ -66,6 +66,7 @@ world ──▶ train ──▶ procedure ──▶ eval ──▶ app
 | `stocks-ml app` | the interactive explorer of the champion's backtest, week by week | `reports/champion_explorer.html` (git-ignored) | [app/build.py](src/stocks_ml/app/build.py) |
 | `stocks-ml challenge` | the challenger protocol: candidate recipes vs the incumbent — sample, every-week comparison, leak audit, optionally K=16 and the one look | `<out>/challenge.json`, the candidates' walks | [challenge.py](src/stocks_ml/challenge.py) |
 | `stocks-ml challenge-fast` | the prototype: the same candidates on a stratified random sample of 2006–2015 at K=16 vs both seed sets of the incumbent, flagged against the seed-twin null; ranks only | `<out>/fast_<n>x_s<seed>.json` | [challenge.py](src/stocks_ml/challenge.py) |
+| `stocks-ml explain` | Shapley feature importance of the champion: one fit per year, exact TreeSHAP on the members scored that week | `reports/champion_shap.png`, `reports/champion_shap.md` | [explain.py](src/stocks_ml/explain.py) |
 | `stocks-ml procedure-card` | PROCEDURE.md from the spec | `PROCEDURE.md` | [procedure_card.py](src/stocks_ml/procedure_card.py) |
 | `stocks-ml r5-weekly` | the live signal: refresh, rank, rotate a sleeve, keep the paper ledger | `signals_r5/`, `ledger_r5.json` | [live/r5.py](src/stocks_ml/live/r5.py) |
 

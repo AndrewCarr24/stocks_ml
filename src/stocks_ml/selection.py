@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 
 from stocks_ml.ledger import (COST_BPS, FLOOR_FRACTION, FLOORS, Ledger, ballast_state,  # noqa: F401
-                              close_asof, floor_split, pick_capped, rotate_sleeves,
+                              close_asof, floor_split, pick_capped, rotate_sleeves, vol_cut_pool, VOL_CUTS,
                               target_weights, week_index)
 
 MODEL_PARAMS = dict(max_depth=3, learning_rate=0.02, n_estimators=1500,
@@ -76,6 +76,7 @@ def label_purge(label: str, horizon: str = "4w") -> int:
     purge or the label's own, whichever is longer."""
     return max(HORIZONS[horizon]["purge"], LABEL_PURGE.get(label, 0))
 BOOKS = (3, 6, 10)
+VOL_CUT_MENU = (None,)     # see decide_strategy: the cut failed its one look (2026-09-17)
 # FLOORS / FLOOR_FRACTION / floor_split: stocks_ml.ledger, the one rule the
 # backtest and the live job share (halfgate runs live since 2026-09-12).
 COST = 0.0010
@@ -143,6 +144,14 @@ class Ctx:
             if "sector11" in kw and kw["sector11"] is None:
                 continue                       # no tickers table: the label stays unavailable
             self.pan[name] = fn(self.pan["fwd_ret_4w"], self.pan["date"], self.pan["ticker"].map(self.smap), **kw)
+        # the volatility cut's context per rank week: each member's 12-week
+        # volatility rank and that rank minus its sector's same-week median
+        vs = self.pan["f_vol_12w"] - self.pan["f_vol_12w"].groupby(
+            [self.pan["date"], self.pan["ticker"].map(self.smap)]).transform("median")
+        vf = pd.DataFrame({"date": self.pan["date"], "ticker": self.pan["ticker"],
+                           "vol": self.pan["f_vol_12w"], "vs": vs})
+        self.vol_by_week = {d: {"vol": g.set_index("ticker")["vol"].to_dict(), "vs": g.set_index("ticker")["vs"].to_dict()}
+                            for d, g in vf.groupby("date")}
         daily = self.prices.sort_values("date")
         self.delist_labels = getattr(self.cfg, "delist_labels", "drop")
         self.__dict__.update(price_frames(
@@ -274,7 +283,7 @@ def slice_row(ctx, t, horizon, preds):
     order = p.sort_values(ascending=False).index
     row = {"week": t, "spy": float(r["SPY"]),
            "rand_mean": float(r.loc[uni].mean()),
-           "top15": ",".join(order[:15])}
+           "top15": ",".join(order[:15]), "top30": ",".join(order[:30])}
     for k in BOOKS:
         row[f"top{k}"] = float(r.loc[order[:k]].mean())
     return row
@@ -336,7 +345,18 @@ def decide_book(df, horizon, lo, hi):
     return max(res, key=res.get), res
 
 
-def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None, settings=None):
+def vol_context(ctx, t, names):
+    """{name: 12-week volatility rank} and {name: that rank minus the same-week
+    median of the name's sector} at rank week t, for the volatility cut."""
+    v = ctx.vol_by_week.get(pd.Timestamp(t))
+    if v is None:
+        return {}, {}
+    vol = {n: v["vol"].get(n) for n in names}
+    vs = {n: v["vs"].get(n) for n in names}
+    return vol, vs
+
+
+def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None, settings=None, vol_cut=None):
     """Weekly returns of the configured book under the live job's rules
     (stocks_ml.ledger): each rank date's target weights are filled at the
     next session's open at COST_BPS a side, rebalances under 0.5% of NAV are
@@ -350,7 +370,8 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None, setting
     each rank week the row decided at or before it is in force and the four
     scalar arguments are ignored — a book-size change phases in as sleeves
     rotate, as it would for the live job."""
-    ranked = {r.week: r.top15.split(",") for r in holdings.itertuples()}
+    col = "top30" if "top30" in holdings.columns else "top15"       # the cut needs the top-30
+    ranked = {r.week: getattr(r, col).split(",") for r in holdings.itertuples()}
     if settings is not None:
         settings = settings.sort_index()
         if ranked and settings.index[0] > min(ranked):
@@ -385,8 +406,12 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None, setting
             continue
         t = by_label[lab]
         if settings is not None:
-            book, floor, stop, cap = settings_at(settings, t)
-        sleeves, rotated = rotate_sleeves(led.sleeves, t, ranked[t], ctx.smap,
+            book, floor, stop, cap, vol_cut = settings_at(settings, t)
+        pool = ranked[t]
+        if vol_cut is not None:
+            vol, vs = vol_context(ctx, t, pool)
+            pool = vol_cut_pool(pool, vol, vs, vol_cut)
+        sleeves, rotated = rotate_sleeves(led.sleeves, t, pool, ctx.smap,
                                           n_sleeves, book, cap)
         for k in rotated:
             entry[k] = {n: close_asof(ctx.closes, n, t)[0] for n in sleeves[str(k)]["names"]}
@@ -410,16 +435,17 @@ def simulate(ctx, holdings, horizon, book, cap, stop, floor, trace=None, setting
 
 
 def settings_at(settings, t):
-    """(book, floor, stop, cap) in force at rank week t: the last row of
-    `settings` decided at or before t. NaN stop/cap read as none."""
+    """(book, floor, stop, cap, vol_cut) in force at rank week t: the last row
+    of `settings` decided at or before t. NaN stop/cap/vol_cut read as none."""
     i = settings.index.searchsorted(pd.Timestamp(t), side="right") - 1
     if i < 0:
         raise ValueError(f"no decision in force at {pd.Timestamp(t).date()}")
     r = settings.iloc[i]
     none = lambda v: None if v is None or (isinstance(v, float) and np.isnan(v)) else v
     stop, cap = none(r["stop"]), none(r["cap"])
+    vc = none(r["vol_cut"]) if "vol_cut" in settings.columns else None
     return (int(r["book"]), str(r["floor"]), None if stop is None else float(stop),
-            None if cap is None else int(cap))
+            None if cap is None else int(cap), None if vc is None else str(vc))
 
 
 def _attribute(ctx, led, v_prev, fills, wk, nxt):
@@ -464,24 +490,36 @@ def metrics(series, lo, hi):
 def decide_strategy(ctx, holdings, horizon, lo, hi):
     """The strategy layers, book down, on the holdings frame the run grades,
     over the selection window [lo, hi] only: book by cost-adjusted compounded
-    %/yr (decide_book); floor, stop and cap by Sharpe of the simulated weekly
-    series, each at the picks above it, a stop or cap adopted only if higher.
+    %/yr (decide_book); the volatility cut, floor, stop and cap by Sharpe of
+    the simulated weekly series, each at the picks above it, a cut, stop or
+    cap adopted only if higher.
     This is the whole of what decides the deployed strategy settings —
     `stocks-ml procedure` writes its result into models/champion_spec.json."""
     lo, hi = pd.Timestamp(lo), pd.Timestamp(hi)
     hold = holdings[(holdings.week >= lo) & (holdings.week <= hi)]
     book, bres = decide_book(hold, horizon, lo, hi)
-    fres = {f: sharpe(simulate(ctx, hold, horizon, book, None, None, f), lo, hi)
+    # the volatility cut, by Sharpe at the book, the layers below still
+    # neutral; adopted only if higher than no cut. VOL_CUT_MENU holds what is
+    # searched: the two cuts (ledger.VOL_CUTS) won the selection window by a
+    # wide margin (Sharpe .94 vs .61) and then removed the 2016-2024 return
+    # ($286 vs $844 on the same walk) — the one look of 2026-09-17 — so the
+    # menu is `none` only; the rule stays for explicit backtests (--vol-cut).
+    vres = {str(v): sharpe(simulate(ctx, hold, horizon, book, None, None, "none", vol_cut=v), lo, hi)
+            for v in VOL_CUT_MENU}
+    best = max(vres, key=vres.get)
+    vol_cut = None if vres["None"] >= vres[best] else best
+    fres = {f: sharpe(simulate(ctx, hold, horizon, book, None, None, f, vol_cut=vol_cut), lo, hi)
             for f in FLOORS}
     floor = max(fres, key=fres.get)
-    sres = {str(s): sharpe(simulate(ctx, hold, horizon, book, None, s, floor), lo, hi)
+    sres = {str(s): sharpe(simulate(ctx, hold, horizon, book, None, s, floor, vol_cut=vol_cut), lo, hi)
             for s in (None, -0.25)}
     stop = None if sres["None"] >= sres["-0.25"] else -0.25
-    cres = {str(c): sharpe(simulate(ctx, hold, horizon, book, c, stop, floor), lo, hi)
+    cres = {str(c): sharpe(simulate(ctx, hold, horizon, book, c, stop, floor, vol_cut=vol_cut), lo, hi)
             for c in (None, 2)}
     cap = None if cres["None"] >= cres["2"] else 2
-    return {"book": int(book), "floor": floor, "stop": stop, "cap": cap,
+    return {"book": int(book), "floor": floor, "stop": stop, "cap": cap, "vol_cut": vol_cut,
             "evidence": {"book": {str(k): round(v, 2) for k, v in bres.items()},
+                         "vol_cut": {k: round(v, 3) for k, v in vres.items()},
                          "floor": {k: round(v, 3) for k, v in fres.items()},
                          "stop": {k: round(v, 3) for k, v in sres.items()},
                          "cap": {k: round(v, 3) for k, v in cres.items()}}}

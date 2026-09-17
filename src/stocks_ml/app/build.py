@@ -67,8 +67,10 @@ def describe(config: dict, train_years: int) -> str:
     cap = f"sector cap {config['cap']}" if config["cap"] else "no sector cap"
     stop = f"{config['stop']:+.0%} stop-loss" if config["stop"] else "no stop-loss"
     floor = FLOOR_WORDS.get(config["floor"], f"{config['floor']} trend ballast")
+    cut = {"abs": "the most volatile third of the top-30 dropped", "abs_or_sector": "the most volatile third of "
+           "the top-30 dropped, and any name far above its sector's volatility"}.get(config.get("vol_cut"), "no volatility cut")
     return (f"{k}-week horizon, {train_years}-year training window, top-{config['book']} in "
-            f"{WORDS[k]} staggered sleeves, {cap}, {floor}, {stop}")
+            f"{WORDS[k]} staggered sleeves, {cap}, {floor}, {stop}, {cut}")
 
 
 def ballast_words(floor: str) -> str:
@@ -156,7 +158,7 @@ def replay(ctx, h: pd.DataFrame, config: dict, lo=EXTEND_START, hi=HOLDOUT_START
     in [lo, hi) are kept — 2016 onward by default, the out-of-sample years."""
     trace = []
     rets = simulate(ctx, h[h.week < hi], config["horizon"], config["book"], config["cap"],
-                    config["stop"], config["floor"], trace=trace)
+                    config["stop"], config["floor"], trace=trace, vol_cut=config.get("vol_cut"))
     trace = [x for x in trace if lo <= x["nxt"] < hi]
     spy = ctx.wret["SPY"].reindex([x["nxt"] for x in trace])
     return trace, rets, spy

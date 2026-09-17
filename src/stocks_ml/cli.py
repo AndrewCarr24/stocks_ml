@@ -10,6 +10,7 @@
   app             the interactive explorer (reports/champion_explorer.html)    app/build.py
   challenge       the challenger protocol: candidate recipes vs the incumbent  challenge.py
   challenge-fast  the prototype: candidates on a stratified random sample, K=16 challenge.py
+  explain         Shapley feature importance of the champion's yearly fits     explain.py
   r5-weekly       the live weekly signal (GitHub Actions, every Saturday)      live/r5.py
 """
 from __future__ import annotations
@@ -86,8 +87,10 @@ def cmd_backtest(args, cfg):
                     min_years=args.min_years, sel_lo=args.sel_start, sel_hi=args.sel_end,
                     out=args.rolling_out, k=args.k, workers=args.workers)
         return
-    given = {key: getattr(args, key) for key in ("book", "floor", "stop", "cap")
+    given = {key: getattr(args, key) for key in ("book", "floor", "stop", "cap", "vol_cut")
              if getattr(args, key) is not None}
+    if given.get("vol_cut") in ("none", "null"):
+        given["vol_cut"] = None
     st = {**spec_settings(), **given} if given else None    # None: the walk's own settings
     run(args.preds, args.store, st, args.k, name=args.name)
 
@@ -124,6 +127,12 @@ def cmd_eval(args, cfg):
 def cmd_app(args, cfg):
     from stocks_ml.app.build import build
     build(store=args.store, out=args.out)
+
+
+def cmd_explain(args, cfg):
+    from stocks_ml.explain import run
+    a, b = (int(x) for x in args.years.split("-"))
+    run(args.store, range(a, b + 1), copies=tuple(int(x) for x in args.copies.split(",")))
 
 
 def cmd_r5_weekly(args, cfg):
@@ -175,7 +184,7 @@ def _optional_float(v: str):
 def main():
     parser = argparse.ArgumentParser(
         prog="stocks-ml",
-        description="world | train | backtest | procedure | procedure-card | eval | app | challenge | challenge-fast | r5-weekly")
+        description="world | train | backtest | procedure | procedure-card | eval | app | challenge | challenge-fast | explain | r5-weekly")
     parser.add_argument("--config", default="config/config.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -242,6 +251,7 @@ def main():
     p.add_argument("--floor", type=_floor, default=None)
     p.add_argument("--stop", type=_optional_float, default=None, help="e.g. -0.25 or none")
     p.add_argument("--cap", type=_optional_int, default=None, help="names per sector, or none")
+    p.add_argument("--vol-cut", dest="vol_cut", default=None, help="none | abs | abs_or_sector (ledger.VOL_CUTS)")
     p.add_argument("--name", default="walk")
     p.add_argument("--rolling", default=None, metavar="YEARS|expanding",
                    help="the rolling procedure: re-decide the layers at every rank week on the "
@@ -281,6 +291,12 @@ def main():
     p.add_argument("--store", default=STORE)
     p.add_argument("--out", default="reports/champion_explorer.html")
 
+    p = sub.add_parser("explain", help="Shapley feature importance of the champion: one fit per year, "
+                       "exact TreeSHAP on the scored members; reports/champion_shap.{png,md}")
+    p.add_argument("--years", default="2007-2024", help="A-B: one fit at each year's first rank week")
+    p.add_argument("--copies", default="1", help="copies (seeds) to average, comma-separated")
+    p.add_argument("--store", default=STORE)
+
     p = sub.add_parser("r5-weekly", help="the champion's weekly signal: refresh the live world, "
                        "rank, rotate a sleeve, keep the paper ledger (signals_r5/, ledger_r5.json)")
     p.add_argument("--live-dir", default="data/r5_live")
@@ -309,7 +325,8 @@ def main():
     {"world": cmd_world, "train": cmd_train, "backtest": cmd_backtest,
      "procedure": cmd_procedure, "procedure-card": cmd_procedure_card,
      "eval": cmd_eval, "app": cmd_app, "challenge": cmd_challenge,
-     "challenge-fast": cmd_challenge_fast, "r5-weekly": cmd_r5_weekly}[args.command](args, cfg)
+     "challenge-fast": cmd_challenge_fast, "explain": cmd_explain,
+     "r5-weekly": cmd_r5_weekly}[args.command](args, cfg)
 
 
 if __name__ == "__main__":

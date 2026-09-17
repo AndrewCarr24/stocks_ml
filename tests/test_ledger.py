@@ -408,3 +408,19 @@ def test_floor_split_halfgate_moves_the_book_fraction():
     assert floor_split("none", three) == (1.0, {})
     with pytest.raises(KeyError):
         floor_split("50/50", one)
+
+
+def test_vol_cut_pool_drops_the_volatile_names_and_keeps_the_rank_order():
+    from stocks_ml.ledger import VOL_CUT_RANK, vol_cut_pool
+    names = [f"N{i}" for i in range(40)]
+    vol = {n: (0.9 if i % 3 == 0 else -0.2) for i, n in enumerate(names)}          # every third name is volatile
+    vs = {"N1": 0.8, "N2": 0.1}                                                      # N1 volatile for its sector
+    assert vol_cut_pool(names, vol, vs, None, keep=15) == names[:15]                 # no rule: unchanged
+    out = vol_cut_pool(names, vol, vs, "abs", pool=30, keep=15)
+    assert all(vol[n] <= VOL_CUT_RANK for n in out) and len(out) == 15 and out == [n for n in names[:30] if vol[n] <= VOL_CUT_RANK][:15]
+    out2 = vol_cut_pool(names, vol, vs, "abs_or_sector", pool=30, keep=15)
+    assert "N1" not in out2 and "N2" in out2 and "N0" not in out2
+    assert vol_cut_pool(names, {}, {}, "abs", keep=5) == names[:5]                   # no volatility known: kept
+    assert vol_cut_pool(names, {n: 0.9 for n in names}, {}, "abs", keep=5) == names[:5]   # nothing survives: fall back
+    with pytest.raises(ValueError):
+        vol_cut_pool(names, vol, vs, "top_half")

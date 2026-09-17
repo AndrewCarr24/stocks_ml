@@ -24692,11 +24692,11 @@
   "notes": "{\"walk\": \"data/experiments/labels/rank_k16\", \"settings\": {\"book\": 3, \"floor\": \"halfgate\", \"stop\": null, \"cap\": 2}, \"2016_2024\": {\"terminal_100\": 844.2, \"cagr_pct\": 28.24, \"sharpe\": 0.922, \"max_dd\": 0.383, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 4940.2, \"cagr_pct\": 23.36, \"sharpe\": 0.824, \"max_dd\": 0.492, \"n_weeks\": 966}, \"falsification_t\": 0.76, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
  },
  {
-  "date": "2026-09-14",
+  "date": "2026-09-17",
   "kind": "procedure",
   "name": "procedure_2006-01-01_2015-12-31_labels_rank_k16_select",
   "pre_holdout_sharpe": 0.733,
-  "notes": "{\"decision\": {\"book_size\": 3, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": 2}, \"evidence\": {\"book\": {\"3\": 15.92, \"6\": 13.13, \"10\": 10.82}, \"floor\": {\"none\": 0.613, \"halfgate\": 0.693, \"80/20\": 0.639, \"70/30\": 0.655, \"60/40\": 0.675}, \"stop\": {\"None\": 0.693, \"-0.25\": 0.635}, \"cap\": {\"None\": 0.693, \"2\": 0.733}}, \"preds_sha256\": \"afceef6a28db\", \"changed\": {\"book_size\": [10, 3], \"sector_cap\": [null, 2], \"label\": [\"label_4w_sector\", \"label_4w_sector_rank\"]}}"
+  "notes": "{\"decision\": {\"book_size\": 3, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": 2, \"vol_cut\": null}, \"evidence\": {\"book\": {\"3\": 15.92, \"6\": 13.13, \"10\": 10.82}, \"vol_cut\": {\"None\": 0.613}, \"floor\": {\"none\": 0.613, \"halfgate\": 0.693, \"80/20\": 0.639, \"70/30\": 0.655, \"60/40\": 0.675}, \"stop\": {\"None\": 0.693, \"-0.25\": 0.635}, \"cap\": {\"None\": 0.693, \"2\": 0.733}}, \"preds_sha256\": \"afceef6a28db\", \"changed\": {\"sector_cap\": [null, 2], \"vol_cut\": [\"abs_or_sector\", null]}}"
  },
  {
   "date": "2026-09-14",
@@ -24739,7 +24739,7 @@
   "notes": "{\"walk\": \"data/experiments/labels/rank_k16\", \"settings\": {\"book\": 3, \"floor\": \"halfgate\", \"stop\": null, \"cap\": 2}, \"2016_2024\": {\"terminal_100\": 844.2, \"cagr_pct\": 28.24, \"sharpe\": 0.922, \"max_dd\": 0.383, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 4940.2, \"cagr_pct\": 23.36, \"sharpe\": 0.824, \"max_dd\": 0.492, \"n_weeks\": 966}, \"falsification_t\": 0.76, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
  },
  {
-  "date": "2026-09-14",
+  "date": "2026-09-17",
   "kind": "app",
   "name": "app_champion_rank_k16_k16",
   "config": {
@@ -24748,6 +24748,7 @@
    "floor": "halfgate",
    "stop": null,
    "cap": 2,
+   "vol_cut": null,
    "train_years": 8,
    "fills": "next open"
   },
@@ -24964,5 +24965,42 @@
    ]
   },
   "notes": "{\"metric\": {\"3\": 26.79, \"6\": 18.79, \"10\": 14.78}, \"score\": 20.12, \"gap\": -4.69, \"gap_vs_incumbent_seeds_1_16\": -1.41, \"null_percentile\": 0.078, \"flagged\": false, \"mean_excess_pp\": 1.16, \"copies\": [0.5266666666666667, 22.763333333333332, -8.91, 14.586666666666668, 4.33, -2.43, 8.966666666666667, 18.040000000000003, 16.44333333333333, 15.963333333333333, 0.9566666666666669, 37.04666666666666, 17.636666666666667, 20.12666666666667, -4.36, 16.48], \"paired_t_vs_incumbent\": -0.64, \"sample\": \"260 weeks, a stratified random sample (26 per year, seed 0)\", \"flag_threshold\": 4.18}"
+ },
+ {
+  "date": "2026-09-17",
+  "kind": "decision",
+  "name": "vol_cut_layer_rejected_2026-09-17",
+  "notes": "{\"layer\": \"vol_cut (abs_or_sector), decided by the procedure on 2006-2015 by Sharpe\", \"selection_window\": {\"sharpe_with\": 1.206, \"sharpe_without\": 0.733, \"dd_with\": 0.32, \"dd_without\": 0.49}, \"one_look_2016_2024\": {\"with\": {\"terminal_100\": 286, \"cagr_pct\": 13.0, \"sharpe\": 0.74, \"max_dd\": 0.26}, \"without\": {\"terminal_100\": 844, \"cagr_pct\": 28.2, \"sharpe\": 0.92, \"max_dd\": 0.38}, \"sp500\": {\"terminal_100\": 316}}, \"decision\": \"rejected; removed from the procedure's menu (selection.VOL_CUT_MENU); the pick rule stays for explicit backtests\"}"
+ },
+ {
+  "date": "2026-09-17",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_comove_26x_s0_label_4w_sector_rank_8y_18538a10",
+  "cv_metric": 21.49,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_cm_dip_1w"
+   ]
+  },
+  "notes": "{\"metric\": {\"3\": 31.03, \"6\": 19.26, \"10\": 14.18}, \"score\": 21.49, \"gap\": -3.32, \"gap_vs_incumbent_seeds_1_16\": -0.04, \"null_percentile\": 0.15, \"flagged\": false, \"mean_excess_pp\": 1.36, \"copies\": [5.5, 20.186666666666667, 4.3, 11.663333333333332, 23.003333333333334, 10.99, 19.5, 14.93, 6.366666666666666, 23.39333333333333, 10.62, 17.516666666666666, 7.43, 10.126666666666667, 9.51, 17.043333333333333], \"paired_t_vs_incumbent\": -0.04, \"sample\": \"260 weeks, a stratified random sample (26 per year, seed 0)\", \"flag_threshold\": 4.18}"
+ },
+ {
+  "date": "2026-09-17",
+  "kind": "challenge_fast",
+  "name": "challenge_fast_comove_26x_s0_label_4w_sector_rank_8y_94714ac7",
+  "cv_metric": 17.34,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_cm_dip_1w",
+    "x_cm_dip_4w",
+    "x_cm_mom_4w",
+    "x_cm_corr"
+   ]
+  },
+  "notes": "{\"metric\": {\"3\": 26.07, \"6\": 14.91, \"10\": 11.05}, \"score\": 17.34, \"gap\": -7.46, \"gap_vs_incumbent_seeds_1_16\": -4.18, \"null_percentile\": 0.006, \"flagged\": false, \"mean_excess_pp\": 1.02, \"copies\": [-2.34, 12.563333333333334, -3.66, 8.843333333333334, 16.779999999999998, 0.5066666666666666, 11.1, 20.419999999999998, 9.676666666666668, 16.12, 4.626666666666667, 26.083333333333332, 10.043333333333333, 13.089999999999998, -5.34, 19.636666666666667], \"paired_t_vs_incumbent\": -1.44, \"sample\": \"260 weeks, a stratified random sample (26 per year, seed 0)\", \"flag_threshold\": 4.18}"
  }
 ]

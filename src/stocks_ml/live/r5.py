@@ -38,8 +38,8 @@ from pathlib import Path
 import pandas as pd
 
 from stocks_ml.ledger import (FUNDS, Ledger, ballast_state, due_sleeve, floor_split, friday_of,
-                              rotate_sleeves, sleeve_counts, target_weights)
-from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds
+                              rotate_sleeves, sleeve_counts, target_weights, vol_cut_pool, VOL_POOL)
+from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds, vol_context
 
 
 
@@ -198,7 +198,12 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     factors = ledger.rebase(ctx.closes, log=log)
     fills = ledger.fill_pending(ctx.closes, ctx.opens, t)
     nav, bench = ledger.mark(ctx.closes, t)
-    sleeves, rotated = rotate_sleeves(ledger.sleeves, t, list(ranked.index), ctx.smap,
+    pool = list(ranked.index)
+    if SPEC.get("vol_cut"):
+        vol, vs = vol_context(ctx, t, pool[:VOL_POOL])
+        pool = vol_cut_pool(pool, vol, vs, SPEC["vol_cut"], keep=SPEC["top_n"])
+        log(f"volatility cut ({SPEC['vol_cut']}): the sleeve picks from {', '.join(pool)}")
+    sleeves, rotated = rotate_sleeves(ledger.sleeves, t, pool, ctx.smap,
                                       N_SLEEVES, SPEC["book"], SPEC["cap"], SPEC["top_n"])
     ballast = ballast_state(ctx.spy_w, t)
     frac, weights = book_weights(sleeves, ballast)
@@ -273,7 +278,7 @@ def render_markdown(sig: dict, smap: dict) -> str:
     frac_text = f" (book {frac:.0%} of NAV this week)" if frac is not None else ""
     lines = [f"# r5 signal — {sig['date']}", "",
              f"Champion r5 (PROCEDURE.md): {SPEC['floor']} trend ballast{frac_text}, "
-             f"top-{SPEC['book']} four-sleeve stagger, sector cap {SPEC['cap']}, "
+             f"top-{SPEC['book']} four-sleeve stagger, sector cap {SPEC['cap']}, volatility cut {SPEC.get('vol_cut') or 'none'}, "
              f"{label_text(SPEC['label'])}, {SPEC['train_years']}-year window, K={K_COPIES}.", "",
              f"Paper NAV **${nav:,.2f}** · SPY buy-and-hold ${bench:,.2f} · "
              f"cash ${sig['cash']:,.2f}", "",

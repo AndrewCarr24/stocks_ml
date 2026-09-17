@@ -80,12 +80,18 @@ def features_summary(s: dict) -> str:
     return f"the panel's f_ columns plus the extra columns {', '.join(feats)} (asterisk: see features_note)"
 
 
+VOL_CUT_WORDS = {None: "no volatility cut",
+                 "abs": "volatility cut: the most volatile third of the model's top-30 (12-week volatility rank above +0.3) is dropped before the sleeve picks",
+                 "abs_or_sector": "volatility cut: the most volatile third of the model's top-30 (12-week volatility rank above +0.3), and any name 0.3 above its sector's median volatility, are dropped before the sleeve picks"}
+
+
 def strategy_summary(s: dict) -> tuple[str, str]:
-    """The cap and stop clauses of the Book row from the strategy block."""
+    """The cap, stop and volatility-cut clauses of the Book row from the strategy block."""
     cap, stop = s["strategy"]["sector_cap"], s["strategy"]["stop_loss"]
     cap_summary = (f"max {cap}/sector (blocked slots to next-ranked other-sector name)"
                    if cap else "no sector cap")
     stop_summary = f"stop at {stop:+.0%} (to SPY until the sleeve rotates)" if stop else "no stop"
+    stop_summary += "; " + VOL_CUT_WORDS[s["strategy"].get("vol_cut")]
     return cap_summary, stop_summary
 
 
@@ -168,7 +174,7 @@ def champion_block(spec: dict, ev: dict) -> str:
     line comes from the spec's `character` prose field when present."""
     s, st = spec, spec["strategy"]
     cap = f"at most {st['sector_cap']} per sector" if st["sector_cap"] else "no sector cap"
-    stop = f"stop-loss at {st['stop_loss']:.0%}" if st["stop_loss"] else "no stop-loss"
+    stop = (f"stop-loss at {st['stop_loss']:.0%}" if st["stop_loss"] else "no stop-loss") + "; " + VOL_CUT_WORDS[st.get("vol_cut")]
     feats = f" plus {len(s.get('features') or [])} named columns" if s.get("features") else ""
     settings = [
         "| Component | Setting |", "|---|---|",

@@ -88,7 +88,8 @@ def walk_settings(walk: Path, store: str = STORE, k: int | None = None, log=log)
     cache = walk / "procedure.json"
     if cache.exists():
         proc = json.loads(cache.read_text())
-        if proc["preds"]["sha256"] == sha and (k is None or proc["k_copies"] == k):
+        if proc["preds"]["sha256"] == sha and (k is None or proc["k_copies"] == k) \
+                and "vol_cut" in proc["decision"]:            # a cache from before the fifth layer is stale
             return proc
     proc = decide(sel_path, store, k, log=log)
     cache.write_text(json.dumps(proc, indent=1, default=str))
@@ -97,7 +98,8 @@ def walk_settings(walk: Path, store: str = STORE, k: int | None = None, log=log)
 
 def settings_of(proc: dict) -> dict:
     d = proc["decision"]
-    return dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"])
+    return dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"],
+                vol_cut=d.get("vol_cut"))
 
 
 def who(rec: dict, st: dict) -> str:

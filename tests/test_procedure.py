@@ -28,7 +28,7 @@ def _spec():
 def test_spec_strategy_is_the_procedure_decision():
     dec = SPEC["procedure"]["decision"]
     assert set(dec) == set(DECISION_KEYS)
-    for k in ("book_size", "stop_loss", "sector_cap"):
+    for k in ("book_size", "stop_loss", "sector_cap", "vol_cut"):
         assert SPEC["strategy"][k] == dec[k], f"strategy.{k} was edited by hand"
     assert SPEC["ballast"]["mix"] == mix_label(dec["floor"])
     assert dec["floor"] in SPEC["name"]
@@ -208,22 +208,27 @@ def test_decide_strategy_is_the_argmax_of_its_menus(monkeypatch):
     weeks = pd.date_range("2006-01-06", periods=120, freq="W-FRI")
     hold = pd.DataFrame({"week": weeks, "top3": 0.010, "top6": 0.020, "top10": 0.015,
                          "spy": 0.0, "rand_mean": 0.0, "top15": "A"})
-    sr = {("none", None, None): 0.30, ("60/40", None, None): 0.50, ("70/30", None, None): 0.45,
-          ("80/20", None, None): 0.40, ("halfgate", None, None): 0.35,
-          ("60/40", -0.25, None): 0.50, ("60/40", None, 2): 0.49}
+    # keyed (vol_cut, floor, stop, cap): the cut is decided first at the neutral floor and loses here
+    sr = {(None, "none", None, None): 0.30, ("abs", "none", None, None): 0.28, ("abs_or_sector", "none", None, None): 0.29,
+          (None, "60/40", None, None): 0.50, (None, "70/30", None, None): 0.45,
+          (None, "80/20", None, None): 0.40, (None, "halfgate", None, None): 0.35,
+          (None, "60/40", -0.25, None): 0.50, (None, "60/40", None, 2): 0.49}
     calls = []
 
-    def fake_sim(ctx, holdings, horizon, book, cap, stop, floor, trace=None):
-        calls.append((book, floor, stop, cap))
-        s = sr[(floor, stop, cap)]
+    def fake_sim(ctx, holdings, horizon, book, cap, stop, floor, trace=None, vol_cut=None):
+        calls.append((book, floor, stop, cap, vol_cut))
+        s = sr[(vol_cut, floor, stop, cap)]
         return pd.Series(np.full(len(weeks), s / np.sqrt(52)), index=weeks)  # mean, sd 1 -> SR s
     monkeypatch.setattr(sel, "simulate", fake_sim)
     monkeypatch.setattr(sel, "sharpe", lambda series, lo, hi: float(series.mean() * np.sqrt(52)))
     got = sel.decide_strategy(None, hold, "4w", weeks[0], weeks[-1])
-    assert (got["book"], got["floor"], got["stop"], got["cap"]) == (6, "60/40", None, None)
+    assert (got["book"], got["floor"], got["stop"], got["cap"], got["vol_cut"]) == (6, "60/40", None, None, None)
     assert all(b == 6 for b, *_ in calls)                                  # layers below read the book
+    assert [c[4] for c in calls[:len(sel.VOL_CUT_MENU)]] == list(sel.VOL_CUT_MENU)   # the cut decided first, floor neutral
+    assert sel.VOL_CUT_MENU == (None,)                                     # the cut left the menu after its one look
     assert got["evidence"]["floor"]["60/40"] == 0.5 and got["evidence"]["cap"]["2"] == 0.49
-    assert set(got["evidence"]) == {"book", "floor", "stop", "cap"}
+    assert got["evidence"]["vol_cut"] == {"None": 0.3}
+    assert set(got["evidence"]) == {"book", "vol_cut", "floor", "stop", "cap"}
 
 
 def test_procedure_run_writes_spec_card_and_ledger(tmp_path, monkeypatch):

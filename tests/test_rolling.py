@@ -41,11 +41,11 @@ def test_decisions_call_decide_strategy_on_each_window_in_process(monkeypatch):
     def fake(ctx, holdings, horizon, lo, hi):
         seen.append((lo, hi))
         book = 10 if hi.year >= 2010 else 6
-        return {"book": book, "floor": "halfgate", "stop": None, "cap": None,
+        return {"book": book, "floor": "halfgate", "stop": None, "cap": None, "vol_cut": None,
                 "evidence": {"book": {"6": 1.0}}}
     monkeypatch.setattr(sel, "decide_strategy", fake)
     dec = roll.decisions(sel, None, "store", hold, 3, cadence=13, workers=1, log=lambda m: None)
-    assert list(dec.columns) == ["lo", "hi", "book", "floor", "stop", "cap", "evidence"]
+    assert list(dec.columns) == ["lo", "hi", "book", "floor", "stop", "cap", "vol_cut", "evidence"]
     assert dec.index[0] == weeks[weeks >= weeks[0] + pd.DateOffset(years=3)][0]
     assert seen[0] == (dec.index[0] - pd.DateOffset(years=3), dec.index[0] - pd.Timedelta(days=35))
     assert (dec.book == 6).sum() > 0 and (dec.book == 10).sum() > 0
@@ -53,19 +53,20 @@ def test_decisions_call_decide_strategy_on_each_window_in_process(monkeypatch):
 
 def test_settings_at_uses_the_decision_in_force_and_reads_nan_as_none():
     dec = pd.DataFrame({"book": [6, 10], "floor": ["60/40", "halfgate"],
-                        "stop": [-0.25, np.nan], "cap": [2, None]},
+                        "stop": [-0.25, np.nan], "cap": [2, None], "vol_cut": [None, "abs"]},
                        index=pd.to_datetime(["2010-01-08", "2011-01-07"]))
-    assert sel.settings_at(dec, "2010-06-04") == (6, "60/40", -0.25, 2)
-    assert sel.settings_at(dec, "2011-01-07") == (10, "halfgate", None, None)
+    assert sel.settings_at(dec, "2010-06-04") == (6, "60/40", -0.25, 2, None)
+    assert sel.settings_at(dec, "2011-01-07") == (10, "halfgate", None, None, "abs")
+    assert sel.settings_at(dec.drop(columns=["vol_cut"]), "2011-01-07") == (10, "halfgate", None, None, None)
     with pytest.raises(ValueError):
         sel.settings_at(dec, "2009-12-31")
 
 
 def test_summarize_counts_changes_and_the_share_equal_to_the_spec():
     dec = pd.DataFrame({"book": [6, 6, 10, 10], "floor": ["halfgate"] * 4,
-                        "stop": [None] * 4, "cap": [None, 2, None, None]},
+                        "stop": [None] * 4, "cap": [None, 2, None, None], "vol_cut": [None] * 4},
                        index=pd.date_range("2010-01-08", periods=4, freq="W-FRI"))
-    s = roll.summarize(dec, {"book": 10, "floor": "halfgate", "stop": None, "cap": None})
+    s = roll.summarize(dec, {"book": 10, "floor": "halfgate", "stop": None, "cap": None, "vol_cut": None})
     assert (s["decisions"], s["changes"], s["share_equal_to_spec"]) == (4, 2, 0.5)
     assert s["mode"]["book"] in ("6", "10") and s["share_by_layer"]["cap"]["2"] == 0.25
 
@@ -75,7 +76,7 @@ def _rolling_json(path, name, first, weekly_rule, weekly_fixed, weekly_spy, spec
     rec = {"variant": name, "spec_settings": spec,
            "summary": {"first": first, "decisions": 10, "changes": 2, "share_equal_to_spec": 0.5},
            "decisions": [{"t": "2016-01-08", "lo": "2008-01-04", "hi": "2015-12-04",
-                          "book": 10, "floor": "halfgate", "stop": None, "cap": None}],
+                          "book": 10, "floor": "halfgate", "stop": None, "cap": None, "vol_cut": None}],
            "weekly": {"rule": {str(d.date()): float(v) for d, v in zip(idx, weekly_rule)},
                       "fixed": {str(d.date()): float(v) for d, v in zip(idx, weekly_fixed)},
                       "spy": {str(d.date()): float(v) for d, v in zip(idx, weekly_spy)}}}
@@ -86,7 +87,7 @@ def _rolling_json(path, name, first, weekly_rule, weekly_fixed, weekly_spy, spec
 def test_choose_is_the_argmax_on_the_common_span_and_refuses_a_late_rule(tmp_path, monkeypatch):
     n = 52 * 17
     wig = 0.001 * (-1.0) ** np.arange(n)                          # so no series is constant
-    spec = {"book": 10, "floor": "halfgate", "stop": None, "cap": None}
+    spec = {"book": 10, "floor": "halfgate", "stop": None, "cap": None, "vol_cut": None}
     a = _rolling_json(tmp_path / "a.json", "trailing_3_c1", "2008-01-04",
                       0.003 + wig, 0.002 + wig, 0.001 + wig, spec)
     b = _rolling_json(tmp_path / "b.json", "trailing_5_c1", "2008-01-04",

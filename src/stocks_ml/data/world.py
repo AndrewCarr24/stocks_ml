@@ -679,6 +679,10 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     from stocks_ml.features.panel import VX_COLS, volatility_size_interactions
     panel_sf = rank_normalize(pd.concat([panel_sf, volatility_size_interactions(panel_sf)], axis=1), VX_COLS)
     log(f"panel_sf: + {len(VX_COLS)} volatility x size columns (x_vx_*)")
+    from stocks_ml.features.panel import PEER_COLS, comovement_peer_features
+    peers = comovement_peer_features(prices, panel_sf)
+    panel_sf = rank_normalize(pd.concat([panel_sf, peers], axis=1), PEER_COLS)
+    log(f"panel_sf: + {len(PEER_COLS)} co-movement peer columns (x_cm_*)")
     panel_sf.to_parquet(Path(live_dir) / "panel_sf.parquet", index=False)
     log(f"panel_sf: {panel_sf.shape[0]:,} x {panel_sf.shape[1]} ({time.time() - t0:.0f}s)")
     return panel_sf

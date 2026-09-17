@@ -357,3 +357,34 @@ def test_volatility_size_interactions_are_products_of_the_two_ranks():
     assert list(x.columns) == VX_COLS
     assert x["x_vx_vol_4w_x_size"].tolist() == pytest.approx([-0.4, -0.25])      # small-and-volatile is negative
     assert x["x_vx_downside_dev_x_size"].tolist() == pytest.approx([-0.5, -0.5])
+
+
+def test_comovement_peers_are_the_most_correlated_names_and_the_dip_is_own_minus_theirs():
+    import pytest
+
+    from stocks_ml.features.panel import PEER_COLS, comovement_peer_features
+    rng = np.random.default_rng(0)
+    days = pd.bdate_range("2019-01-01", periods=400)
+    fridays = days[days.weekday == 4]
+    n_a, n_b = 25, 25                                                    # two co-moving groups
+    fa, fb = rng.normal(0, 0.02, len(days)), rng.normal(0, 0.02, len(days))
+    rets = {}
+    for i in range(n_a):
+        rets[f"A{i}"] = fa + rng.normal(0, 0.005, len(days))
+    for i in range(n_b):
+        rets[f"B{i}"] = fb + rng.normal(0, 0.005, len(days))
+    close = pd.DataFrame({k: 100 * np.cumprod(1 + v) for k, v in rets.items()}, index=days)
+    prices = close.stack().rename("close").reset_index().rename(columns={"level_0": "date", "level_1": "ticker"})
+    t = fridays[-1]
+    rows = pd.DataFrame({"date": t, "ticker": list(close.columns)})
+    x = comovement_peer_features(prices, rows, npeer=10, look=52)
+    assert list(x.columns) == PEER_COLS and len(x) == len(rows) and x["x_cm_corr"].mean() > 0.9
+    # a shock to one name last week: its dip is that shock (its peers, all in its group, did not move)
+    close2 = close.copy(); close2.loc[days[days <= t][-3:], "A0"] *= 0.9
+    p2 = close2.stack().rename("close").reset_index().rename(columns={"level_0": "date", "level_1": "ticker"})
+    x2 = comovement_peer_features(p2, rows, npeer=10, look=52)
+    a0 = rows.index[rows.ticker == "A0"][0]
+    assert x2["x_cm_dip_1w"].iloc[a0] < x["x_cm_dip_1w"].iloc[a0] - 0.05
+    # point in time: a later week's prices cannot move an earlier row
+    rows_early = pd.DataFrame({"date": fridays[-10], "ticker": list(close.columns)})
+    assert comovement_peer_features(p2, rows_early).equals(comovement_peer_features(prices, rows_early))

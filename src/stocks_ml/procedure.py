@@ -28,7 +28,7 @@ SPEC_PATH = Path("models/champion_spec.json")
 SELECT = (pd.Timestamp("2006-01-01"), pd.Timestamp("2015-12-31"))
 STORE = "data/sharadar_world2000_nominal_dl"
 HORIZON = "4w"
-DECISION_KEYS = ("book_size", "floor", "stop_loss", "sector_cap")
+DECISION_KEYS = ("book_size", "floor", "stop_loss", "sector_cap", "vol_cut")
 MODEL_KEYS = ("label", "train_years")      # the walk's recipe: what the spec's model fields are
 
 
@@ -97,7 +97,7 @@ def live_strategy(spec: dict) -> dict:
     for k in DECISION_KEYS:
         if k == "floor":
             continue
-        if st[k] != dec[k]:
+        if st.get(k) != dec.get(k):
             raise RuntimeError(f"strategy.{k}={st[k]!r} but procedure.decision.{k}={dec[k]!r}: "
                                "the spec was edited by hand; run stocks-ml procedure")
     if st["stop_loss"] is not None:
@@ -124,7 +124,8 @@ def live_strategy(spec: dict) -> dict:
         raise RuntimeError(f"live/r5.py cannot train on the spec's label {model['label']!r} "
                            f"(selection.LABELS_4W knows {tuple(LABELS_4W)})")
     return {"horizon": HORIZON, "label": model["label"], "train_years": int(model["train_years"]),
-            "book": int(st["book_size"]), "cap": st["sector_cap"], "floor": live_floor(spec)}
+            "book": int(st["book_size"]), "cap": st["sector_cap"], "floor": live_floor(spec),
+            "vol_cut": st.get("vol_cut")}
 
 
 def load_walk(preds_path: Path, k: int, weeks: list, lo, hi) -> pd.DataFrame:
@@ -171,7 +172,7 @@ def decide(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], log=prin
     hold = hold.sort_values("week").reset_index(drop=True)
     layers = sel.decide_strategy(ctx, hold, HORIZON, lo, hi)
     series = sel.simulate(ctx, hold, HORIZON, layers["book"], layers["cap"], layers["stop"],
-                          layers["floor"])
+                          layers["floor"], vol_cut=layers["vol_cut"])
     grade_hi = hi + pd.Timedelta(days=1)
     spy = ctx.wret["SPY"].reindex(series.index)
     return {
@@ -193,7 +194,8 @@ def decide(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], log=prin
                   "ranked_weeks": int(len(hold))},
         "decided_at": str(pd.Timestamp.now().floor("s")),
         "decision": {"book_size": layers["book"], "floor": layers["floor"],
-                     "stop_loss": layers["stop"], "sector_cap": layers["cap"]},
+                     "stop_loss": layers["stop"], "sector_cap": layers["cap"],
+                     "vol_cut": layers["vol_cut"]},
         "evidence": layers["evidence"],
         "selection_window_record": {"config": sel.metrics(series, lo, grade_hi),
                                     "sp500": sel.metrics(spy, lo, grade_hi)},
@@ -215,6 +217,7 @@ def apply(spec: dict, proc: dict) -> dict:
     spec["strategy"]["book_size"] = dec["book_size"]
     spec["strategy"]["stop_loss"] = dec["stop_loss"]
     spec["strategy"]["sector_cap"] = dec["sector_cap"]
+    spec["strategy"]["vol_cut"] = dec.get("vol_cut")
     spec["ballast"]["mix"] = mix_label(dec["floor"])
     spec["name"] = f"r5 monthly system — {dec['floor']} trend-ballast"
     spec["procedure"] = proc

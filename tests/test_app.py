@@ -85,7 +85,7 @@ def test_words_describe_the_spec_settings_not_typed_ones():
     frozen = dict(horizon="4w", book=3, cap=None, stop=-0.25, floor="60/40")
     assert app.describe(frozen, 5) == ("4-week horizon, 5-year training window, top-3 in four "
                                        "staggered sleeves, no sector cap, 60/40 trend ballast, "
-                                       "-25% stop-loss")
+                                       "-25% stop-loss, no volatility cut")
     a = app.accounting(frozen)
     assert "replaced by the top three;" in a and "40% of NAV" in a and "fallen 25%" in a
     b = app.accounting(dict(horizon="4w", book=10, cap=2, stop=None, floor="halfgate"))

@@ -77,7 +77,8 @@ def spec_settings(spec_path: Path = SPEC_PATH) -> dict:
     """The deployed strategy layers as the spec carries them — the
     procedure's decision, read, never typed."""
     d = json.loads(Path(spec_path).read_text())["procedure"]["decision"]
-    return dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"])
+    return dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"],
+                vol_cut=d.get("vol_cut"))
 
 
 def is_champion_walk(records: list[dict], spec_path: Path = SPEC_PATH) -> bool:
@@ -106,7 +107,7 @@ def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END) -
         raise SystemExit("this walk does not cover the selection window, so its settings cannot "
                          "be decided; pass --book/--floor/--stop/--cap explicitly")
     d = sel.decide_strategy(ctx, hold, "4w", lo, hi)
-    return dict(book=d["book"], floor=d["floor"], stop=d["stop"], cap=d["cap"])
+    return dict(book=d["book"], floor=d["floor"], stop=d["stop"], cap=d["cap"], vol_cut=d["vol_cut"])
 
 
 def holdings(sel, ctx, preds: pd.DataFrame, copies) -> pd.DataFrame:
@@ -119,7 +120,8 @@ def holdings(sel, ctx, preds: pd.DataFrame, copies) -> pd.DataFrame:
 def simulate_holdings(sel, ctx, hold: pd.DataFrame, st: dict) -> pd.Series:
     """The strategy's weekly returns on a holdings frame at settings
     st = {book, floor, stop, cap}."""
-    return sel.simulate(ctx, hold, "4w", st["book"], st["cap"], st["stop"], st["floor"])
+    return sel.simulate(ctx, hold, "4w", st["book"], st["cap"], st["stop"], st["floor"],
+                        vol_cut=st.get("vol_cut"))
 
 
 def weekly_returns(sel, ctx, preds: pd.DataFrame, copies, st: dict) -> pd.Series:
@@ -152,7 +154,8 @@ def row_vs_spy(sel, series: pd.Series, spy: pd.Series, spans: dict = SPANS) -> d
 
 
 def settings_label(st: dict) -> str:
-    return f"top-{st['book']} / {st['floor']} / stop {st['stop']} / cap {st['cap']}"
+    return (f"top-{st['book']} / {st['floor']} / stop {st['stop']} / cap {st['cap']}"
+            + (f" / vol cut {st['vol_cut']}" if st.get("vol_cut") else ""))
 
 
 def table_md(rows: dict, spans=("2006-2024", "2016-2024", "2006-2015")) -> list[str]:

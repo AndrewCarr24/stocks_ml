@@ -31,7 +31,7 @@ import pandas as pd
 
 HORIZON = "4w"
 MIN_YEARS = 3                 # expanding: the first decision reads at least this much
-COLS = ["book", "floor", "stop", "cap"]
+COLS = ["book", "floor", "stop", "cap", "vol_cut"]
 
 
 def parse_lookback(v: str):
@@ -134,7 +134,7 @@ def _cell(col: str, v) -> str:
 def _key(d) -> str:
     """One decision as text."""
     return (f"top-{_cell('book', d['book'])} / {_cell('floor', d['floor'])} / "
-            f"stop {_cell('stop', d['stop'])} / cap {_cell('cap', d['cap'])}")
+            f"stop {_cell('stop', d['stop'])} / cap {_cell('cap', d['cap'])} / vol cut {_cell('vol_cut', d.get('vol_cut'))}")
 
 
 def summarize(dec: pd.DataFrame, spec: dict | None = None) -> dict:

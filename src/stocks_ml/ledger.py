@@ -36,6 +36,38 @@ FUNDS = ("SPY", "IEF")
 FLOORS = ("none", "halfgate", "80/20", "70/30", "60/40")
 FLOOR_FRACTION = {"80/20": 0.8, "70/30": 0.7, "60/40": 0.6}   # the fixed book / ballast splits
 TOP_N = 15                                 # names a signal ranks; sleeves pick from these
+# The volatility cut (2026-09-17, the fifth strategy layer): the model cannot
+# order its own top-30 (score-return correlation 0.006 on 2006-2015) and,
+# inside it, the less volatile names win. The cut removes the most volatile
+# of the model's top VOL_POOL before the sleeve takes its TOP_N candidates:
+#   None            no cut (the pool is the top-15 as before)
+#   "abs"           drop names whose 12-week volatility rank exceeds VOL_CUT_RANK (the top third)
+#   "abs_or_sector" also drop names whose volatility sits VOL_CUT_RANK above their sector's median
+VOL_CUTS = (None, "abs", "abs_or_sector")
+VOL_CUT_RANK = 0.3
+VOL_POOL = 30
+
+
+def vol_cut_pool(names, vol: dict, vol_vs_sector: dict, rule, pool: int = VOL_POOL, keep: int = TOP_N) -> list:
+    """The candidate list a sleeve picks from: the first `keep` of the top
+    `pool` names in rank order after the volatility cut. A name without a
+    volatility value is kept. No rule: the first `keep` names, exactly the
+    pre-2026-09-17 behaviour."""
+    if rule is None:
+        return list(names[:keep])
+    if rule not in VOL_CUTS:
+        raise ValueError(f"vol_cut must be one of {VOL_CUTS}, got {rule!r}")
+    out = []
+    for n in names[:pool]:
+        v = vol.get(n)
+        if v is not None and np.isfinite(v) and v > VOL_CUT_RANK:
+            continue
+        if rule == "abs_or_sector":
+            w = vol_vs_sector.get(n)
+            if w is not None and np.isfinite(w) and w > VOL_CUT_RANK:
+                continue
+        out.append(n)
+    return out[:keep] if out else list(names[:keep])
 
 
 # ---- rules ----

@@ -122,6 +122,7 @@ uv run stocks-ml eval [--walk W] [--incumbent I] [--ci-draws 200] [--no-charts]
 uv run stocks-ml app                                                 # reports/champion_explorer.html
 uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "params=name:v"] [--k16]
 uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 26] [--seed 0]   # the prototype: stratified sample, K=16, seed-twin null, ranks only
+uv run stocks-ml explain [--years 2007-2024] [--copies 1]                     # Shapley importance -> reports/champion_shap.{png,md}
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 /opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e  # the Playwright page test
 ```

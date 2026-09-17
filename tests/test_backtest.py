@@ -37,10 +37,12 @@ def test_spec_settings_are_the_procedure_decision(tmp_path):
     st = bt.spec_settings()
     spec = json.loads(bt.SPEC_PATH.read_text())
     d = spec["procedure"]["decision"]
-    assert st == dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"])
+    assert st == dict(book=d["book_size"], floor=d["floor"], stop=d["stop_loss"], cap=d["sector_cap"],
+                      vol_cut=d.get("vol_cut"))
     assert st["book"] == spec["strategy"]["book_size"]
     assert bt.settings_label(dict(book=10, floor="halfgate", stop=None, cap=None)) == \
         "top-10 / halfgate / stop None / cap None"
+    assert bt.settings_label(dict(book=3, floor="halfgate", stop=None, cap=None, vol_cut="abs")).endswith("/ vol cut abs")
 
 
 def test_spans_are_the_three_windows_ending_at_the_holdout():
