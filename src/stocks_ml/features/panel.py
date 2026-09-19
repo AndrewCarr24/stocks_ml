@@ -44,6 +44,9 @@ PENDING_ABLATION_FEATURES = frozenset({
     "f_resid_ret_lag5w", "f_resid_ret_lag6w", "f_resid_ret_lag7w", "f_resid_ret_lag8w",
     # feature velocity: a feature's own history is invisible to the trees
     "f_vol_chg_12w", "f_beta_chg_12w", "f_mom_accel_4w",
+    # the Sharadar market cap (2026-09-18): a recipe opts in with
+    # features=f_sf_log_mktcap,drop=f_log_mktcap; the champion's matrix is unchanged
+    "f_sf_log_mktcap",
 })
 
 
@@ -182,6 +185,10 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex,
     future splits."""
     close, volume = _wide(prices, "close"), _wide(prices, "volume")
     level = close if level_field == "close" else _wide(prices, level_field)
+    # dollar quantities: the SPLIT-ONLY adjusted close x the vendor's split-adjusted volume = the
+    # true dollars traded that day (closeadj would add the future dividend adjustment; closeunadj
+    # x adjusted volume carried every future split — the 2026-09-19 leak)
+    px_dollar = _wide(prices, "close_split") if "close_split" in prices.columns else close
     open_ = _wide(prices, "open")
     ret = close.pct_change(fill_method=None)
     weeks = {"1w": 5, "4w": 20, "12w": 60, "26w": 130, "52w": 252}
@@ -192,7 +199,12 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex,
     out["f_vol_4w"] = ret.rolling(20).std() * ANNUALIZER
     out["f_vol_12w"] = ret.rolling(60).std() * ANNUALIZER
     out["f_downside_dev"] = ret.clip(upper=0).rolling(60).std() * ANNUALIZER
-    dollar = (level * volume).rolling(20).mean()
+    # Sharadar's SEP volume is SPLIT-ADJUSTED (AAPL 2014-06-09: 369M/235M shares a day
+    # either side of the 7:1 split). Under the nominal basis `level` is the UNADJUSTED
+    # close, so level x volume would carry every future split (2026-09-19: -0.42 with
+    # the future split factor; the split-consistent product reads -0.06). Dollar volume
+    # and Amihud therefore use the split-adjusted close, whatever the level basis.
+    dollar = (px_dollar * volume).rolling(20).mean()
     out["f_dollar_vol"] = np.log(dollar.where(dollar > 0))
     out["f_abn_volume"] = volume.rolling(20).mean() / volume.rolling(120).mean() - 1
     out["f_hi_52w"] = close / close.rolling(252).max() - 1
@@ -240,7 +252,7 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex,
 
     # Amihud illiquidity: absolute daily return per dollar traded. Scale by 1e6
     # for numerical readability; cross-sectional ranking makes the scale neutral.
-    dollar_volume = level * volume
+    dollar_volume = px_dollar * volume             # split-consistent (see f_dollar_vol)
     amihud_daily = ret.abs().div(dollar_volume.where(dollar_volume > 0)) * 1e6
     out["f_amihud_4w"] = amihud_daily.rolling(20, min_periods=15).mean()
     out["f_amihud_12w"] = amihud_daily.rolling(60, min_periods=40).mean()
@@ -391,6 +403,37 @@ def sector_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=
     return pd.Series(norm.ppf((r - 0.5) / n), index=d.index)
 
 
+def sector_grade_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
+    """The sector-relative return as a top-heavy grade within the week: the
+    top 2% of names 4, the top 5% 3, the top 10% 2, the top 25% 1, the rest
+    0 (models.xgb.GRADE_CUTS). A regression on it spends its error budget on
+    the top of the week, where the book is picked (owner 2026-09-18)."""
+    from stocks_ml.models.xgb import GRADE_CUTS
+    d = sector_label(fwd, date, sector)
+    pct = d.groupby(date).rank(ascending=False, pct=True)          # NaN stays NaN
+    out = pd.Series(0.0, index=d.index).where(d.notna())
+    for g, c in zip(range(len(GRADE_CUTS), 0, -1), GRADE_CUTS):
+        out = out.where(~((pct <= c) & (out == 0)), float(g))
+    return out
+
+
+def sector_grade_vol_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None, vol=None) -> pd.Series:
+    """The top-heavy grade (sector_grade_label) assigned WITHIN the week's
+    volatility terciles (vol: the panel's 12-week volatility rank), so being
+    in the top of the week is not the same thing as being volatile — screen
+    1 (2026-09-19) showed the plain top-heavy target picks lottery tickets."""
+    from stocks_ml.models.xgb import GRADE_CUTS
+    if vol is None:
+        raise ValueError("label_4w_sector_grade_vol needs the volatility rank (f_vol_12w)")
+    d = sector_label(fwd, date, sector)
+    ter = vol.groupby(date).rank(pct=True).mul(3).apply(np.ceil).clip(1, 3)
+    pct = d.groupby([date, ter]).rank(ascending=False, pct=True)
+    out = pd.Series(0.0, index=d.index).where(d.notna())
+    for g, c in zip(range(len(GRADE_CUTS), 0, -1), GRADE_CUTS):
+        out = out.where(~((pct <= c) & (out == 0)), float(g))
+    return out
+
+
 def week_rank_label(fwd: pd.Series, date: pd.Series, sector: pd.Series, fwd13=None) -> pd.Series:
     """The 4-week return replaced by its within-week rank as a normal score,
     with no sector centring: the ordering among all members that week."""
@@ -442,6 +485,8 @@ LABEL_TRANSFORMS = {"label_4w_sector": sector_label,
                     "label_4w_sector_log": sector_log_label,
                     "label_4w_sector_clip": sector_clip_label,
                     "label_4w_sector_rank": sector_rank_label,
+                    "label_4w_sector_grade": sector_grade_label,
+                    "label_4w_sector_grade_vol": sector_grade_vol_label,
                     "label_4w_rank": week_rank_label,
                     "label_13w_sector_rank": sector_rank_label_13w,
                     "label_blend_rank": blend_rank_label,
@@ -602,6 +647,23 @@ def volatility_size_interactions(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 PEER_COLS = ["x_cm_dip_1w", "x_cm_dip_4w", "x_cm_mom_4w", "x_cm_corr"]
+SR_PREFIX = "x_sr_"      # sector-relative feature ranks (2026-09-19): x_sr_<feature>
+
+
+def sector_relative_ranks(panel: pd.DataFrame, sector: pd.Series, cols) -> pd.DataFrame:
+    """Each feature re-ranked WITHIN (week, sector) and scaled to [-1, 1]:
+    the input in the same frame as the sector-relative label. Derived from
+    the stored within-week ranks — a rank within a subset of a ranked column
+    is the rank of the raw value within that subset — so no rebuild. A row
+    whose sector is unknown keeps its within-week rank (the label's own
+    fallback to the week's median). The neutral fill (0) ranks with the
+    rest, as it did in the week."""
+    out = pd.DataFrame(index=panel.index)
+    sec = sector.fillna("__none__")
+    for c in cols:
+        r = panel[c].groupby([panel["date"], sec]).rank(pct=True).mul(2).sub(1.0)
+        out[SR_PREFIX + c] = r.where(sec != "__none__", panel[c])
+    return out
 PEER_N, PEER_LOOK = 20, 52
 
 

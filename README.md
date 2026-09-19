@@ -92,8 +92,16 @@ refits the first weeks and confirms the saved walk reproduces bit for bit.
 
 One command runs the whole protocol ([challenge.py](src/stocks_ml/challenge.py)).
 A candidate is a **recipe**: a label, a training window, extra panel
-columns, or overrides of the model parameters — anything `train` can walk.
-Fields you don't name come from the incumbent's recipe.
+columns (`features=a+b`), admitted columns withheld (`drop=f_x+f_y`),
+overrides of the model parameters, another world to walk on
+(`store=data/<world>`, e.g. the top-2000 universe built by
+`stocks-ml world --dir <world> --top 2000`), or a training universe
+(`train_top=500`: fit on the largest 500 names, score every member) —
+anything `train` can walk. Fields you don't name come from the incumbent's
+recipe. `--adjudicate` adds the head-to-head on 2016-2019: the incumbent
+was selected on 2006-2015 and its score there is inflated, so the
+challenger's winner and the incumbent meet once on a window neither was
+chosen on, each at its own settings, against the incumbent's seed twin.
 
 ```bash
 stocks-ml challenge --out data/experiments/challenges/labels \

@@ -9,7 +9,78 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from xgboost import XGBRegressor
+from xgboost import XGBRanker, XGBRegressor
+
+GRADE_CUTS = (0.02, 0.05, 0.10, 0.25)     # top-heavy relevance: top 2% -> 4, 5% -> 3, 10% -> 2, 25% -> 1, else 0
+RANK_PARAMS = {"objective": "rank:ndcg", "lambdarank_pair_method": "topk", "lambdarank_num_pair_per_sample": 10,
+               "ndcg_exp_gain": True, "grades": "top"}
+# grades: "top" = GRADE_CUTS (top 2% -> 4 ... top 25% -> 1); "decile" = 0..9 by within-week decile (the whole
+# ordering; pair with ndcg_exp_gain=False for a linear gain)
+# The learning-to-rank recipe keys (2026-09-18, the owner's "penalise the top-10 ranking more"): a recipe
+# naming objective=rank:* is fit by TimeTailEarlyStopRanker — pairs formed within the week (qid), the
+# top-k pair method so misordering the top of the week costs most, NDCG@10 on the purged tail to stop.
+
+
+def relevance_grades(y, dates, cuts=GRADE_CUTS, scheme: str = "top") -> np.ndarray:
+    """Integer relevance per row from a continuous within-week label. "top":
+    the top 2% of the week grade 4, top 5% 3, top 10% 2, top 25% 1, the rest
+    0. "decile": 9 for the top tenth down to 0 for the bottom tenth — the
+    whole ordering, evenly."""
+    y = pd.Series(np.asarray(y, float))
+    pct = y.groupby(np.asarray(dates)).rank(ascending=False, pct=True)
+    if scheme == "decile":
+        bucket = np.ceil(pct.to_numpy() * 10 - 1e-9)             # 1 = the top tenth ... 10 = the bottom tenth
+        return np.clip(10 - bucket, 0, 9).astype(float)
+    out = np.zeros(len(y))
+    for g, c in zip(range(len(cuts), 0, -1), cuts):
+        out = np.where((pct <= c) & (out == 0), g, out)
+    return out.astype(float)
+
+
+def estimator_for(params: dict, fixed: dict):
+    """The estimator a recipe's params call for: the ranker when the
+    objective is rank:*, else the champion's regressor."""
+    if str(params.get("objective", "")).startswith("rank:"):
+        return TimeTailEarlyStopRanker(**params, **fixed)
+    return TimeTailEarlyStopXGB(**params, **fixed)
+
+
+class TimeTailEarlyStopRanker(XGBRanker):
+    """XGBRanker on within-week groups with the same purged, time-ordered
+    early stop as TimeTailEarlyStopXGB, scored by NDCG@10 on the tail. The
+    continuous label is turned into relevance grades (relevance_grades)."""
+
+    def __init__(self, eval_fraction: float = 0.1, early_stopping_rounds: int = 75,
+                 early_stop_purge_days: int = 10, early_stop_metric: str = "ndcg@10", grades: str = "top", **kwargs):
+        self.eval_fraction = eval_fraction
+        self.early_stop_purge_days = early_stop_purge_days
+        self.early_stop_metric = early_stop_metric
+        self.grades = grades
+        metric = early_stop_metric if early_stop_metric.startswith("ndcg") else "ndcg@10"
+        kwargs.pop("eval_metric", None)        # sklearn.clone passes it back from get_params(); ours wins
+        super().__init__(early_stopping_rounds=early_stopping_rounds, eval_metric=metric, **kwargs)
+
+    def _wrapper_params(self) -> set:
+        return super()._wrapper_params() | {"eval_fraction", "early_stop_purge_days", "early_stop_metric", "grades"}
+
+    def fit(self, X, y):
+        dates = X.attrs.get("dates") if hasattr(X, "attrs") else None
+        if dates is None:
+            raise ValueError("the ranker needs dated_features frames (X.attrs['dates'])")
+        dates = pd.DatetimeIndex(dates)
+        qid = pd.factorize(dates, sort=True)[0]          # the walk's frames are date-sorted; a bootstrap keeps duplicates adjacent
+        rel = relevance_grades(y, dates.to_numpy(), scheme=self.grades)
+        unique = dates.unique().sort_values()
+        n_eval = max(1, int(np.ceil(len(unique) * self.eval_fraction)))
+        val_start = unique[-n_eval]
+        train_end = val_start - pd.Timedelta(days=self.early_stop_purge_days)
+        tr, va = (dates <= train_end), (dates >= val_start)
+        if not tr.any() or not va.any():
+            raise ValueError("time-tail early-stop split has an empty train or validation block")
+        self.early_stop_train_dates_ = dates[tr]
+        self.early_stop_validation_dates_ = dates[va]
+        super().fit(X.loc[tr], rel[tr], qid=qid[tr], eval_set=[(X.loc[va], rel[va])], eval_qid=[qid[va]], verbose=False)
+        return self
 
 
 class TimeTailEarlyStopXGB(XGBRegressor):

@@ -53,7 +53,7 @@ def walk_recipe(preds_path: Path) -> dict:
                            f"train on (selection.LABELS_4W knows {tuple(LABELS_4W)})")
     return {"label": rec["label"], "train_years": int(rec["train_years"]),
             "features": list(rec.get("features") or []), "params": dict(rec.get("params") or {}),
-            "record": str(rec_path)}
+            "drop": list(rec.get("drop") or []), "train_top": rec.get("train_top"), "record": str(rec_path)}
 
 
 def model_params(model: dict) -> dict:
@@ -115,6 +115,12 @@ def live_strategy(spec: dict) -> dict:
     if list(spec.get("features") or []) != list(model.get("features") or []):
         raise RuntimeError(f"spec features {spec.get('features')} but the procedure's recipe has "
                            f"{model.get('features')}: the spec was edited by hand; run stocks-ml procedure")
+    if spec.get("train_top") != model.get("train_top"):
+        raise RuntimeError(f"spec train_top {spec.get('train_top')} but the procedure's recipe has "
+                           f"{model.get('train_top')}: the spec was edited by hand; run stocks-ml procedure")
+    if list(spec.get("drop_features") or []) != list(model.get("drop") or []):
+        raise RuntimeError(f"spec drop_features {spec.get('drop_features')} but the procedure's recipe has "
+                           f"{model.get('drop')}: the spec was edited by hand; run stocks-ml procedure")
     if {k: str(v) for k, v in spec["model"]["params"].items()} != \
             {k: str(v) for k, v in model_params(model).items()}:
         raise RuntimeError("spec model.params differ from the procedure's recipe: the spec was "
@@ -213,6 +219,8 @@ def apply(spec: dict, proc: dict) -> dict:
     spec["horizon"]["purge_days"] = label_purge(proc["model"]["label"], HORIZON)
     spec["training_window_years"] = proc["model"]["train_years"]
     spec["features"] = list(proc["model"].get("features") or [])
+    spec["drop_features"] = list(proc["model"].get("drop") or [])
+    spec["train_top"] = proc["model"].get("train_top")
     spec["model"]["params"] = model_params(proc["model"])
     spec["strategy"]["book_size"] = dec["book_size"]
     spec["strategy"]["stop_loss"] = dec["stop_loss"]
@@ -236,6 +244,11 @@ def drift(spec: dict, proc: dict) -> dict:
     feats = list(spec.get("features") or [])
     if feats != list(proc["model"].get("features") or []):
         out["features"] = (feats, proc["model"].get("features") or [])
+    if spec.get("train_top") != proc["model"].get("train_top"):
+        out["train_top"] = (spec.get("train_top"), proc["model"].get("train_top"))
+    dropped = list(spec.get("drop_features") or [])
+    if dropped != list(proc["model"].get("drop") or []):
+        out["drop_features"] = (dropped, proc["model"].get("drop") or [])
     have_p = {k: str(v) for k, v in spec.get("model", {}).get("params", {}).items()}
     want_p = {k: str(v) for k, v in model_params(proc["model"]).items()}
     if have_p != want_p:

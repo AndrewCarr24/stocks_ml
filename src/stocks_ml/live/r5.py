@@ -63,7 +63,8 @@ def load_spec(path: Path | None = None) -> dict:
     from stocks_ml.procedure import live_strategy
     spec = json.loads((path or spec_path()).read_text())
     return {**live_strategy(spec), "top_n": 15, "features": list(spec.get("features") or []),
-            "params": dict(spec["model"]["params"])}
+            "drop": list(spec.get("drop_features") or []), "params": dict(spec["model"]["params"]),
+            "train_top": spec.get("train_top")}
 
 
 SPEC = load_spec()
@@ -171,6 +172,8 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         build_world_panel(live_dir, cfg, log=log)
 
     ctx = Ctx(str(live_dir))
+    if SPEC.get("train_top"):
+        raise SystemExit("the spec's train_top needs market-cap snapshots the live world does not carry yet")
     ctx.extra = list(SPEC.get("features", ()))     # panel columns beyond feature_cols (none)
     missing = [c for c in ctx.extra if c not in ctx.pan.columns]
     if missing:
@@ -181,10 +184,13 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     log(f"signal date {t.date()} (sleeve {due_sleeve(t, N_SLEEVES)} due); fitting {SPEC}")
     t1 = time.time()
     preds = ensemble_preds(ctx, t, SPEC["horizon"], SPEC["train_years"], label=SPEC["label"],
-                           features=SPEC["features"], params=SPEC["params"])
+                           features=SPEC["features"], params=SPEC["params"], drop=SPEC["drop"],
+                           train_top=SPEC["train_top"])
     if preds is None:
         raise RuntimeError(f"no ensemble prediction for {t.date()}")
     ranked = rank_members(preds, ctx.prices, t)
+    from stocks_ml.leak_audit import archive_live_rows
+    archive_live_rows(live_dir, ctx, t)          # this week's rows, as computed this week (leak_audit.live_vs_rebuilt)
     log(f"ranked {len(ranked)} names in {time.time() - t1:.0f}s; "
         f"top-{SPEC['top_n']}: {', '.join(ranked.index[:SPEC['top_n']])}")
 

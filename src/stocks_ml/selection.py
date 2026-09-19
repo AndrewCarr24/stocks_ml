@@ -58,6 +58,11 @@ LABELS_4W = {"label_4w": "the stock's 4-week return minus that week's median mem
                                      "sector, replaced by its within-week rank as a normal score",
              "label_4w_rank": "the stock's 4-week return replaced by its within-week rank as a normal "
                               "score (no sector centring)",
+             "label_4w_sector_grade": "the stock's 4-week return minus the same-week median of its sector, "
+                                      "as a top-heavy grade: top 2% of the week 4, top 5% 3, top 10% 2, "
+                                      "top 25% 1, else 0",
+             "label_4w_sector_grade_vol": "the same top-heavy grade assigned within the week's volatility "
+                                          "terciles (12-week volatility rank), so the top is not the volatile",
              "label_13w_sector_rank": "the stock's 13-week return minus the same-week median of its "
                                       "sector, replaced by its within-week rank as a normal score "
                                       "(ranks by the quarter, rotates monthly)",
@@ -135,7 +140,7 @@ class Ctx:
             if "sector" in tk.columns:
                 self.smap11 = dict(tk.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)
         import inspect
-        extra = {"fwd13": self.pan["fwd_ret_13w"],
+        extra = {"fwd13": self.pan["fwd_ret_13w"], "vol": self.pan["f_vol_12w"],
                  "sector11": self.pan["ticker"].map(self.smap11) if self.smap11 else None}
         for name, fn in LABEL_TRANSFORMS.items():
             if name in self.pan.columns:
@@ -175,14 +180,15 @@ class Ctx:
         return c
 
 
-def ensemble_preds(ctx, t, horizon, train_years, label=None, features=None, params=None):
+def ensemble_preds(ctx, t, horizon, train_years, label=None, features=None, params=None, drop=None,
+                   train_top=None):
     """The K_COPIES-copy ensemble score at rank week t: copy c is the champion
     model (MODEL_PARAMS, `params` overriding) on the trailing `train_years`
     under whole-week bootstrap seed c, trained on `label` (the horizon's own
     label unless given; LABELS_4W), on the panel's f_ columns plus `features`
     (ctx.extra unless given) — the spec's recipe, as the live job passes it."""
     from stocks_ml.models.walk import walk_forward_predictions
-    from stocks_ml.models.xgb import TimeTailEarlyStopXGB
+    from stocks_ml.models.xgb import estimator_for
     from stocks_ml.models.replication import WeekBootstrapEstimator
     h = HORIZONS[horizon]
     label = label or h["label"]
@@ -191,12 +197,13 @@ def ensemble_preds(ctx, t, horizon, train_years, label=None, features=None, para
     copies = []
     for c in range(1, K_COPIES + 1):
         est = WeekBootstrapEstimator(
-            TimeTailEarlyStopXGB(**{**MODEL_PARAMS, **(params or {})}, **fixed(purge)),
+            estimator_for({**MODEL_PARAMS, **(params or {})}, fixed(purge)),
             bootstrap_seed=c)
         wf = walk_forward_predictions(ctx.pan, est, cfg2, start=t, end=t,
                                       label_col=label,
                                       purge_days=purge,
-                                      extra_features=tuple(ctx.extra if features is None else features))
+                                      extra_features=tuple(ctx.extra if features is None else features),
+                                      drop_features=tuple(drop or ()), train_top=train_top)
         p = wf.preds.get(t)
         if p is not None:
             copies.append(p)

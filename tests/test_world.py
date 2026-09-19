@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
 import pytest
 
 from stocks_ml.data import world
@@ -466,3 +467,142 @@ def test_refresh_extras_pulls_tickers_holdings_high_low_and_the_wider_fundamenta
     assert {"receivables", "inventory", "payables"} <= set(fund.columns)
     assert (fund["dimension"].isin(["ARQ", "ART"])).all()                   # MR* rows never ingested
     assert store.manifest["extras"]["holdings"]["rows"] == 2
+
+
+# ---- the top-N universe (2026-09-18) ----
+def test_quarter_ends_and_eligible_equities():
+    q = world.quarter_ends("2015-01-01", "2015-12-31")
+    assert [d.date().isoformat() for d in q] == ["2015-03-31", "2015-06-30", "2015-09-30", "2015-12-31"]
+    assert world.quarter_ends("2015-03-31", "2015-04-01") == [pd.Timestamp("2015-03-31")]
+    tk = pd.DataFrame({"ticker": ["A", "B", "C", "D", "E", "F"],
+                       "category": ["Domestic Common Stock", "Domestic Common Stock Primary Class",
+                                    "Domestic Common Stock Secondary Class", "ADR Common Stock",
+                                    "Domestic Common Stock", None],
+                       "exchange": ["NYSE", "NASDAQ", "NYSE", "NYSE", "OTC", "NYSE"]})
+    assert world.universe_equities(tk) == {"A", "B"}
+
+
+def test_membership_from_top_is_point_in_time_stints():
+    snaps = pd.DataFrame([
+        ("2010-03-31", "A", 100), ("2010-03-31", "B", 50), ("2010-03-31", "C", 10), ("2010-03-31", "X", 999),
+        ("2010-06-30", "A", 100), ("2010-06-30", "B", 5), ("2010-06-30", "C", 60),
+        ("2010-09-30", "A", 100), ("2010-09-30", "B", 70), ("2010-09-30", "C", 60),
+    ], columns=["date", "ticker", "marketcap"])
+    mem = world.membership_from_top(snaps, eligible={"A", "B", "C"}, sectors={"A": "Manufacturing"}, n=2)
+    got = [(r.ticker, str(r.start_date.date()), None if pd.isna(r.end_date) else str(r.end_date.date()))
+           for r in mem.itertuples()]
+    assert got == [("A", "2010-03-31", None), ("B", "2010-03-31", "2010-06-30"), ("B", "2010-09-30", None),
+                   ("C", "2010-06-30", "2010-09-30")]         # X: not eligible, never a member
+    assert mem.set_index("ticker")["sector"]["A"] == "Manufacturing" and pd.isna(mem.set_index("ticker")["sector"]["C"])
+    from stocks_ml.data.membership import members_asof
+    assert members_asof(mem, "2010-05-01") == ["A", "B"]
+    assert members_asof(mem, "2010-06-30") == ["A", "C"]      # the snapshot day itself moves the book
+    assert members_asof(mem, "2010-12-01") == ["A", "B"]
+
+
+def test_build_research_store_pulls_the_universe_and_refuses_a_rebuild(tmp_path):
+    t = api_tables()
+    daily = [{"ticker": tk, "date": d, "marketcap": mc} for d in ("2026-03-31", "2026-06-30")
+             for tk, mc in (("AAA", 300), ("BBB", 200), ("CCC", 100), ("NEW", 50), ("LEHMQ", 1))]
+    for r in t["tickers"]:
+        r.update(category="Domestic Common Stock", exchange="NYSE")
+    tables = {**t, "daily": daily}
+    calls = []
+    base = make_fake_fetch(tables, calls)
+    def fake(url, params, headers):
+        if url.rstrip("/").endswith("/daily"):
+            rows = [r for r in daily if r["date"] == params["date"]]
+            calls.append(("daily", dict(params)))
+            return {"count": len(rows), "data": rows}
+        if url.rstrip("/").endswith("/tickers") and "table" in params:
+            rows = [r for r in tables["tickers"] if r["table"] == params["table"]]
+            calls.append(("tickers", dict(params)))
+            return {"count": len(rows), "data": rows}
+        return base(url, params, headers)
+    root = tmp_path / "top3"
+    rep = world.build_research_store(root, "k", cfg=None, n=3, fetch_fn=fake, log=lambda m: None,
+                                     sec=False, panel=False, start="2026-01-01", today="2026-09-05")
+    store = world.DataStore(root)
+    mem = store.read("membership")
+    assert sorted(mem["ticker"]) == ["AAA", "BBB", "CCC"] and mem["end_date"].isna().all()
+    assert rep["membership"] == {"snapshots": 2, "stints": 3, "names": 3, "current": 3}
+    px = store.read("prices")
+    assert set(px["ticker"]) == {"AAA", "BBB", "CCC", "SPY", "IEF"}      # the universe + the funds
+    assert {"close_split", "closeunadj"} <= set(px.columns)
+    assert set(store.read("sharadar_prices")["ticker"]) == set(px["ticker"])
+    fund = store.read("fundamentals")
+    assert set(fund["dimension"]) == {"ARQ", "ART"} and set(fund["ticker"]) == {"AAA", "BBB", "CCC"}
+    assert set(store.read("insiders")["ticker"]) <= {"AAA", "BBB", "CCC"}
+    assert list(store.read("form4").columns) == world.FORM4_COLS
+    assert store.manifest["universe"]["n"] == 3 and store.manifest["sharadar"]["universe"] == "top3"
+    assert len(store.read("daily_snapshots")) == 10
+    with pytest.raises(SystemExit, match="never rebuilt"):
+        world.build_research_store(root, "k", cfg=None, n=3, fetch_fn=fake, log=lambda m: None)
+    # the fund/insider pulls named only universe tickers
+    for tab, p in calls:
+        if tab in ("fundamentals", "insiders", "stocks"):
+            assert set(p["ticker"].split(",")) <= {"AAA", "BBB", "CCC"}
+
+
+def test_derive_research_store_shares_tables_and_cuts_the_membership(tmp_path, monkeypatch):
+    parent = tmp_path / "top3"
+    t = api_tables()
+    daily = [{"ticker": tk, "date": d, "marketcap": mc} for d in ("2026-03-31", "2026-06-30")
+             for tk, mc in (("AAA", 300), ("BBB", 200), ("CCC", 100), ("NEW", 50), ("LEHMQ", 1))]
+    for r in t["tickers"]:
+        r.update(category="Domestic Common Stock", exchange="NYSE")
+    tables = {**t, "daily": daily}
+    base = make_fake_fetch(tables, [])
+    def fake(url, params, headers):
+        if url.rstrip("/").endswith("/daily"):
+            rows = [r for r in daily if r["date"] == params["date"]]
+            return {"count": len(rows), "data": rows}
+        if url.rstrip("/").endswith("/tickers") and "table" in params:
+            rows = [r for r in tables["tickers"] if r["table"] == params["table"]]
+            return {"count": len(rows), "data": rows}
+        return base(url, params, headers)
+    world.build_research_store(parent, "k", cfg=None, n=3, fetch_fn=fake, log=lambda m: None,
+                               sec=False, panel=False, start="2026-01-01", today="2026-09-05")
+    child = tmp_path / "top2"
+    built = []
+    monkeypatch.setattr(world, "build_world_panel", lambda root, cfg, log=None: built.append(Path(root)))
+    rep = world.derive_research_store(child, parent, cfg=None, n=2, log=lambda m: None)
+    store = world.DataStore(child)
+    assert sorted(store.read("membership")["ticker"]) == ["AAA", "BBB"] and rep["membership"]["names"] == 2
+    assert (child / "prices.parquet").is_symlink() and (child / "fundamentals.parquet").is_symlink()
+    assert set(store.read("prices")["ticker"]) == {"AAA", "BBB", "CCC", "SPY", "IEF"}   # the parent's table, shared
+    assert store.manifest["universe"]["n"] == 2 and store.manifest["universe"]["derived_from"] == str(parent)
+    assert built == [child]
+    with pytest.raises(SystemExit, match="cannot be derived"):
+        world.derive_research_store(tmp_path / "top9", parent, cfg=None, n=9, log=lambda m: None)
+    with pytest.raises(SystemExit, match="never rebuilt"):
+        world.derive_research_store(child, parent, cfg=None, n=2, log=lambda m: None)
+
+
+def test_derive_research_store_can_take_another_stores_membership(tmp_path, monkeypatch):
+    parent = tmp_path / "top3"
+    t = api_tables()
+    daily = [{"ticker": tk, "date": d, "marketcap": mc} for d in ("2026-03-31", "2026-06-30")
+             for tk, mc in (("AAA", 300), ("BBB", 200), ("CCC", 100), ("NEW", 50), ("LEHMQ", 1))]
+    for r in t["tickers"]:
+        r.update(category="Domestic Common Stock", exchange="NYSE")
+    tables = {**t, "daily": daily}
+    base = make_fake_fetch(tables, [])
+    def fake(url, params, headers):
+        if url.rstrip("/").endswith("/daily"):
+            rows = [r for r in daily if r["date"] == params["date"]]
+            return {"count": len(rows), "data": rows}
+        if url.rstrip("/").endswith("/tickers") and "table" in params:
+            rows = [r for r in tables["tickers"] if r["table"] == params["table"]]
+            return {"count": len(rows), "data": rows}
+        return base(url, params, headers)
+    world.build_research_store(parent, "k", cfg=None, n=3, fetch_fn=fake, log=lambda m: None,
+                               sec=False, panel=False, start="2026-01-01", today="2026-09-05")
+    other = tmp_path / "sp"
+    DataStore(other).write("membership", pd.DataFrame({"ticker": ["BBB", "ZZZ"], "start_date": pd.to_datetime(["2000-01-01"] * 2),
+                                                       "end_date": [pd.NaT, pd.NaT], "sector": ["Finance", "x"]}))
+    monkeypatch.setattr(world, "build_world_panel", lambda root, cfg, log=None: None)
+    rep = world.derive_research_store(tmp_path / "ctrl", parent, cfg=None, n=3, log=lambda m: None, membership_from=str(other))
+    mem = DataStore(tmp_path / "ctrl").read("membership")
+    assert mem["ticker"].tolist() == ["BBB"]                    # ZZZ has no prices in the parent: dropped
+    assert rep["universe"].startswith("membership of") and DataStore(tmp_path / "ctrl").manifest["universe"]["membership_from"] == str(other)

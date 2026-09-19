@@ -88,14 +88,24 @@ FLAG_PERCENTILE = 90      # a candidate is flagged above this percentile of the 
 FAST_K = 16               # challenge-fast: copies — the deployed ensemble size. At K=4 two models
                           # a few points apart are a coin flip on any sample (the 2026-09-14
                           # resampling: rank vs the incumbent 50% at K=4, 81% at K=16 on 130 weeks)
-RECIPE_KEYS = ("label", "train_years", "features", "params")
+RECIPE_KEYS = ("label", "train_years", "features", "params", "drop", "store", "train_top")
+ADJUDICATE = (pd.Timestamp("2016-01-01"), pd.Timestamp("2019-12-31"))
+# The head-to-head window (owner's rule 2026-09-18): the incumbent is the argmax
+# of a long search on 2006-2015, so its score there is inflated by selection and
+# a single fresh candidate's is not. Both recipes are chosen on 2006-2015 alone
+# (a challenger's variants by stage 2); the challenger's winner then meets the
+# incumbent once on 2016-2019, neither having been selected there, at K=16 on
+# the same weeks, each at its own procedure-decided settings, with the
+# incumbent's seed twin on the window for the noise band. Used for final
+# head-to-heads only; 2020 -> the holdout stays untouched.
 
 
 def parse_candidate(text: str, base: dict) -> dict:
     """'label=...,train_years=5,features=a+b,params=learning_rate:0.01+max_depth:4'
     over the incumbent's recipe as the base: unspecified fields are inherited."""
     r = {"label": base["label"], "train_years": base["train_years"],
-         "features": list(base.get("features") or []), "params": dict(base.get("params") or {})}
+         "features": list(base.get("features") or []), "params": dict(base.get("params") or {}),
+         "drop": list(base.get("drop") or []), "train_top": base.get("train_top")}
     for part in [p.strip() for p in text.split(",") if p.strip()]:
         if "=" not in part:
             raise ValueError(f"candidate field {part!r} is not key=value")
@@ -108,6 +118,12 @@ def parse_candidate(text: str, base: dict) -> dict:
             r["train_years"] = int(v)
         elif k == "features":
             r["features"] = [f for f in v.split("+") if f]
+        elif k == "drop":
+            r["drop"] = [f for f in v.split("+") if f]
+        elif k == "store":
+            r["store"] = v                       # another world (universe): the walk and its scoring run there
+        elif k == "train_top":
+            r["train_top"] = int(v)              # fit on the largest N names by market cap; score every member
         else:
             r["params"] = {}
             for kv in [x for x in v.split("+") if x]:
@@ -115,14 +131,17 @@ def parse_candidate(text: str, base: dict) -> dict:
                     raise ValueError(f"param {kv!r} is not name:value")
                 pk, pv = kv.split(":", 1)
                 r["params"][pk.strip()] = pv.strip()
-    return recipe(r["label"], r["train_years"], r["features"], r["params"])
+    out = recipe(r["label"], r["train_years"], r["features"], r["params"], r["drop"], r.get("train_top"))
+    if r.get("store"):
+        out["store"] = r["store"]
+    return out
 
 
 def candidate_name(rec: dict) -> str:
     """A directory name for a recipe: label and window, plus a short hash of
     any features or params."""
     name = f"{rec['label']}_{rec['train_years']}y"
-    extra = {k: rec[k] for k in ("features", "params") if rec.get(k)}
+    extra = {k: rec[k] for k in ("features", "params", "drop", "store", "train_top") if rec.get(k)}
     if extra:
         name += "_" + hashlib.sha256(json.dumps(extra, sort_keys=True).encode()).hexdigest()[:8]
     return name
@@ -139,14 +158,60 @@ def refuse_leaky_features(ctx, candidates: list, lo, hi, log=print) -> None:
     missing = [f for f in feats if f not in ctx.pan.columns]
     if missing:
         raise SystemExit(f"the panel lacks the recipe's feature columns {missing}")
-    res = feature_factor_check(ctx, feats, lo, hi)
+    from stocks_ml.features.panel import SR_PREFIX
+    parents = {f: f[len(SR_PREFIX):] for f in feats if f.startswith(SR_PREFIX) and f[len(SR_PREFIX):] in ctx.pan.columns}
+    res = feature_factor_check(ctx, sorted(set(feats) | set(parents.values())), lo, hi)
+    failed = []
     for f in feats:
         r = res[f]
-        log(f"feature leak check: {f} corr with the future split factor {r['corr_with_future_split_factor']:+.3f} "
-            f"({r['weeks']} weeks) -> {r['verdict']}")
-    if res["VERDICT"] == "FAIL":
-        raise SystemExit(f"feature(s) correlate with the FUTURE split factor beyond {FEATURE_FACTOR_LIMIT}: "
-                         f"{[f for f in feats if res[f]['verdict'] == 'FAIL']} — a look-ahead; not walked")
+        verdict = r["verdict"]
+        if f in parents:
+            # a within-sector re-ranking of a panel column cannot add split information: it is
+            # judged against its parent (2026-09-19: several admitted columns sit at 0.15-0.21
+            # for economic reasons — value and quality names split less)
+            p = res[parents[f]]["corr_with_future_split_factor"]
+            if p != p:      # a parent constant within the week (macro, market, flags): no split information to inherit
+                p = 0.0
+            verdict = "PASS" if abs(r["corr_with_future_split_factor"]) <= max(FEATURE_FACTOR_LIMIT, abs(p) + 0.05) else "FAIL"
+            log(f"feature leak check: {f} corr with the future split factor {r['corr_with_future_split_factor']:+.3f} "
+                f"(parent {parents[f]} {p:+.3f}; {r['weeks']} weeks) -> {verdict}")
+        else:
+            log(f"feature leak check: {f} corr with the future split factor {r['corr_with_future_split_factor']:+.3f} "
+                f"({r['weeks']} weeks) -> {verdict}")
+        if verdict == "FAIL":
+            failed.append(f)
+    if failed:
+        raise SystemExit(f"feature(s) correlate with the FUTURE split factor beyond {FEATURE_FACTOR_LIMIT} "
+                         f"(or beyond their parent's): {failed} — a look-ahead; not walked")
+
+
+class Worlds:
+    """The contexts a challenge scores on: the incumbent's store, and a
+    candidate's own when its recipe names one (`store=`: another universe).
+    Loaded on first use so a second world costs memory only while it is
+    scored; a candidate's walk builds and releases its own."""
+
+    def __init__(self, sel, ctx, store: str):
+        self.sel, self.base, self.store = sel, ctx, store
+        self._ctx = {store: ctx}
+
+    def store_of(self, cand: dict) -> str:
+        return cand.get("store") or self.store
+
+    def ctx_of(self, cand: dict):
+        s = self.store_of(cand)
+        if s not in self._ctx:
+            _, self._ctx[s], _ = context(s)
+        return self._ctx[s]
+
+
+def refuse_leaky_features_by_world(worlds: Worlds, candidates: list, lo, hi, log=print) -> None:
+    by_store = {}
+    for c in candidates:
+        by_store.setdefault(worlds.store_of(c), []).append(c)
+    for s, cs in by_store.items():
+        if any(c.get("features") for c in cs):
+            refuse_leaky_features(worlds.ctx_of(cs[0]), cs, lo, hi, log)
 
 
 def incumbent_recipe(preds_path: Path) -> dict:
@@ -174,6 +239,24 @@ def stratified_weeks(ctx, lo, hi, per_year: int = FAST_PER_YEAR, seed: int = FAS
         ys = list(weeks[weeks.year == y])
         take = min(per_year, len(ys))
         out += [ys[i] for i in sorted(rng.choice(len(ys), size=take, replace=False))]
+    return sorted(out)
+
+
+def stratified_blocks(ctx, lo, hi, per_year: int = FAST_PER_YEAR, seed: int = FAST_SEED, block: int = 4) -> list:
+    """`per_year // block` runs of `block` consecutive rank weeks drawn from
+    each calendar year (the year cut into consecutive runs; runs drawn
+    without replacement), seeded: the screening cadence's sample — each run
+    is one fit serving `block` weeks."""
+    lo, hi = pd.Timestamp(lo), pd.Timestamp(hi)
+    rng = np.random.default_rng(seed)
+    weeks = pd.DatetimeIndex([t for t in ctx.weeks if lo <= t <= hi])
+    out = []
+    for y in sorted(set(weeks.year)):
+        ys = list(weeks[weeks.year == y])
+        runs = [ys[i:i + block] for i in range(0, len(ys) - block + 1, block)]
+        take = min(max(1, per_year // block), len(runs))
+        for i in sorted(rng.choice(len(runs), size=take, replace=False)):
+            out += runs[i]
     return sorted(out)
 
 
@@ -205,11 +288,12 @@ def books_mean(h: pd.DataFrame) -> pd.Series:
     return sum(h[f"top{b}"] for b in SCORE_BOOKS) / len(SCORE_BOOKS)
 
 
-def metrics_on_common(sel, ctx, walks: dict, k: int, lo=SELECT[0], hi=SELECT[1]):
+def metrics_on_common(sel, ctx, walks: dict, k: int, lo=SELECT[0], hi=SELECT[1], ctxs: dict | None = None):
     """The selection metric per book for every walk on the rank weeks they
-    all share (same weeks, same copies: the same-bar rule). Returns
+    all share (same weeks, same copies: the same-bar rule); `ctxs` names
+    another world's context for a walk made there. Returns
     ({name: {book: %/yr}}, {name: holdings on the common weeks}, n_common)."""
-    H = {n: holdings(sel, ctx, p, range(1, k + 1)) for n, p in walks.items()}
+    H = {n: holdings(sel, (ctxs or {}).get(n, ctx), p, range(1, k + 1)) for n, p in walks.items()}
     common = None
     for h in H.values():
         w = set(h.week[(h.week >= lo) & (h.week <= hi)])
@@ -251,40 +335,41 @@ def twin_copies() -> range:
     return range(FINAL_K + 1, 2 * FINAL_K + 1)
 
 
-def ensure_twin(incumbent: Path, inc_rec: dict, store: str, lo, hi, workers: int = 1, log=print) -> Path:
+def ensure_twin(incumbent: Path, inc_rec: dict, store: str, lo, hi, workers: int = 1, log=print,
+                refit_every: int = 1) -> Path:
     """Walk the incumbent's recipe with fresh seeds on every week of the
     selection window (resumes if partly done; instant if complete)."""
     d = twin_dir(incumbent)
     log(f"seed twin: {inc_rec} copies {twin_copies().start}..{twin_copies().stop - 1} -> {d}")
     walk(store, lo, hi, inc_rec["label"], inc_rec["train_years"], FINAL_K, d, log=log,
          features=inc_rec.get("features", ()), params=inc_rec.get("params"), workers=workers,
-         copies=twin_copies())
+         copies=twin_copies(), drop=inc_rec.get("drop", ()), train_top=inc_rec.get("train_top"), refit_every=refit_every)
     return d / "preds.parquet"
 
 
 def null_gaps(sel, ctx, incumbent: Path, twin: Path, per_year: int, lo=SELECT[0], hi=SELECT[1],
-              draws: int = NULL_DRAWS, log=print) -> np.ndarray:
+              draws: int = NULL_DRAWS, log=print, k: int = FINAL_K, block: int = 1) -> np.ndarray:
     """The model-score gap of the seed twin over the incumbent on `draws`
     stratified samples (seeds 1..draws; the candidates' draw is seed 0) —
     what a boost of zero looks like under this sample design. Cached at
     <twin dir>/null_<per_year>.json."""
-    cache = Path(twin).parent / f"null_{per_year}.json"
+    cache = Path(twin).parent / (f"null_{per_year}" + (f"_b{block}" if block > 1 else "") + (f"_k{k}" if k != FINAL_K else "") + ".json")
     if cache.exists():
         rec = json.loads(cache.read_text())
-        if rec["draws"] == draws and rec["k"] == FINAL_K:
+        if rec["draws"] == draws and rec["k"] == k:
             return np.array(rec["gaps"])
-    hi_ = holdings(sel, ctx, load_preds([incumbent]), range(1, FINAL_K + 1))
-    ht = holdings(sel, ctx, load_preds([twin]), twin_copies())
+    hi_ = holdings(sel, ctx, load_preds([incumbent]), range(1, k + 1))
+    ht = holdings(sel, ctx, load_preds([twin]), range(twin_copies().start, twin_copies().start + k))
     common = set(hi_.week) & set(ht.week)
     hi_, ht = hi_[hi_.week.isin(common)], ht[ht.week.isin(common)]
     gaps = []
     for sd in range(1, draws + 1):
-        w = set(stratified_weeks(ctx, lo, hi, per_year, sd))
+        w = set(stratified_blocks(ctx, lo, hi, per_year, sd, block) if block > 1 else stratified_weeks(ctx, lo, hi, per_year, sd))
         gaps.append(model_score(selection_metric(sel, ht[ht.week.isin(w)], lo, hi))
                     - model_score(selection_metric(sel, hi_[hi_.week.isin(w)], lo, hi)))
     gaps = np.array(gaps)
     seed_luck = model_score(selection_metric(sel, ht, lo, hi)) - model_score(selection_metric(sel, hi_, lo, hi))
-    cache.write_text(json.dumps({"draws": draws, "k": FINAL_K, "per_year": per_year, "weeks": len(common),
+    cache.write_text(json.dumps({"draws": draws, "k": k, "block": block, "per_year": per_year, "weeks": len(common),
                                  "seed_luck_full_walk": round(float(seed_luck), 2),
                                  "gaps": [round(float(g), 4) for g in gaps],
                                  "percentiles": {str(q): round(float(np.percentile(gaps, q)), 2)
@@ -316,7 +401,7 @@ def mean_excess(h: pd.DataFrame) -> float:
 
 def run_fast(candidates: list, incumbent: Path, out: Path, store: str = STORE,
              per_year: int = FAST_PER_YEAR, seed: int = FAST_SEED, lo=SELECT[0], hi=SELECT[1],
-             log=print, workers: int = 1) -> dict:
+             log=print, workers: int = 1, refit_every: int = 1, k: int = FAST_K) -> dict:
     """`stocks-ml challenge-fast`: the candidates on a stratified random
     sample of the selection window at K=FAST_K against the incumbent on
     the same weeks; ranked by the model score; nothing decided."""
@@ -327,25 +412,35 @@ def run_fast(candidates: list, incumbent: Path, out: Path, store: str = STORE,
     if len(names) != len(candidates):
         raise SystemExit("two candidates have the same recipe")
     sel, ctx, _ = context(store)
-    refuse_leaky_features(ctx, list(names.values()), lo, hi, log)
-    weeks = stratified_weeks(ctx, lo, hi, per_year, seed)
-    desc = f"{len(weeks)} weeks, a stratified random sample ({per_year} per year, seed {seed})"
+    worlds = Worlds(sel, ctx, store)
+    refuse_leaky_features_by_world(worlds, list(names.values()), lo, hi, log)
+    refit_every = max(1, int(refit_every))
+    if refit_every > 1:
+        weeks = stratified_blocks(ctx, lo, hi, per_year, seed, refit_every)
+        desc = (f"{len(weeks)} weeks in runs of {refit_every}, a stratified random sample ({per_year} per year, "
+                f"seed {seed}), one fit per run (screening cadence)")
+    else:
+        weeks = stratified_weeks(ctx, lo, hi, per_year, seed)
+        desc = f"{len(weeks)} weeks, a stratified random sample ({per_year} per year, seed {seed})"
     log(f"challenge-fast: {len(names)} candidates vs the incumbent {incumbent} ({inc_rec}) on {desc} "
-        f"of {lo.date()} -> {hi.date()} at K={FAST_K}; ranks only, decides nothing")
-    twin = ensure_twin(incumbent, inc_rec, store, lo, hi, workers=workers, log=log)
-    null = null_gaps(sel, ctx, incumbent, twin, per_year, lo, hi, log=log)
+        f"of {lo.date()} -> {hi.date()} at K={k}; ranks only, decides nothing")
+    twin = ensure_twin(incumbent, inc_rec, store, lo, hi, workers=workers, log=log, refit_every=refit_every)
+    null = null_gaps(sel, ctx, incumbent, twin, per_year, lo, hi, log=log, k=k, block=refit_every)
     null = null - null.mean()                  # centred: the spread of a zero boost under this design
     thr = float(np.percentile(null, FLAG_PERCENTILE))
     luck = seed_luck(twin, per_year)
-    walks = {"incumbent": cut_walk(incumbent, weeks, FAST_K),
-             "incumbent (twin seeds)": cut_walk(twin, weeks, FAST_K, copies=twin_copies())}
+    tw = range(twin_copies().start, twin_copies().start + k)
+    walks = {"incumbent": cut_walk(incumbent, weeks, k),
+             "incumbent (twin seeds)": cut_walk(twin, weeks, k, copies=tw)}
     for n, c in names.items():
-        log(f"fast: {n}")
-        p = walk(store, lo, hi, c["label"], c["train_years"], FAST_K, out / n / f"fast_{per_year}x_s{seed}",
-                 log=log, features=c.get("features", ()), params=c.get("params"),
-                 weeks=weeks, sample=desc, workers=workers)
+        log(f"fast: {n}" + (f" on {c['store']}" if c.get("store") else ""))
+        tag = f"fast_{per_year}x_s{seed}" + (f"_r{refit_every}" if refit_every > 1 else "") + (f"_k{k}" if k != FAST_K else "")
+        p = walk(worlds.store_of(c), lo, hi, c["label"], c["train_years"], k, out / n / tag,
+                 log=log, features=c.get("features", ()), params=c.get("params"), drop=c.get("drop", ()), train_top=c.get("train_top"),
+                 weeks=weeks, sample=desc, workers=workers, refit_every=refit_every)
         walks[n] = load_preds([p])
-    M, H, n_common = metrics_on_common(sel, ctx, walks, FAST_K, lo, hi)
+    ctxs = {n: worlds.ctx_of(c) for n, c in names.items()}
+    M, H, n_common = metrics_on_common(sel, ctx, walks, k, lo, hi, ctxs=ctxs)
     order = rank_by_metric(M, names)
     inc_score = model_score(M["incumbent"])
     ref = max(inc_score, model_score(M["incumbent (twin seeds)"]))   # the luckier seed set is the bar
@@ -358,7 +453,7 @@ def run_fast(candidates: list, incumbent: Path, out: Path, store: str = STORE,
                    "null_percentile": None if gap is None else round(null_percentile(gap, null), 3),
                    "flagged": False if gap is None else bool(gap > thr),
                    "mean_excess_pp": round(mean_excess(H[n]), 2),
-                   "copies": copy_metrics(sel, ctx, walks[n], FAST_K, set(H[n].week), lo, hi),
+                   "copies": copy_metrics(sel, ctxs.get(n, ctx), walks[n], k, set(H[n].week), lo, hi),
                    "paired_t_vs_incumbent": (None if n == "incumbent"
                                              else round(paired_t_books(H[n], H["incumbent"]), 2))}
     md = [f"| model | top-3 | top-6 | top-10 | score | gap vs the better seed set | P(boost) = null percentile | "
@@ -388,19 +483,86 @@ def run_fast(candidates: list, incumbent: Path, out: Path, store: str = STORE,
         log("nothing flagged: no candidate's gap clears the null")
     res = {"out": str(out), "store": store, "selection_window": [str(lo.date()), str(hi.date())],
            "sample": {"per_year": per_year, "seed": seed, "weeks": [str(w.date()) for w in weeks]},
-           "k": FAST_K, "incumbent": {"preds": str(incumbent), "recipe": inc_rec},
+           "k": k, "refit_every": refit_every, "incumbent": {"preds": str(incumbent), "recipe": inc_rec},
            "null": {"twin": str(twin), "draws": int(len(null)), "flag_percentile": FLAG_PERCENTILE,
                     "threshold": round(thr, 2), "centred": True, "seed_luck_full_walk": luck,
                     "reference": "the higher-scoring of the incumbent's two seed sets on the draw",
                     "percentiles": {str(q): round(float(np.percentile(null, q)), 2) for q in (10, 50, 90, 95)}},
            "candidates": names, "rows": rows, "order": order, "flagged": flagged, "md": md}
-    (out / f"fast_{per_year}x_s{seed}.json").write_text(json.dumps(res, indent=1, default=str))
+    tag = f"fast_{per_year}x_s{seed}" + (f"_r{refit_every}" if refit_every > 1 else "") + (f"_k{k}" if k != FAST_K else "")
+    (out / f"{tag}.json").write_text(json.dumps(res, indent=1, default=str))
     for n in order:
-        record_trials([{"kind": "challenge_fast", "name": f"challenge_fast_{out.name}_{per_year}x_s{seed}_{n}",
+        record_trials([{"kind": "challenge_fast", "name": f"challenge_fast_{out.name}_{tag}_{n}",
                         "cv_metric": rows[n]["score"], "config": names[n],
                         "notes": json.dumps({**rows[n], "sample": desc, "flag_threshold": round(thr, 2)},
                                             default=str)}])
-    log(f"challenge-fast -> {out / f'fast_{per_year}x_s{seed}.json'}")
+    log(f"challenge-fast -> {out / f'{tag}.json'}")
+    return res
+
+
+def window_table(sel, ctx, ctx_c, name: str, inc_select: Path, cand_select: Path, H: dict, lo, hi) -> dict:
+    """Each model's strategy on the window at the settings the procedure
+    decides on ITS OWN 2006-2015 walk, plus the sp500 row. Returns
+    {rows, md, settings}."""
+    from stocks_ml.backtest import own_settings, row_vs_spy, settings_label, simulate_holdings, table_md
+    span = f"{lo.year}-{hi.year}"
+    spans = {span: (lo, hi + pd.Timedelta(days=1))}
+    sel_weeks = lambda c: [t for t in c.weeks if SELECT[0] <= t <= SELECT[1]]  # noqa: E731
+    st_inc = own_settings(sel, ctx, holdings(sel, ctx, cut_walk(inc_select, sel_weeks(ctx), FINAL_K), range(1, FINAL_K + 1)))
+    st_c = own_settings(sel, ctx_c, holdings(sel, ctx_c, load_preds([cand_select]), range(1, FINAL_K + 1)))
+    r_inc = simulate_holdings(sel, ctx, H["incumbent"], st_inc)
+    r_c = simulate_holdings(sel, ctx_c, H[name], st_c)
+    spy = ctx.wret["SPY"]
+    rows = {f"incumbent ({settings_label(st_inc)})": row_vs_spy(sel, r_inc, spy, spans),
+            f"{name} ({settings_label(st_c)})": row_vs_spy(sel, r_c, spy, spans),
+            "sp500": {span: sel.metrics(spy.reindex(r_inc.index), *spans[span])}}
+    return {"rows": rows, "md": table_md(rows, (span,)), "settings": {"incumbent": st_inc, name: st_c}}
+
+
+def adjudicate(name: str, cand: dict, incumbent: Path, out: Path, worlds: "Worlds", log=print,
+               workers: int = 1, lo=ADJUDICATE[0], hi=ADJUDICATE[1], refit_every: int = 1) -> dict:
+    """The head-to-head on the adjudication window (see ADJUDICATE): the
+    incumbent's own extend walk cut to the window, its seed twin walked on
+    the window, the candidate walked on the window; the model score on the
+    common weeks decides — the candidate must beat both seed sets."""
+    sel, ctx, store = worlds.sel, worlds.base, worlds.store
+    inc_rec = incumbent_recipe(incumbent)
+    ext = incumbent.parent.parent / "extend" / "preds.parquet"
+    if not ext.exists():
+        raise SystemExit(f"the incumbent has no extend walk at {ext}: the adjudication window needs it")
+    weeks = [t for t in ctx.weeks if lo <= t <= hi]
+    log(f"adjudication {lo.date()} -> {hi.date()} ({len(weeks)} weeks, K={FINAL_K}): {name} vs the incumbent, "
+        f"neither selected on this window; each at its own procedure-decided settings")
+    walks = {"incumbent": cut_walk(ext, weeks, FINAL_K)}
+    twin = walk(store, lo, hi, inc_rec["label"], inc_rec["train_years"], FINAL_K,
+                incumbent.parent.parent / "twin_adjudicate", log=log, features=inc_rec.get("features", ()),
+                params=inc_rec.get("params"), workers=workers, copies=twin_copies(), drop=inc_rec.get("drop", ()), train_top=inc_rec.get("train_top"),
+                refit_every=refit_every)
+    walks["incumbent (twin seeds)"] = cut_walk(twin, weeks, FINAL_K, copies=twin_copies())
+    p = walk(worlds.store_of(cand), lo, hi, cand["label"], cand["train_years"], FINAL_K, out / name / "adjudicate",
+             log=log, features=cand.get("features", ()), params=cand.get("params"), drop=cand.get("drop", ()), train_top=cand.get("train_top"),
+             workers=workers, refit_every=refit_every)
+    walks[name] = load_preds([p])
+    ctx_c = worlds.ctx_of(cand)
+    M, H, n = metrics_on_common(sel, ctx, walks, FINAL_K, lo, hi, ctxs={name: ctx_c})
+    scores = {k: round(model_score(M[k]), 2) for k in walks}
+    bar = max(scores["incumbent"], scores["incumbent (twin seeds)"])
+    winner = name if scores[name] > bar else "incumbent"
+    tab = window_table(sel, ctx, ctx_c, name, incumbent, out / name / "select" / "preds.parquet", H, lo, hi)
+    md = ["| model | top-3 | top-6 | top-10 | score (mean of the three) | paired t vs incumbent |", "|---|---|---|---|---|---|"]
+    for k in walks:
+        md.append(f"| {'**' + k + '**' if k == winner or (winner == 'incumbent' and k == 'incumbent') else k} | "
+                  + " | ".join(f"{M[k].get(b, float('nan')):+.2f}" for b in SCORE_BOOKS)
+                  + f" | **{scores[k]:+.2f}** | {'—' if k == 'incumbent' else f'{paired_t_books(H[k], H['incumbent']):+.2f}'} |")
+    log(f"adjudication ({n} common weeks): the incumbent's seed sets score {scores['incumbent']:+.2f} and "
+        f"{scores['incumbent (twin seeds)']:+.2f}; {name} {scores[name]:+.2f} -> "
+        + (f"{name} wins (above both seed sets)" if winner == name else "the incumbent stands"))
+    log("\n".join(md))
+    log("strategy on the window, each at its own settings:\n" + "\n".join(tab["md"]))
+    res = {"window": [str(lo.date()), str(hi.date())], "weeks": n, "metric": M, "scores": scores,
+           "bar": bar, "winner": winner, "md": md, "strategy": tab, "twin": str(twin), "walk": str(p)}
+    _ledger(out, "adjudicate", name, cand, {"metric": M[name], "scores": scores, "winner": winner,
+                                             "window": res["window"], "weeks": n})
     return res
 
 
@@ -416,6 +578,12 @@ def candidate_text(rec: dict, base: dict) -> str:
         parts.append("features=" + "+".join(rec.get("features") or []))
     if dict(rec.get("params") or {}) != dict(base.get("params") or {}):
         parts.append("params=" + "+".join(f"{k}:{v}" for k, v in (rec.get("params") or {}).items()))
+    if list(rec.get("drop") or []) != list(base.get("drop") or []):
+        parts.append("drop=" + "+".join(rec.get("drop") or []))
+    if rec.get("store"):
+        parts.append(f"store={rec['store']}")
+    if rec.get("train_top") != base.get("train_top"):
+        parts.append(f"train_top={rec.get('train_top')}")
     return ",".join(parts)
 
 
@@ -426,7 +594,8 @@ def _ledger(out: Path, stage: str, name: str, rec: dict, note: dict) -> None:
 
 
 def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: bool = False,
-        lo=SELECT[0], hi=SELECT[1], log=print, workers: int = 1) -> dict:
+        lo=SELECT[0], hi=SELECT[1], log=print, workers: int = 1, adjudicate_window: bool = False,
+        refit_every: int = 1) -> dict:
     lo, hi, out, incumbent = pd.Timestamp(lo), pd.Timestamp(hi), Path(out), Path(incumbent)
     out.mkdir(parents=True, exist_ok=True)
     inc_rec = incumbent_recipe(incumbent)
@@ -435,10 +604,11 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
         raise SystemExit("two candidates have the same recipe")
     for n, c in names.items():
         if c == recipe(inc_rec["label"], inc_rec["train_years"], inc_rec.get("features", ()),
-                       inc_rec.get("params")):
+                       inc_rec.get("params"), inc_rec.get("drop", ()), inc_rec.get("train_top")):
             raise SystemExit(f"candidate {n} is the incumbent's own recipe")
     sel, ctx, _ = context(store)
-    refuse_leaky_features(ctx, list(names.values()), lo, hi, log)
+    worlds = Worlds(sel, ctx, store)
+    refuse_leaky_features_by_world(worlds, list(names.values()), lo, hi, log)
     res = {"out": str(out), "store": store, "selection_window": [str(lo.date()), str(hi.date())],
            "rules": {"sample_every": SAMPLE_EVERY, "sample_k": SAMPLE_K, "full_k": FULL_K,
                      "advance": ADVANCE, "score_books": SCORE_BOOKS, "final_k": FINAL_K},
@@ -450,12 +620,18 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
     weeks = sample_weeks(ctx, lo, hi, SAMPLE_EVERY)
     walks = {"incumbent": cut_walk(incumbent, weeks, SAMPLE_K)}
     for n, c in names.items():
-        log(f"stage 1: {n} — every {SAMPLE_EVERY}th week at K={SAMPLE_K}")
-        p = walk(store, lo, hi, c["label"], c["train_years"], SAMPLE_K, out / n / "sample",
-                 every=SAMPLE_EVERY, log=log, features=c.get("features", ()), params=c.get("params"),
+        done = out / n / "select" / "preds.parquet"
+        if done.exists() and set(weeks) <= set(pd.to_datetime(load_preds([done])["week"].unique())):
+            log(f"stage 1: {n} — cut from its complete select walk (same weeks, copies 1-{SAMPLE_K})")
+            walks[n] = cut_walk(done, weeks, SAMPLE_K)
+            continue
+        log(f"stage 1: {n} — every {SAMPLE_EVERY}th week at K={SAMPLE_K}" + (f" on {c['store']}" if c.get("store") else ""))
+        p = walk(worlds.store_of(c), lo, hi, c["label"], c["train_years"], SAMPLE_K, out / n / "sample",
+                 every=SAMPLE_EVERY, log=log, features=c.get("features", ()), params=c.get("params"), drop=c.get("drop", ()), train_top=c.get("train_top"),
                  workers=workers)
         walks[n] = load_preds([p])
-    M1, _, n1 = metrics_on_common(sel, ctx, walks, SAMPLE_K, lo, hi)
+    ctxs = {n: worlds.ctx_of(c) for n, c in names.items()}
+    M1, _, n1 = metrics_on_common(sel, ctx, walks, SAMPLE_K, lo, hi, ctxs=ctxs)
     order1 = rank_by_metric(M1, names)
     advance = order1[:ADVANCE]
     res["stage1"] = {"weeks": n1, "metric": M1, "order": order1, "advance": advance}
@@ -474,21 +650,22 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
                                                    copies=twin_copies())
     for n in advance:
         c = names[n]
-        log(f"stage 2: {n} — every week at K={FULL_K}")
-        p = walk(store, lo, hi, c["label"], c["train_years"], FULL_K, out / n / "select",
-                 log=log, features=c.get("features", ()), params=c.get("params"), workers=workers)
+        log(f"stage 2: {n} — every week at K={FULL_K}" + (f" on {c['store']}" if c.get("store") else ""))
+        p = walk(worlds.store_of(c), lo, hi, c["label"], c["train_years"], FULL_K, out / n / "select",
+                 log=log, features=c.get("features", ()), params=c.get("params"), drop=c.get("drop", ()), train_top=c.get("train_top"), workers=workers,
+                 refit_every=refit_every)
         walks[n] = load_preds([p])
-    M2, H2, n2 = metrics_on_common(sel, ctx, walks, FULL_K, lo, hi)
+    M2, H2, n2 = metrics_on_common(sel, ctx, walks, FULL_K, lo, hi, ctxs=ctxs)
     incumbents = [n for n in walks if n.startswith("incumbent")]
     detail = {}
     for n in [*incumbents, *advance]:
         preds = walks[n]
         detail[n] = {"metric": M2[n],
-                     "copies": copy_metrics(sel, ctx, preds, FULL_K, set(H2[n].week), lo, hi),
+                     "copies": copy_metrics(sel, ctxs.get(n, ctx), preds, FULL_K, set(H2[n].week), lo, hi),
                      "paired_t_vs_incumbent": (None if n == "incumbent"
                                                else round(paired_t_books(H2[n], H2["incumbent"]), 2))}
         if n not in incumbents:
-            la = audit_segments(store, [str(out / n / "select" / "preds.parquet")], ctx)
+            la = audit_segments(worlds.store_of(names[n]), [str(out / n / "select" / "preds.parquet")], ctxs[n])
             detail[n]["leak_audit"] = {"verdict": la["VERDICT"], "line": leak_line(la)}
     eligible = incumbents + [n for n in advance if detail[n]["leak_audit"]["verdict"] == "PASS"]
     order2 = rank_by_metric(M2, eligible)
@@ -518,6 +695,19 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
         _ledger(out, "stage2", n, names[n], {**detail[n], "weeks": n2, "winner": n == winner})
     (out / "challenge.json").write_text(json.dumps(res, indent=1, default=str))
 
+    # ---- the head-to-head on the adjudication window (owner's rule 2026-09-18)
+    if adjudicate_window:
+        ranked = [n for n in order2 if n not in incumbents]        # the challenger's winner, chosen on 2006-2015
+        if not ranked:
+            log("adjudication: no candidate passed the leak audit; nothing to adjudicate")
+        else:
+            res["adjudication"] = adjudicate(ranked[0], names[ranked[0]], incumbent, out, worlds, log=log, workers=workers,
+                                             refit_every=refit_every)
+            winner = res["adjudication"]["winner"]
+            res["stage2"]["winner_before_adjudication"] = res["stage2"]["winner"]
+            res["stage2"]["winner"] = winner
+            (out / "challenge.json").write_text(json.dumps(res, indent=1, default=str))
+
     # ---- stage 3: the winner at K=16 and the one look
     if winner != "incumbent" and k16:
         from stocks_ml.eval import run as eval_run
@@ -528,10 +718,10 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
         for seg, (a, b) in {"select": (lo, hi),
                             "extend": (hi + pd.Timedelta(days=1), HOLDOUT_START - pd.Timedelta(days=1))}.items():
             log(f"stage 3: {winner} {seg} {a.date()} -> {b.date()} at K={FINAL_K}")
-            walk(store, a, b, c["label"], c["train_years"], FINAL_K, wdir / seg, log=log,
-                 features=c.get("features", ()), params=c.get("params"), workers=workers)
+            walk(worlds.store_of(c), a, b, c["label"], c["train_years"], FINAL_K, wdir / seg, log=log,
+                 features=c.get("features", ()), params=c.get("params"), drop=c.get("drop", ()), train_top=c.get("train_top"), workers=workers)
         res["stage3"] = {"walk": str(wdir),
-                         "eval": eval_run(wdir, incumbent.parent.parent, store=store, k=FINAL_K, log=log)}
+                         "eval": eval_run(wdir, incumbent.parent.parent, store=worlds.store_of(c), k=FINAL_K, log=log)}
         (out / "challenge.json").write_text(json.dumps(res, indent=1, default=str))
         log(f"stage 3 done: adopt with `stocks-ml procedure --preds {wdir / 'select' / 'preds.parquet'}` "
             "on the owner's go")

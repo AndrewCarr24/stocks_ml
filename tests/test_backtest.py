@@ -108,6 +108,8 @@ def test_only_the_champions_walk_gets_the_spec_settings(tmp_path):
     assert not bt.is_champion_walk([{"recipe": {"label": "label_4w_sector", "train_years": 5}}], sp)
     assert not bt.is_champion_walk([{"recipe": {"label": "label_4w_sector", "train_years": 8,
                                                 "params": {"max_depth": 4}}}], sp)
+    assert not bt.is_champion_walk([{"recipe": {"label": "label_4w_sector", "train_years": 8,
+                                                "drop": ["f_z"]}}], sp)
     assert not bt.is_champion_walk([{}], sp) and not bt.is_champion_walk([], sp)
 
 

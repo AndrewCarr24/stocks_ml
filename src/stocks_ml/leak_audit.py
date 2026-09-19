@@ -58,12 +58,12 @@ def identity_check(ctx, prices: pd.DataFrame, fund: pd.DataFrame, week: pd.Times
     the panel builder does (bvps as-of, split-adjusted close, week rank) and
     compare with the stored panel; report the top-3 future splitters."""
     from stocks_ml.features.ranking import rank_normalize
-    from stocks_ml.features.sharadar_fundamentals import _asof
+    from stocks_ml.features.sharadar_fundamentals import _asof, prepared_arq
     rows = ctx.pan[ctx.pan["date"] == week]
     if rows.empty or "f_sf_book_to_market" not in rows.columns:
         return {"week": str(week.date()), "ok": False, "reason": "no panel rows / column at this week"}
     base = rows[["date", "ticker"]].copy()
-    bvps = _asof(base, fund[fund["dimension"] == "ARQ"], ["bvps"])["bvps"]
+    bvps = _asof(base, prepared_arq(fund), ["bvps"])["bvps"]     # the builder's own ARQ frame
     day = prices[prices["date"] <= week].sort_values("date").groupby("ticker").last()
     close_split = day["close_split"].reindex(base["ticker"]).to_numpy()
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -167,6 +167,58 @@ def audit(store: str, preds_path: str, ctx=None) -> dict:
 
 
 FEATURE_FACTOR_LIMIT = 0.15      # |mean weekly Spearman(feature, future split factor)| above this = leaky
+LIVE_ARCHIVE = "archive"         # <live store>/archive/features_<date>.parquet: the rows the live job ranked
+
+
+def archive_live_rows(live_dir, ctx, t, columns=None) -> Path:
+    """Save the panel rows the live job scored at rank week t, as they were
+    computed THAT week. A later panel build re-derives the same rows with
+    more future known (splits, restatements); the drift between the two is
+    a leak detector (owner's idea 2026-09-19: "compare live data to
+    historic data; if they look different something is awry")."""
+    d = Path(live_dir) / LIVE_ARCHIVE
+    d.mkdir(parents=True, exist_ok=True)
+    rows = ctx.pan[ctx.pan["date"] == pd.Timestamp(t)]
+    if columns:
+        rows = rows[["date", "ticker", *[c for c in columns if c in rows.columns]]]
+    path = d / f"features_{pd.Timestamp(t).date()}.parquet"
+    rows.to_parquet(path, index=False)
+    return path
+
+
+def live_vs_rebuilt(live_dir, panel: pd.DataFrame, features=None) -> pd.DataFrame:
+    """Per feature: how the archived live rows compare with the same rows in
+    `panel` (a later build): the mean weekly Spearman between the two
+    versions and the share of names whose value moved by more than 0.1 rank
+    units. Ranked features should agree to ~1.0; a feature whose history is
+    rewritten by later data (a mixed-basis price, a restated fundamental)
+    reads lower. Empty when nothing is archived."""
+    files = sorted(Path(live_dir, LIVE_ARCHIVE).glob("features_*.parquet")) if Path(live_dir, LIVE_ARCHIVE).exists() else []
+    if not files:
+        return pd.DataFrame(columns=["feature", "weeks", "rank_agreement", "share_moved_0.1"])
+    panel = panel.copy()
+    panel["date"] = pd.to_datetime(panel["date"])
+    rows = []
+    for f in files:
+        a = pd.read_parquet(f); a["date"] = pd.to_datetime(a["date"])
+        t = a["date"].iloc[0]
+        b = panel[panel["date"] == t]
+        j = a.merge(b, on=["date", "ticker"], suffixes=("_live", "_rebuilt"))
+        if len(j) < 50:
+            continue
+        cols = [c for c in (features or [c for c in a.columns if c.startswith(("f_", "x_"))]) if f"{c}_live" in j.columns]
+        for c in cols:
+            x, y = j[f"{c}_live"], j[f"{c}_rebuilt"]
+            ok = x.notna() & y.notna()
+            if ok.sum() < 50 or x[ok].nunique() < 5 or y[ok].nunique() < 5:
+                continue
+            rows.append({"feature": c, "week": t, "rank_agreement": float(x[ok].rank().corr(y[ok].rank())),
+                         "share_moved_0.1": float(((x[ok] - y[ok]).abs() > 0.1).mean())})
+    if not rows:
+        return pd.DataFrame(columns=["feature", "weeks", "rank_agreement", "share_moved_0.1"])
+    t = pd.DataFrame(rows).groupby("feature").agg(weeks=("week", "nunique"), rank_agreement=("rank_agreement", "mean"),
+                                                  **{"share_moved_0.1": ("share_moved_0.1", "mean")}).reset_index()
+    return t.sort_values("rank_agreement").reset_index(drop=True)
 
 
 def feature_factor_check(ctx, features, lo="2006-01-01", hi="2015-12-31") -> dict:
@@ -193,18 +245,59 @@ def feature_factor_check(ctx, features, lo="2006-01-01", hi="2015-12-31") -> dic
     return out
 
 
+def fundamentals_file(store) -> Path:
+    """The fundamentals table a frozen panel was built from: the newest
+    `fundamentals.frozen_<date>.parquet` beside it when one exists, else the
+    store's live table. (2026-09-18: the S&P store's table is refetched by
+    the extras pull and the vendor restates per-share history at a split —
+    APH, 2x in 2026-09 — so the live table no longer reproduces a frozen
+    panel; the identity gate must read the vintage the panel saw.)"""
+    frozen = sorted(Path(store).glob("fundamentals.frozen_*.parquet"))
+    return frozen[-1] if frozen else Path(store) / "fundamentals.parquet"
+
+
+def model_features(preds_path, ctx) -> list[str]:
+    """The columns the walk's model saw: the panel's admitted features, minus
+    the record's `drop`, plus its `features`."""
+    from stocks_ml.features.panel import feature_cols
+    rec_path = Path(preds_path).parent / "spec.json"
+    rec = json.loads(rec_path.read_text()).get("recipe", {}) if rec_path.exists() else {}
+    fc = [c for c in feature_cols(ctx.pan) if c not in set(rec.get("drop") or [])]
+    return fc + [c for c in (rec.get("features") or []) if c not in fc and c in ctx.pan.columns]
+
+
+def feature_scan(ctx, features, lo="2006-01-01", hi="2015-12-31") -> dict:
+    """The split-factor check on the MODEL'S OWN features (owner's rule
+    2026-09-19: standing, every audit — until then it was only ever run on
+    proposed extras, and f_dollar_vol sat at -0.42 unnoticed). Report-only:
+    the identity gate decides; features beyond FEATURE_FACTOR_LIMIT are
+    listed for a mechanism check (value/quality names split less, so a
+    price-free ratio can sit at 0.15-0.21 for economic reasons)."""
+    res = feature_factor_check(ctx, list(features), lo, hi)
+    beyond = {f: res[f]["corr_with_future_split_factor"] for f in features
+              if f in res and abs(res[f]["corr_with_future_split_factor"]) > FEATURE_FACTOR_LIMIT}
+    return {"limit": FEATURE_FACTOR_LIMIT, "n_features": len(features),
+            "beyond_limit": dict(sorted(beyond.items(), key=lambda kv: -abs(kv[1]))),
+            "all": {f: res[f]["corr_with_future_split_factor"] for f in features if f in res}}
+
+
 def audit_segments(store: str, preds_paths, ctx=None) -> dict:
     """One audit PER segment; the verdict is the identity check on every
     segment. The factor numbers are reported per segment, never pooled:
     the leaky 2026-09 champion showed retention 0.49 on its selection
-    window yet ~1 with 2016-2024 pooled in."""
+    window yet ~1 with 2016-2024 pooled in. Every audit also scans the
+    model's own features against the future split factor (feature_scan)."""
     import stocks_ml.selection as sel
     ctx = ctx or sel.Ctx(store)
     if not hasattr(ctx, "fund"):
-        ctx.fund = pd.read_parquet(Path(store) / "fundamentals.parquet")
+        ctx.fund = pd.read_parquet(fundamentals_file(store))
     segs = {Path(p).parent.name: audit(store, p, ctx) for p in preds_paths}
+    for s in segs.values():
+        s["fundamentals_file"] = str(fundamentals_file(store))
+    scan = feature_scan(ctx, model_features(preds_paths[0], ctx))
     finite = [s["ic_retention"] for s in segs.values() if np.isfinite(s["ic_retention"])]
     return {"segments": segs, "worst_retention": round(float(min(finite)), 3) if finite else None,
+            "feature_scan": scan,
             "VERDICT": "PASS" if all(s["VERDICT"] == "PASS" for s in segs.values()) else "FAIL"}
 
 
@@ -214,6 +307,11 @@ def leak_line(la: dict) -> str:
     parts = [f"{name}: identity {s['IDENTITY']}, score-vs-split-factor {s['spearman_score_vs_factor']:+.3f} "
              f"(t {s['spearman_t']:+.1f}), IC {s['ic']:+.4f} (t {s['ic_t']:+.1f}), retention {s['ic_retention']}"
              for name, s in segs.items()]
+    scan = la.get("feature_scan")
+    if scan:
+        b = scan["beyond_limit"]
+        parts.append(f"feature scan: {len(b)} of {scan['n_features']} beyond {scan['limit']}"
+                     + (" (" + ", ".join(f"{f} {v:+.2f}" for f, v in b.items()) + ")" if b else ""))
     return f"{la['VERDICT']} — " + "; ".join(parts) + "." if parts else f"{la['VERDICT']}."
 
 

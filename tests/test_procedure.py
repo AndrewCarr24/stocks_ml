@@ -132,10 +132,11 @@ def test_mix_label_and_floor_fraction_agree():
 def test_apply_writes_every_decision_field_and_nothing_prose():
     s = _spec()
     rec = {"decision": {"book_size": 3, "floor": "80/20", "stop_loss": -0.25, "sector_cap": None},
-           "model": {"label": "label_4w", "train_years": 2, "record": "w/spec.json"},
+           "model": {"label": "label_4w", "train_years": 2, "record": "w/spec.json", "drop": ["f_z"]},
            "evidence": {}, "decided_at": "x"}
     before = s["provenance"], s["strategy"]["settings_note"], s["training_window_rationale"]
     out = apply(s, rec)
+    assert out["drop_features"] == ["f_z"] and out["features"] == []
     assert out["strategy"]["book_size"] == 3 and out["strategy"]["stop_loss"] == -0.25
     assert out["strategy"]["sector_cap"] is None
     assert out["ballast"]["mix"] == "80% book / 20% ballast" and "80/20" in out["name"]
@@ -151,6 +152,7 @@ def test_apply_writes_every_decision_field_and_nothing_prose():
         want["label"] = (SPEC["horizon"]["label"], "label_4w")
     if SPEC["training_window_years"] != 2:
         want["train_years"] = (SPEC["training_window_years"], 2)
+    want["drop_features"] = ([], ["f_z"])
     assert drift(SPEC, rec) == want
 
 
@@ -169,11 +171,15 @@ def test_walk_recipe_is_read_from_the_record_beside_the_walk(tmp_path):
         walk_recipe(preds)
     rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8}}))
     assert walk_recipe(preds) == {"label": "label_4w_sector", "train_years": 8, "features": [],
-                                  "params": {}, "record": str(rec)}
+                                  "params": {}, "drop": [], "train_top": None, "record": str(rec)}
     rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8,
                                                    "features": ["x_a"], "params": {"max_depth": 4}}}))
     got = walk_recipe(preds)
     assert got["features"] == ["x_a"] and got["params"] == {"max_depth": 4}
+    rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8, "drop": ["f_z"]}}))
+    assert walk_recipe(preds)["drop"] == ["f_z"] and walk_recipe(preds)["train_top"] is None
+    rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8, "train_top": 500}}))
+    assert walk_recipe(preds)["train_top"] == 500
     assert proc.model_params(got)["max_depth"] == 4 and proc.model_params(got)["learning_rate"] == 0.02
 
 

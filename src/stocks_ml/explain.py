@@ -68,7 +68,8 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def fit_at(sel, ctx, t, copy: int, label: str, train_years: int, features=(), params=None):
+def fit_at(sel, ctx, t, copy: int, label: str, train_years: int, features=(), params=None, drop=(),
+           train_top=None):
     """The champion's copy fitted at rank week t exactly as train.copy_preds
     fits it; returns (fitted WeekBootstrapEstimator, the scored rows, fcols)."""
     from sklearn.base import clone
@@ -76,13 +77,16 @@ def fit_at(sel, ctx, t, copy: int, label: str, train_years: int, features=(), pa
     from stocks_ml.features.panel import feature_cols
     from stocks_ml.models.replication import WeekBootstrapEstimator
     from stocks_ml.models.walk import MIN_TRAIN_ROWS, MIN_TRAIN_WEEKS
-    from stocks_ml.models.xgb import TimeTailEarlyStopXGB, dated_features
+    from stocks_ml.models.xgb import dated_features, estimator_for
     purge = sel.label_purge(label, "4w")
-    est = WeekBootstrapEstimator(TimeTailEarlyStopXGB(**{**sel.MODEL_PARAMS, **(params or {})}, **sel.fixed(purge)),
-                                 bootstrap_seed=copy)
+    est = WeekBootstrapEstimator(estimator_for({**sel.MODEL_PARAMS, **(params or {})}, sel.fixed(purge)), bootstrap_seed=copy)
     pan = ctx.pan
-    fcols = feature_cols(pan) + [c for c in features if c not in feature_cols(pan)]
+    fcols = [c for c in feature_cols(pan) if c not in set(drop)]      # the recipe's `drop`
+    fcols += [c for c in features if c not in fcols]
     labeled = pan[pan[label].notna()]
+    if train_top:
+        from stocks_ml.models.walk import CAP_RANK_COL
+        labeled = labeled[labeled[CAP_RANK_COL] <= int(train_top)]
     train_end = t - pd.Timedelta(days=purge)
     train = labeled[labeled["date"].between(train_end - pd.DateOffset(years=train_years), train_end)]
     if len(train) < MIN_TRAIN_ROWS or train["date"].nunique() < MIN_TRAIN_WEEKS:
@@ -122,17 +126,25 @@ def year_table(shap: pd.DataFrame, rows: pd.DataFrame, fcols: list[str]) -> pd.D
     return pd.DataFrame(out)
 
 
-def explain(store: str, years, copies=(1,), spec_path: Path = SPEC_PATH, log=log) -> dict:
+def explain(store: str, years, copies=(1,), spec_path: Path = SPEC_PATH, log=log,
+            features=None, drop=None, top_n: int = TOP3_N) -> dict:
     """Mean |SHAP| and sign per feature for each year's first rank week, for
-    the spec's recipe; returns {"by_year": DataFrame (feature x year),
-    "sign": DataFrame, "recipe": dict, "weeks": [...]}."""
+    the spec's recipe (`features` / `drop` override it for a variant);
+    returns {"by_year": DataFrame (feature x year), "sign": DataFrame,
+    "recipe": dict, "weeks": [...]}."""
     from stocks_ml.selection import HOLDOUT_START
     from stocks_ml.train import context
     spec = json.loads(Path(spec_path).read_text())
     recipe = {"label": spec["horizon"]["label"], "train_years": int(spec["training_window_years"]),
-              "features": list(spec.get("features") or []),
+              "features": list(spec.get("features") or []) if features is None else list(features),
+              "drop": list(spec.get("drop_features") or []) if drop is None else list(drop),
+              "train_top": spec.get("train_top"),
               "params": {k: v for k, v in spec["model"]["params"].items()}}
     sel, ctx, _ = context(store)
+    if recipe["train_top"]:
+        from stocks_ml.models.walk import CAP_RANK_COL
+        from stocks_ml.train import cap_rank_asof
+        ctx.pan[CAP_RANK_COL] = cap_rank_asof(store, ctx.pan)
     from stocks_ml.selection import MODEL_PARAMS
     overrides = {k: v for k, v in recipe["params"].items() if str(v) != str(MODEL_PARAMS.get(k))}
     by_year, sign, weeks, picks = {}, {}, [], []
@@ -144,7 +156,7 @@ def explain(store: str, years, copies=(1,), spec_path: Path = SPEC_PATH, log=log
         tabs, shaps, scores = [], [], []
         for c in copies:
             model, rows, fcols = fit_at(sel, ctx, t, c, recipe["label"], recipe["train_years"],
-                                        recipe["features"], overrides)
+                                        recipe["features"], overrides, recipe["drop"], recipe["train_top"])
             sh = shap_at(model, rows, fcols)
             tabs.append(year_table(sh, rows, fcols)); shaps.append(sh)
             scores.append(pd.Series(model.predict(rows[fcols]), index=rows["ticker"].values))
@@ -153,11 +165,13 @@ def explain(store: str, years, copies=(1,), spec_path: Path = SPEC_PATH, log=log
         # the top-TOP3_N by the copies' mean score (members only, as the live job ranks): their contributions
         score = pd.concat(scores, axis=1).mean(axis=1)
         members = [x for x in ctx.members.get(t, []) if x in score.index]
-        top3 = score.loc[members].sort_values(ascending=False).head(TOP3_N)
+        top3 = score.loc[members].sort_values(ascending=False).head(top_n)
         sh_mean = pd.concat(shaps).groupby(level=0).mean()
+        realized = rows.set_index("ticker")[recipe["label"]] if recipe["label"] in rows.columns else None
         for rank, (tk, sc) in enumerate(top3.items(), 1):
             row = sh_mean.loc[tk].copy(); row.name = tk
-            picks.append({"year": y, "week": str(t.date()), "rank": rank, "ticker": tk, "score": float(sc), "shap": row})
+            picks.append({"year": y, "week": str(t.date()), "rank": rank, "ticker": tk, "score": float(sc), "shap": row,
+                          "label": float(realized[tk]) if realized is not None and tk in realized.index else float("nan")})
         top = tab["mean_abs_shap"].sort_values(ascending=False).head(5)
         log(f"{y} ({t.date()}, {len(rows)} members, {len(copies)} copies): top-3 {', '.join(top3.index)}; " +
             ", ".join(f"{WORDS.get(k, k)} {v:.4f}" for k, v in top.items()))
@@ -304,13 +318,25 @@ def render_picks(res: dict, png: Path = OUT_PICKS_PNG, n: int = PICKS_SAMPLE, se
     return sample
 
 
-def run(store: str, years, copies=(1,), log=log) -> pd.DataFrame:
-    res = explain(store, years, copies, log=log)
-    summ = render(res)
-    t3 = render_top3(res)
+def outputs(tag: str = "") -> dict:
+    """The report paths: the champion's, or a variant's beside them (never over them)."""
+    if not tag:
+        return {"png": OUT_PNG, "md": OUT_MD, "top3": OUT_TOP3_PNG, "picks": OUT_PICKS_PNG}
+    d = OUT_PNG.parent
+    return {"png": d / f"champion_shap_{tag}.png", "md": d / f"champion_shap_{tag}.md",
+            "top3": d / f"champion_shap_{tag}_top3.png", "picks": d / f"champion_shap_{tag}_picks.png"}
+
+
+def run(store: str, years, copies=(1,), log=log, features=None, drop=None, tag: str = "") -> pd.DataFrame:
+    if (features is not None or drop is not None) and not tag:
+        raise SystemExit("a variant (--features / --drop) needs --tag so it does not overwrite the champion's report")
+    o = outputs(tag)
+    res = explain(store, years, copies, log=log, features=features, drop=drop)
+    summ = render(res, png=o["png"], md=o["md"])
+    t3 = render_top3(res, png=o["top3"], md=o["md"])
     if len(t3):
-        log(f"top-3 drivers -> {OUT_TOP3_PNG}: " + ", ".join(f"{WORDS.get(k, k)} {v:+.4f}" for k, v in t3['mean_signed_shap'].head(6).items()))
-        sample = render_picks(res)
-        log(f"per-pick decompositions -> {OUT_PICKS_PNG}: " + ", ".join(f"{p['ticker']} {p['week']}" for p in sample))
-    log(f"explain -> {OUT_PNG}, {OUT_MD}; top: " + ", ".join(f"{r['name']} {r['share_of_total']:.0%}" for _, r in summ.head(8).iterrows()))
+        log(f"top-3 drivers -> {o['top3']}: " + ", ".join(f"{WORDS.get(k, k)} {v:+.4f}" for k, v in t3['mean_signed_shap'].head(6).items()))
+        sample = render_picks(res, png=o["picks"])
+        log(f"per-pick decompositions -> {o['picks']}: " + ", ".join(f"{p['ticker']} {p['week']}" for p in sample))
+    log(f"explain -> {o['png']}, {o['md']}; top: " + ", ".join(f"{r['name']} {r['share_of_total']:.0%}" for _, r in summ.head(8).iterrows()))
     return summ

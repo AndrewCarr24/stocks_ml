@@ -88,12 +88,14 @@ def is_champion_walk(records: list[dict], spec_path: Path = SPEC_PATH) -> bool:
     spec = json.loads(Path(spec_path).read_text())
     from stocks_ml.procedure import model_params
     want = {"label": spec["horizon"]["label"], "train_years": int(spec["training_window_years"]),
-            "features": list(spec.get("features") or []),
+            "features": list(spec.get("features") or []), "drop": list(spec.get("drop_features") or []),
+            "train_top": spec.get("train_top"),
             "params": {k: str(v) for k, v in spec["model"]["params"].items()}}
     for rec in records:
         r = rec.get("recipe") or {}
         have = {"label": r.get("label"), "train_years": int(r.get("train_years", -1)),
-                "features": list(r.get("features") or []),
+                "features": list(r.get("features") or []), "drop": list(r.get("drop") or []),
+                "train_top": r.get("train_top"),
                 "params": {k: str(v) for k, v in model_params(r).items()}}
         if have != want:
             return False

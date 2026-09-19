@@ -44,11 +44,15 @@ def rebalance_calendar(panel, start=None, end=None, rebalance_every: int = 1) ->
     return rdates
 
 
+CAP_RANK_COL = "aux_cap_rank"     # market-cap rank at the row's date (train.cap_rank_asof)
+
+
 def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
                              label_col: str = "label", purge_days: int | None = None,
                              rebalance_every: int = 1,
                              cache_path=None,
-                             extra_features=()) -> WalkForwardPredictions:
+                             extra_features=(), drop_features=(), train_top=None,
+                             refit_every: int = 1) -> WalkForwardPredictions:
     """Staggered-refit ensemble walk: refresh one member per rebalance period.
 
     At each rebalance the newest member trains on data ending purge_days
@@ -64,7 +68,8 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
     Other targets/cadences pass `label_col` (e.g. "label_4w"), `purge_days`
     exceeding that label's calendar span, and `rebalance_every` (panel dates
     per rebalance). `extra_features` names panel columns the model gets on
-    top of feature_cols(panel) — the spec's `features` list (empty)."""
+    top of feature_cols(panel) — the spec's `features` list (empty);
+    `drop_features` names admitted columns withheld — the spec's `drop_features`."""
     # Walks cost hours of fits; cache_path (under the data dir, NOT tmp — the
     # OS purges tmp and has eaten these before) lets studies reuse them. The
     # caller owns invalidation: pass a new path when estimator/panel change.
@@ -77,22 +82,37 @@ def walk_forward_predictions(panel, estimator, cfg, start=None, end=None,
                 n_fits=int(stored.attrs.get("n_fits", len(stored.columns))))
     purge = cfg.purge_days if purge_days is None else purge_days
     fcols = feature_cols(panel)
+    unknown = [c for c in drop_features if c not in fcols]
+    if unknown:
+        raise KeyError(f"drop_features not among the panel's admitted features: {unknown}")
+    fcols = [c for c in fcols if c not in set(drop_features)]     # a recipe's `drop`: columns withheld
     missing = [c for c in extra_features if c not in panel.columns]
     if missing:
         raise KeyError(f"extra_features not in the panel: {missing}")
     fcols += [c for c in extra_features if c not in fcols]
     rdates = rebalance_calendar(panel, start, end, rebalance_every)
     labeled = panel[panel[label_col].notna()]
+    if train_top:
+        # the recipe's `train_top`: fit on the largest N names by market cap at the
+        # row's date (panel column aux_cap_rank, train.cap_rank_asof); every
+        # member is still scored — the same model, a bigger board
+        if CAP_RANK_COL not in labeled.columns:
+            raise KeyError(f"train_top needs the {CAP_RANK_COL} column (train.cap_rank_asof)")
+        labeled = labeled[labeled[CAP_RANK_COL] <= int(train_top)]
 
     members: list = []          # (fit_date, model), oldest first
     out = WalkForwardPredictions()
-    for t in rdates:
+    for i, t in enumerate(rdates):
+        # `refit_every` > 1: a fit every Nth rank date serves the N-1 that follow
+        # (a staler model; the labels it saw are older than every date it scores) —
+        # the screening cadence (2026-09-18), never the record's
         train_end = t - pd.Timedelta(days=purge)
         train_start = train_end - pd.DateOffset(years=cfg.cv_train_years)
         train = labeled[labeled["date"].between(train_start, train_end)]
         if cfg.train_sample_rows:
             train = train.sort_values("date").tail(cfg.train_sample_rows)
-        if len(train) >= MIN_TRAIN_ROWS and train["date"].nunique() >= MIN_TRAIN_WEEKS:
+        refit = i % max(1, int(refit_every)) == 0 or not members
+        if refit and len(train) >= MIN_TRAIN_ROWS and train["date"].nunique() >= MIN_TRAIN_WEEKS:
             members.append((t, clone(estimator).fit(dated_features(train, fcols),
                                                     train[label_col])))
             out.n_fits += 1

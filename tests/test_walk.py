@@ -160,3 +160,45 @@ def test_extra_features_join_the_model_inputs(tiny_cfg):
     assert extra.preds[t].iloc[0] == 2.0
     with pytest.raises(KeyError, match="x_missing"):
         walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg, extra_features=("x_missing",))
+
+
+def test_drop_features_withhold_admitted_columns(tiny_cfg):
+    panel, _, _ = _world()
+    panel["x_cand"] = 0.25
+    panel["f_two"] = 0.5                                  # a second admitted column
+    base = walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg)
+    less = walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg, drop_features=("f_two",))
+    swap = walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg, drop_features=("f_two",),
+                                    extra_features=("x_cand",))
+    t = max(base.preds)
+    assert base.preds[t].iloc[0] == 2.0 and less.preds[t].iloc[0] == 1.0
+    assert swap.preds[t].iloc[0] == 2.0                   # one out, one in: the same count
+    with pytest.raises(KeyError, match="x_cand"):
+        walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg, drop_features=("x_cand",))   # not admitted
+
+
+def test_train_top_fits_on_the_largest_names_and_scores_everyone(tiny_cfg):
+    from stocks_ml.models.walk import CAP_RANK_COL
+    panel, _, _ = _world()
+    big = sorted(panel["ticker"].unique())[:2]                 # two "large" names: enough rows to fit
+    panel[CAP_RANK_COL] = panel["ticker"].map({big[0]: 1.0, big[1]: 2.0}).fillna(9.0)
+
+    class RowsEcho(ColumnsEcho):
+        def fit(self, X, y):
+            self.n_ = len(X)
+            return self
+    base = walk_forward_predictions(panel, RowsEcho(), tiny_cfg)
+    top = walk_forward_predictions(panel, RowsEcho(), tiny_cfg, train_top=2)
+    t = max(base.preds)
+    assert top.preds[t].iloc[0] < base.preds[t].iloc[0]        # fewer training rows
+    assert len(top.preds[t]) == len(base.preds[t])              # every member still scored
+    with pytest.raises(KeyError, match="aux_cap_rank"):
+        walk_forward_predictions(panel.drop(columns=[CAP_RANK_COL]), RowsEcho(), tiny_cfg, train_top=2)
+
+
+def test_refit_every_reuses_the_last_fit_between_refits(tiny_cfg):
+    panel, _, _ = _world()
+    weekly = walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg)
+    every4 = walk_forward_predictions(panel, ColumnsEcho(), tiny_cfg, refit_every=4)
+    assert sorted(every4.preds) == sorted(weekly.preds)             # every week scored
+    assert every4.n_fits < weekly.n_fits and every4.n_fits >= weekly.n_fits // 4

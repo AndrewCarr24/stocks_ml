@@ -84,3 +84,59 @@ def test_feature_factor_check_flags_a_column_that_tracks_future_splits():
     res = feature_factor_check(ctx, ["leaky", "clean"], "2006-01-01", "2006-12-31")
     assert res["leaky"]["verdict"] == "FAIL" and abs(res["leaky"]["corr_with_future_split_factor"]) > FEATURE_FACTOR_LIMIT
     assert res["clean"]["verdict"] == "PASS" and res["VERDICT"] == "FAIL"
+
+
+def test_identity_check_uses_the_builders_arq_frame_for_a_refiled_quarter():
+    """A quarter filed twice becomes available at its LAST filing (the
+    builder's rule); the check must agree with the stored panel, not with
+    the first filing."""
+    ctx, prices, fund, wk = _toy()
+    again = fund[fund["ticker"] == "A"].assign(date=pd.Timestamp("2010-06-10"))   # re-filed after the week
+    fund2 = pd.concat([fund, again], ignore_index=True)
+    got = la.identity_check(ctx, prices, fund2, wk)
+    assert not got["ok"]                        # A's bvps is not yet available: the stored rank must change
+    ratio = pd.DataFrame({"date": [wk] * 3, "ticker": list("ABC"), "f_sf_book_to_market": [np.nan, 0.25, 2.0]})
+    ctx.pan = rank_normalize(ratio, ["f_sf_book_to_market"])
+    assert la.identity_check(ctx, prices, fund2, wk)["ok"]
+
+
+def test_fundamentals_file_prefers_the_frozen_vintage(tmp_path):
+    (tmp_path / "fundamentals.parquet").write_bytes(b"")
+    assert la.fundamentals_file(tmp_path) == tmp_path / "fundamentals.parquet"
+    (tmp_path / "fundamentals.frozen_2026-09-10.parquet").write_bytes(b"")
+    (tmp_path / "fundamentals.frozen_2026-09-01.parquet").write_bytes(b"")
+    assert la.fundamentals_file(tmp_path) == tmp_path / "fundamentals.frozen_2026-09-10.parquet"
+
+
+def test_feature_scan_lists_the_models_own_features_beyond_the_limit(monkeypatch):
+    monkeypatch.setattr(la, "feature_factor_check", lambda ctx, feats, lo, hi: {
+        **{f: {"corr_with_future_split_factor": v, "weeks": 500, "verdict": "PASS" if abs(v) <= 0.15 else "FAIL"}
+           for f, v in zip(feats, [0.02, -0.42, 0.20])}, "VERDICT": "FAIL"})
+    scan = la.feature_scan(None, ["f_a", "f_dollar_vol", "f_b"])
+    assert list(scan["beyond_limit"]) == ["f_dollar_vol", "f_b"] and scan["n_features"] == 3
+    line = la.leak_line({"VERDICT": "PASS", "segments": {}, "feature_scan": scan})
+    assert "feature scan: 2 of 3 beyond 0.15 (f_dollar_vol -0.42, f_b +0.20)" in line
+
+
+def test_model_features_follow_the_walks_record(tmp_path):
+    import json
+    from types import SimpleNamespace
+    pan = pd.DataFrame({"date": [pd.Timestamp("2010-01-08")], "ticker": ["A"], "f_mom_4w": [0.1], "f_dollar_vol": [0.2], "x_dollar_vol": [0.3]})
+    (tmp_path / "spec.json").write_text(json.dumps({"recipe": {"label": "l", "train_years": 8, "features": ["x_dollar_vol"], "drop": ["f_dollar_vol"]}}))
+    assert la.model_features(tmp_path / "preds.parquet", SimpleNamespace(pan=pan)) == ["f_mom_4w", "x_dollar_vol"]
+
+
+def test_live_archive_and_comparison(tmp_path):
+    from types import SimpleNamespace
+    t = pd.Timestamp("2026-09-18")
+    pan = pd.DataFrame({"date": [t] * 60, "ticker": [f"T{i}" for i in range(60)],
+                        "f_a": np.linspace(-1, 1, 60), "f_b": np.linspace(-1, 1, 60)})
+    path = la.archive_live_rows(tmp_path, SimpleNamespace(pan=pan), t)
+    assert path.name == "features_2026-09-18.parquet" and len(pd.read_parquet(path)) == 60
+    later = pan.copy()
+    later["f_b"] = later["f_b"].iloc[::-1].to_numpy()          # f_b's history rewritten by the later build
+    out = la.live_vs_rebuilt(tmp_path, later)
+    got = out.set_index("feature")
+    assert got.loc["f_a", "rank_agreement"] > 0.999 and got.loc["f_b", "rank_agreement"] < -0.99
+    assert got.loc["f_a", "share_moved_0.1"] == 0.0 and got.loc["f_b", "share_moved_0.1"] > 0.9
+    assert la.live_vs_rebuilt(tmp_path / "empty", later).empty

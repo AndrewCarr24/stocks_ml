@@ -120,9 +120,13 @@ uv run stocks-ml backtest --preds <walk>/select/preds.parquet <walk>/extend/pred
 uv run stocks-ml procedure --preds <walk>/select/preds.parquet [--check]   # writes the spec + PROCEDURE.md
 uv run stocks-ml eval [--walk W] [--incumbent I] [--ci-draws 200] [--no-charts]
 uv run stocks-ml app                                                 # reports/champion_explorer.html
-uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "params=name:v"] [--k16]
+uv run stocks-ml world --dir data/<new_world> --top 2000                    # a NEW research world: the top-N universe by market cap at each quarter end, built once
+uv run stocks-ml world --dir data/<w> --top N --derive-from data/<top-M world> [--membership-from data/<store>]   # carve a top-N (or another store's membership: a control) out of a built world; tables shared, panel rebuilt
+uv run stocks-ml world --dir data/<w> --append-sf                            # append the Sharadar columns a frozen panel lacks, after every existing one recomputes exactly
+uv run stocks-ml train ... --refit-every 4                                   # screening cadence: one fit per 4 weeks, every week scored (4 keeps the champion within a point of weekly; 8 loses 3 and reorders — 2026-09-18); the record stays weekly
+uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "drop=f_x+f_y"] [--candidate "params=name:v"] [--candidate "store=data/<world>,train_top=500"] [--adjudicate] [--k16]
 uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 26] [--seed 0]   # the prototype: stratified sample, K=16, seed-twin null, ranks only
-uv run stocks-ml explain [--years 2007-2024] [--copies 1]                     # Shapley importance -> reports/champion_shap.{png,md}
+uv run stocks-ml explain [--years 2007-2024] [--copies 1] [--features a,b --drop f_x --tag T]   # Shapley importance -> reports/champion_shap[_T].{png,md}
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 /opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e  # the Playwright page test
 ```
@@ -149,11 +153,24 @@ comes from the keychain through `git credential fill`; never print it).
    `eval`, `leak_audit` and `app` refuse it in code. It is read once, on the
    owner's go, after every choice is frozen.
 3. **Selection is mechanical.** A candidate model is a recipe (label,
-   window, features, params): prototyped by `stocks-ml challenge-fast`
+   window, features, drop, params, and optionally the world it is walked on —
+   `store=`, a wider universe scored with that world's own members and
+   forward returns, book against book on the common weeks — and `train_top=N`,
+   fit on the largest N names by market cap while every member is scored):
+   prototyped by `stocks-ml challenge-fast`
    (stratified sample, 26/yr, K=16, gap vs the luckier of the incumbent's two seed sets, flagged above the 90th percentile of the centred seed-twin null; ranks only), then `stocks-ml challenge` (every week, K=16): the
    argmax of the model score (the mean over the top-3/6/10 books of the
    cost-adjusted compounded %/yr; owner's rule 2026-09-14) on 2006-2015
-   alone, incumbent included; the strategy layers are
+   alone, incumbent included (the incumbent is the argmax of a long search
+   there, so its 2006-2015 score is inflated by selection: `--adjudicate`
+   then meets the challenger's stage-2 winner and the incumbent once on
+   2016-2019, neither selected there — the incumbent's extend walk, its seed
+   twin walked on the window, the candidate walked on the window, each at its
+   own procedure-decided settings; the candidate must beat both seed sets;
+   owner's rule 2026-09-18, for final head-to-heads only; 2020 -> the holdout
+   stays untouched; `--refit-every 4` runs every walk of a challenge at the
+   screening cadence — the incumbent's own walk must be at the same cadence,
+   e.g. data/experiments/cadence/sp500_r4); the strategy layers are
    `selection.decide_strategy` (book by cost-adjusted compounded %/yr;
    floor, stop, cap by Sharpe, stop and cap adopted only if higher). t
    statistics are reported, not gated. A doubt about a winner becomes a
@@ -264,7 +281,32 @@ comes from the keychain through `git credential fill`; never print it).
   volatility (t +2.1, universe IC 0) remain. `challenge` and
   `challenge-fast` now refuse any named feature whose correlation with the
   future split factor exceeds 0.15 (`leak_audit.feature_factor_check`)
-  before a single copy is fit; the panel's own features sit within ±0.05.
+  before a single copy is fit.
+- **The dollar-volume split leak (2026-09-19).** The claim that "the panel's
+  own features sit within ±0.05" was never tested and was false: running the
+  gate on the champion's 64 features found `f_dollar_vol` at -0.42. SEP
+  volume is SPLIT-ADJUSTED (AAPL traded 369M/235M shares a day either side
+  of its 7:1), and the nominal basis multiplied the UNADJUSTED close by it,
+  so every future splitter's dollar volume was inflated by its split factor
+  for its whole history. Fixed: dollar quantities (dollar volume, Amihud)
+  use the split-only adjusted close times volume whatever the level basis
+  (`features/panel.price_features`); the frozen research panel keeps its
+  column and carries the clean one appended as `x_dollar_vol`
+  (`world --append-dv`); every built panel aliases `x_dollar_vol` to its
+  (clean) `f_dollar_vol`, so the recipe `features=x_dollar_vol,drop=f_dollar_vol`
+  is one 64-column matrix in research and live. Impact, cadence 4, K=16
+  (`data/experiments/dv_fix`): 2006-2015 +11.3 vs +14.1/+17.2 (twin),
+  2016-2019 +34.5 vs +31.8/+28.6, Sharpe 1.42 vs 1.18, DD 13% vs 26% — the
+  leak was not the source of the edge; the clean recipe is the champion's
+  correction (adoption run 2026-09-19). Six other features sit at 0.15-0.21
+  (book-to-market, sales-to-price ×2, debt/EBITDA, ROE, insider buyers):
+  price-free ratios or exact close_split ratios — value/quality names split
+  less; economics, not a basis leak. Standing since 2026-09-19: every audit
+  scans the model's own features (`leak_audit.feature_scan`, reported in
+  the leak line), and the live job archives the rows it scored
+  (`<live>/archive/features_<date>.parquet`) so `stocks-ml audit-live` can
+  compare them with a later build — a feature whose history is rewritten
+  by later data is a leak (the owner's detector).
 - **Volatility in context (2026-09-17, the owner's lead):** the model has no
   sector input (f_sec_ dummies are excluded), and within-week ranks already
   remove the market's volatility level, so the contexts that can add

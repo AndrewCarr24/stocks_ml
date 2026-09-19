@@ -27,6 +27,28 @@ def cmd_world(args, cfg):
     panel.parquet + panel_sf.parquet under config.yaml's price basis and
     delisting rule. The live job runs the same two steps every Saturday."""
     from stocks_ml.data.world import build_world_panel, refresh_world
+    if args.top:
+        from stocks_ml.data.world import build_research_store, derive_research_store
+        if args.dir == "data/r5_live":
+            raise SystemExit("--top builds a NEW research world: give it its own --dir")
+        if args.derive_from:
+            derive_research_store(args.dir, args.derive_from, cfg, n=args.top, membership_from=args.membership_from)
+            return
+        from stocks_ml.data.sharadar import api_key
+        build_research_store(args.dir, api_key(), cfg, n=args.top, sec=not args.no_sec)
+        return
+    if args.append_sf:
+        from stocks_ml.data.world import append_sf_columns
+        append_sf_columns(args.dir, cfg)
+        return
+    if args.append_sr:
+        from stocks_ml.data.world import append_sector_relative
+        append_sector_relative(args.dir)
+        return
+    if args.append_dv:
+        from stocks_ml.data.world import append_clean_dollar_volume
+        append_clean_dollar_volume(args.dir)
+        return
     if args.extras:
         from stocks_ml.data.sharadar import api_key
         from stocks_ml.data.store import DataStore
@@ -59,7 +81,9 @@ def cmd_train(args, cfg):
     walk(args.store, args.start, args.end, args.label, args.train_years,
          len(copies) if copies else args.k, args.out,
          every=args.every, features=[f for f in (args.features or "").split(",") if f],
-         params=_params(args.params), workers=args.workers, copies=copies)
+         params=_params(args.params), workers=args.workers, copies=copies,
+         drop=[f for f in (args.drop or "").split(",") if f], train_top=args.train_top,
+         refit_every=args.refit_every)
 
 
 def cmd_challenge(args, cfg):
@@ -67,7 +91,7 @@ def cmd_challenge(args, cfg):
     base = incumbent_recipe(args.incumbent)
     cands = [parse_candidate(c, base) for c in args.candidate]
     run(cands, args.incumbent, args.out, store=args.store, k16=args.k16, lo=args.sel_start,
-        hi=args.sel_end, workers=args.workers)
+        hi=args.sel_end, workers=args.workers, adjudicate_window=args.adjudicate, refit_every=args.refit_every)
 
 
 def cmd_challenge_fast(args, cfg):
@@ -75,7 +99,8 @@ def cmd_challenge_fast(args, cfg):
     base = incumbent_recipe(args.incumbent)
     cands = [parse_candidate(c, base) for c in args.candidate]
     run_fast(cands, args.incumbent, args.out, store=args.store, per_year=args.per_year,
-             seed=args.seed, lo=args.sel_start, hi=args.sel_end, workers=args.workers)
+             seed=args.seed, lo=args.sel_start, hi=args.sel_end, workers=args.workers,
+             refit_every=args.refit_every, k=args.k)
 
 
 def cmd_backtest(args, cfg):
@@ -129,10 +154,25 @@ def cmd_app(args, cfg):
     build(store=args.store, out=args.out)
 
 
+def cmd_audit_live(args, cfg):
+    """Archived live rows vs the same rows in a later panel build (the leak detector)."""
+    from stocks_ml.leak_audit import live_vs_rebuilt
+    panel = pd.read_parquet(Path(args.panel))
+    t = live_vs_rebuilt(args.live_dir, panel)
+    if t.empty:
+        print("nothing archived yet (the live job archives its rows from 2026-09-19 on)")
+        return
+    print(t.to_string(index=False))
+    worst = t[t["rank_agreement"] < 0.98]
+    print(f"\n{len(worst)} feature(s) with rank agreement below 0.98" + (": " + ", ".join(worst["feature"]) if len(worst) else ""))
+
+
 def cmd_explain(args, cfg):
     from stocks_ml.explain import run
     a, b = (int(x) for x in args.years.split("-"))
-    run(args.store, range(a, b + 1), copies=tuple(int(x) for x in args.copies.split(",")))
+    split = lambda v: None if v is None else [f for f in v.split(",") if f]  # noqa: E731
+    run(args.store, range(a, b + 1), copies=tuple(int(x) for x in args.copies.split(",")),
+        features=split(args.features), drop=split(args.drop), tag=args.tag or "")
 
 
 def cmd_r5_weekly(args, cfg):
@@ -195,6 +235,23 @@ def main():
     p.add_argument("--extras", action="store_true",
                    help="pull the extra Sharadar tables (tickers metadata, holdings, high/low, the wider "
                         "fundamentals) into the store and stop")
+    p.add_argument("--top", type=int, default=None, metavar="N",
+                   help="build a NEW research world at --dir for the top-N universe (domestic common stock "
+                        "by market cap at each quarter end), from scratch; refuses an existing world")
+    p.add_argument("--append-dv", action="store_true",
+                   help="append the split-consistent dollar volume (x_dollar_vol) to the panel (append-only)")
+    p.add_argument("--append-sr", action="store_true",
+                   help="append sector-relative ranks of the admitted features (x_sr_*) to the panel, derived from "
+                        "its own ranked columns (append-only)")
+    p.add_argument("--append-sf", action="store_true",
+                   help="append the Sharadar feature columns a frozen panel lacks, after verifying every "
+                        "existing one recomputes exactly (append-only; never rebuilds)")
+    p.add_argument("--membership-from", default=None, metavar="STORE",
+                   help="with --derive-from: take the membership stints from STORE instead of the top-N cut "
+                        "(a control: the champion's names on the new world's tables and build)")
+    p.add_argument("--derive-from", default=None, metavar="STORE",
+                   help="with --top N: carve the top-N world out of a built top-M world (N <= M): tables "
+                        "shared by symlink, membership cut at N, the panel rebuilt for this universe; no pull")
 
     p = sub.add_parser("train", help="the walk: refit the model every week of a window, K copies")
     p.add_argument("--out", help="directory for preds.parquet + spec.json (a walk segment)")
@@ -210,7 +267,12 @@ def main():
     p.add_argument("--check-weeks", type=int, default=2)
     p.add_argument("--features", default=None, help="extra panel columns, comma-separated")
     p.add_argument("--params", default=None, help="MODEL_PARAMS overrides, name=value,...")
-    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process)")
+    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process); STOCKS_ML_CORES=N caps the cores used")
+    p.add_argument("--drop", default=None, help="admitted f_ columns withheld, comma-separated")
+    p.add_argument("--train-top", type=int, default=None, metavar="N",
+                   help="fit on the largest N names by market cap at each row's date (a top-N world); score every member")
+    p.add_argument("--refit-every", type=int, default=1, metavar="N",
+                   help="screening cadence: one fit per N weeks, every week scored (the record stays weekly)")
     p.add_argument("--copies", default=None, metavar="A-B",
                    help="walk copies (seeds) A..B instead of 1..K, e.g. 17-32 for a seed twin")
 
@@ -225,8 +287,15 @@ def main():
     p.add_argument("--store", default=STORE)
     p.add_argument("--sel-start", default="2006-01-01")
     p.add_argument("--sel-end", default="2015-12-31")
+    p.add_argument("--refit-every", type=int, default=1, metavar="N",
+                   help="screening cadence for every walk of this run (incumbent twin, candidates, adjudication): "
+                        "one fit per N weeks; the incumbent's own walk must be at the same cadence")
+    p.add_argument("--adjudicate", action="store_true",
+                   help="after stage 2, the challenger's winner meets the incumbent once on 2016-2019 "
+                        "(neither selected there): the incumbent's extend walk, its seed twin walked on the "
+                        "window, the candidate walked on the window; the model score decides")
     p.add_argument("--k16", action="store_true", help="the winner at K=16 on both segments + eval")
-    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process)")
+    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process); STOCKS_ML_CORES=N caps the cores used")
 
     p = sub.add_parser("challenge-fast", help="the prototype: candidate recipes vs the incumbent on a "
                        "stratified random sample of the selection window at K=16; ranks only")
@@ -239,7 +308,11 @@ def main():
     p.add_argument("--sel-end", default="2015-12-31")
     p.add_argument("--per-year", type=int, default=26, help="weeks drawn from each year")
     p.add_argument("--seed", type=int, default=0, help="the draw's seed (the same weeks for every candidate)")
-    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process)")
+    p.add_argument("--workers", type=int, default=7, help="fits in parallel processes (1 = in-process); STOCKS_ML_CORES=N caps the cores used")
+    p.add_argument("--refit-every", type=int, default=1, metavar="N",
+                   help="screening cadence: the sample is drawn in runs of N consecutive weeks, one fit per run; "
+                        "the incumbent's walk must be at the same cadence")
+    p.add_argument("--k", type=int, default=16, help="copies per candidate (the null is calibrated at this K)")
 
     p = sub.add_parser("backtest", help="a walk through the strategy: the table vs the S&P 500 at the "
                        "walk's own settings (the spec's for the champion; the procedure's decision on "
@@ -296,6 +369,14 @@ def main():
     p.add_argument("--years", default="2007-2024", help="A-B: one fit at each year's first rank week")
     p.add_argument("--copies", default="1", help="copies (seeds) to average, comma-separated")
     p.add_argument("--store", default=STORE)
+    p.add_argument("--features", default=None, help="a variant: extra panel columns, comma-separated")
+    p.add_argument("--drop", default=None, help="a variant: admitted f_ columns withheld, comma-separated")
+    p.add_argument("--tag", default=None, help="a variant writes reports/champion_shap_<tag>.* instead")
+
+    p = sub.add_parser("audit-live", help="compare the rows the live job scored (its archive) with the same rows "
+                       "in a later panel build: a feature whose history is rewritten by later data is a leak")
+    p.add_argument("--live-dir", default="data/r5_live")
+    p.add_argument("--panel", default="data/r5_live/panel_sf.parquet", help="the later build to compare against")
 
     p = sub.add_parser("r5-weekly", help="the champion's weekly signal: refresh the live world, "
                        "rank, rotate a sleeve, keep the paper ledger (signals_r5/, ledger_r5.json)")
@@ -322,7 +403,7 @@ def main():
         from stocks_ml.procedure import SPEC_PATH
         args.incumbent = json.loads(SPEC_PATH.read_text())["procedure"]["preds"]["path"]
     cfg = load_config(args.config)
-    {"world": cmd_world, "train": cmd_train, "backtest": cmd_backtest,
+    {"world": cmd_world, "train": cmd_train, "backtest": cmd_backtest, "audit-live": cmd_audit_live,
      "procedure": cmd_procedure, "procedure-card": cmd_procedure_card,
      "eval": cmd_eval, "app": cmd_app, "challenge": cmd_challenge,
      "challenge-fast": cmd_challenge_fast, "explain": cmd_explain,

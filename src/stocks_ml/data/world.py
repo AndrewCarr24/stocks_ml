@@ -111,6 +111,73 @@ def _concat(frames, columns) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)[list(columns)]
 
 
+# ---- the top-N universe (2026-09-18: the owner's direction after the S&P 500 line) ----
+SNAPSHOT_START = "1998-01-01"        # quarter-end market-cap snapshots from here
+SNAPSHOT_FALLBACK_DAYS = 6           # a quarter end on a weekend/holiday: the last session before it
+EQUITY_CATEGORIES = ("Domestic Common Stock", "Domestic Common Stock Primary Class")
+EXCLUDED_EXCHANGES = ("OTC",)
+
+
+def quarter_ends(start, end) -> list[pd.Timestamp]:
+    """Calendar quarter ends in [start, end]."""
+    lo, hi = pd.Timestamp(start), pd.Timestamp(end)
+    q = pd.date_range(lo - pd.offsets.QuarterEnd(1), hi, freq="QE")
+    return [d for d in q if lo <= d <= hi]
+
+
+def universe_equities(tk: pd.DataFrame) -> set[str]:
+    """The tickers a top-N universe may hold: domestic common stock (one class
+    per company: primary, never a secondary class), not OTC."""
+    cat = tk["category"].fillna("")
+    ex = tk["exchange"].fillna("") if "exchange" in tk.columns else pd.Series("", index=tk.index)
+    ok = cat.isin(EQUITY_CATEGORIES) & ~ex.isin(EXCLUDED_EXCHANGES)
+    return set(tk.loc[ok, "ticker"].dropna())
+
+
+def membership_from_top(snapshots: pd.DataFrame, eligible: set, sectors: dict, n: int) -> pd.DataFrame:
+    """Membership stints (ticker, start_date, end_date, sector) of the top-n
+    eligible names by market cap at each snapshot date: a name enters at the
+    first snapshot that ranks it, stays until the first snapshot that does
+    not (the stint ends that day), open-ended if ranked at the last one.
+    Point in time: nothing after a snapshot date informs its membership."""
+    s = snapshots.dropna(subset=["marketcap"]).copy()
+    s["date"] = pd.to_datetime(s["date"])
+    s = s[s["ticker"].isin(eligible)]
+    dates = sorted(s["date"].unique())
+    top = {}
+    for d, g in s.groupby("date"):
+        top[d] = set(g.sort_values("marketcap", ascending=False).drop_duplicates("ticker")["ticker"].head(n))
+    rows, open_since = [], {}
+    for d in dates:
+        for t in list(open_since):
+            if t not in top[d]:
+                rows.append((t, open_since.pop(t), d))
+        for t in top[d]:
+            open_since.setdefault(t, d)
+    rows += [(t, d0, pd.NaT) for t, d0 in open_since.items()]
+    mem = pd.DataFrame(rows, columns=["ticker", "start_date", "end_date"])
+    mem["sector"] = mem["ticker"].map(sectors)
+    return mem.sort_values(["ticker", "start_date"]).reset_index(drop=True)
+
+
+def fetch_snapshots(key, fetch_fn, dates, log=_log) -> pd.DataFrame:
+    """DAILY market caps at each date (the last session on or before it)."""
+    frames = []
+    for d in dates:
+        for back in range(SNAPSHOT_FALLBACK_DAYS + 1):
+            day = (pd.Timestamp(d) - pd.Timedelta(days=back)).date().isoformat()
+            df = _fetch("daily", key, fetch_fn, date=day, fields="ticker,date,marketcap")
+            if len(df):
+                df["marketcap"] = pd.to_numeric(df["marketcap"], errors="coerce")
+                frames.append(df[["ticker", "date", "marketcap"]].assign(snapshot=pd.Timestamp(d)))
+                break
+        else:
+            log(f"snapshot {pd.Timestamp(d).date()}: no DAILY rows within {SNAPSHOT_FALLBACK_DAYS} days")
+    out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["ticker", "date", "marketcap", "snapshot"])
+    out["date"] = out["snapshot"]          # membership keys on the calendar quarter end
+    return out.drop(columns=["snapshot"])
+
+
 # ---- pure transforms (unit-tested) ----
 def sp500_universe(sp500: pd.DataFrame) -> list[str]:
     """Every ticker that ever appears in the sp500 table, including the
@@ -587,6 +654,203 @@ def refresh_sec(store: DataStore, cfg, current: list[str], log=_log) -> dict:
     return report
 
 
+def _stream_batches(path: Path, frames_iter) -> int:
+    """Write DataFrames to one parquet file batch by batch (never all in
+    memory: a top-2000 SEP history is ~25M rows). Returns the row count."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    writer, n = None, 0
+    try:
+        for df in frames_iter:
+            if df.empty:
+                continue
+            tab = pa.Table.from_pandas(df, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(path, tab.schema)
+            writer.write_table(tab.cast(writer.schema))
+            n += len(df)
+    finally:
+        if writer is not None:
+            writer.close()
+    return n
+
+
+DERIVED_TABLES = ("sharadar_tickers", "daily_snapshots", "sharadar_prices", "prices", "fundamentals", "insiders",
+                  "form4", "form4_sec", "form4_bridge", "edgar", "sec8k", "shortint", "fred")
+
+
+def derive_research_store(root, parent, cfg, n: int, log=_log, panel: bool = True,
+                          membership_from=None) -> dict:
+    """A top-n world carved from a built top-m world (n <= m): every pulled
+    table is shared by symlink, the membership is the parent's snapshots cut
+    at n (the same point-in-time rule), and the panel is rebuilt so every
+    feature is ranked within THIS universe. Nothing is fetched. Refuses an
+    existing world."""
+    root, parent = Path(root), Path(parent)
+    if (root / "panel_sf.parquet").exists() or (root / "membership.parquet").exists():
+        raise SystemExit(f"{root} already holds a research world; it is never rebuilt")
+    src = DataStore(parent)
+    if not src.exists("daily_snapshots"):
+        raise SystemExit(f"{parent} has no daily_snapshots: derive from a top-N world")
+    m = int(src.manifest.get("universe", {}).get("n", 0))
+    if m and n > m:
+        raise SystemExit(f"top-{n} cannot be derived from a top-{m} world")
+    store = DataStore(root)
+    for name in DERIVED_TABLES:
+        if src.exists(name):
+            (root / f"{name}.parquet").symlink_to((parent / f"{name}.parquet").resolve())
+    tk = src.read("sharadar_tickers")
+    snaps = src.read("daily_snapshots")
+    sectors = dict(tk.dropna(subset=["sicsector"]).drop_duplicates("ticker")[["ticker", "sicsector"]].values)
+    if membership_from:
+        # a CONTROL world: another store's membership (e.g. the S&P 500 stints) on this
+        # store's tables and build — same names as the champion's world, new plumbing
+        mem = DataStore(membership_from).read("membership")
+        have = set(src.read("prices")["ticker"]) if src.exists("prices") else set(mem["ticker"])
+        missing = sorted(set(mem["ticker"]) - have)
+        mem = mem[mem["ticker"].isin(have)].reset_index(drop=True)
+        log(f"membership from {membership_from}: {len(mem)} stints; {len(missing)} names without prices here dropped: {missing[:8]}")
+    else:
+        mem = membership_from_top(snaps, universe_equities(tk), sectors, n)
+    store.write("membership", mem)
+    universe = sorted(set(mem["ticker"]))
+    report = {"universe": f"top{n}" if not membership_from else f"membership of {membership_from}", "n": n,
+              "derived_from": str(parent),
+              "membership": {"snapshots": int(snaps["date"].nunique()), "stints": int(len(mem)),
+                             "names": len(universe), "current": int(mem["end_date"].isna().sum())}}
+    for k in ("sharadar", "edgar", "sec8k", "shortint", "fred"):
+        if k in src.manifest:
+            store.set_manifest(k, src.manifest[k])
+    rule = (f"the membership of {membership_from} (a control: the same names on {parent}'s tables and build)"
+            if membership_from else f"top{n} by market cap at each calendar quarter end, derived from "
+                                    f"{parent} (its snapshots and tables, shared by symlink)")
+    store.set_manifest("universe", {"rule": rule, "n": n, "derived_from": str(parent),
+                                    "membership_from": membership_from, **report["membership"]})
+    log(f"universe top{n} from {parent}: {len(mem)} stints over {len(universe)} names, "
+        f"{report['membership']['current']} current; tables shared")
+    if panel:
+        build_world_panel(root, cfg, log=log)
+    return report
+
+
+def build_research_store(root, key, cfg, n: int = 2000, fetch_fn=None, log=_log, sec: bool = True,
+                         panel: bool = True, start: str = SNAPSHOT_START, today=None) -> dict:
+    """A research world for the top-n universe, from nothing: quarter-end
+    market-cap snapshots -> membership stints; then for every name that was
+    ever a member, SEP prices (streamed to disk), SF1 ARQ/ART, SF2 insiders
+    (the Form 4 file is SF2-derived here), the free SEC/FINRA/FRED ingesters,
+    and the panel. Refuses a directory that already holds a panel: a research
+    world is built once (the frozen-panel rule)."""
+    root = Path(root)
+    if (root / "panel_sf.parquet").exists() or (root / "membership.parquet").exists():
+        raise SystemExit(f"{root} already holds a research world; it is never rebuilt")
+    store = DataStore(root)
+    today = pd.Timestamp(today or pd.Timestamp.today()).normalize()
+    report = {"universe": f"top{n}", "n": n}
+
+    tk = fetch_table("tickers", key, fetch_fn=fetch_fn, **{"table": "stocks"})   # every equity Sharadar prices
+    store.write("sharadar_tickers", tk)
+    eligible = universe_equities(tk)
+    dates = quarter_ends(start, today)
+    snaps = fetch_snapshots(key, fetch_fn, dates, log=log)
+    store.write("daily_snapshots", snaps)
+    sectors = dict(tk.dropna(subset=["sicsector"]).drop_duplicates("ticker")[["ticker", "sicsector"]].values)
+    mem = membership_from_top(snaps, eligible, sectors, n)
+    store.write("membership", mem)
+    universe = sorted(set(mem["ticker"]))
+    report["membership"] = {"snapshots": int(snaps["date"].nunique()), "stints": int(len(mem)),
+                            "names": len(universe), "current": int(mem["end_date"].isna().sum())}
+    log(f"universe top{n}: {report['membership']['snapshots']} snapshots {pd.Timestamp(start).date()} -> "
+        f"{today.date()}, {len(mem)} stints over {len(universe)} names, {report['membership']['current']} current")
+
+    # prices: SEP for the universe, SFP for the funds — streamed batch by batch
+    def sep_batches():
+        batches = _chunks(universe, 30)
+        for i, b in enumerate(batches, 1):
+            df = _fetch("stocks", key, fetch_fn, ticker=",".join(b), **{"from": UNIVERSE_START})
+            if i % 20 == 0 or i == len(batches):
+                log(f"  prices: batch {i}/{len(batches)}")
+            yield df
+        yield _fetch("funds", key, fetch_fn, ticker=",".join(FUND_TICKERS), **{"from": UNIVERSE_START})
+    def as_sep(df):
+        if df.empty:
+            return df
+        df = df[SEP_COLS].copy()
+        for c in ("open", "high", "low", "close", "volume", "closeadj", "closeunadj"):
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df["date"] = pd.to_datetime(df["date"])
+        df["lastupdated"] = pd.to_datetime(df["lastupdated"], errors="coerce")
+        return df.drop_duplicates(["ticker", "date"], keep="last")
+    raw_path, px_path = store._path("sharadar_prices"), store._path("prices")
+    def both():
+        for df in sep_batches():
+            df = as_sep(df)
+            if df.empty:
+                continue
+            import pyarrow as pa, pyarrow.parquet as pq
+            yield df, prices_from_sep(df)
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    wr = wp = None
+    n_rows = 0
+    try:
+        for raw, px in both():
+            t1, t2 = pa.Table.from_pandas(raw, preserve_index=False), pa.Table.from_pandas(px, preserve_index=False)
+            if wr is None:
+                wr, wp = pq.ParquetWriter(raw_path, t1.schema), pq.ParquetWriter(px_path, t2.schema)
+            wr.write_table(t1.cast(wr.schema)); wp.write_table(t2.cast(wp.schema))
+            n_rows += len(px)
+    finally:
+        for w in (wr, wp):
+            if w is not None:
+                w.close()
+    prices_meta = pq.read_metadata(px_path) if px_path.exists() else None
+    report["prices"] = {"rows": n_rows}
+    log(f"prices: {n_rows:,} rows for {len(universe)} names + {FUND_TICKERS}")
+
+    # fundamentals: SF1 ARQ + ART, full history
+    frames = []
+    for b in _chunks(universe, 30):
+        for dim in ("ARQ", "ART"):
+            frames.append(_fetch("fundamentals", key, fetch_fn, ticker=",".join(b), dimension=dim,
+                                 **{"from": FUNDAMENTALS_START}))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        raw_sf1 = pd.concat([f for f in frames if not f.empty], ignore_index=True) \
+            if any(not f.empty for f in frames) else pd.DataFrame(columns=FUND_COLS)
+    fund = fundamentals_from_sf1(raw_sf1, set(universe))
+    store.write("fundamentals", fund)
+    report["fundamentals"] = {"rows": int(len(fund)), "names": int(fund["ticker"].nunique())}
+    log(f"fundamentals: {len(fund):,} rows, {report['fundamentals']['names']} names")
+    del frames, raw_sf1
+
+    # insiders: SF2 full history; the Form 4 file is SF2-derived (form4_from_sf2)
+    frames = [_fetch("insiders", key, fetch_fn, ticker=",".join(b), **{"from": UNIVERSE_START})
+              for b in _chunks(universe, 30)]
+    raw_sf2 = pd.concat([f for f in frames if not f.empty], ignore_index=True) \
+        if any(not f.empty for f in frames) else pd.DataFrame(columns=INSIDER_COLS + ["securityadcode", "transactionpricepershare"])
+    ins = insiders_from_sf2(raw_sf2, set(universe))
+    form4 = form4_from_sf2(raw_sf2, set(universe))
+    store.write("insiders", ins)
+    store.write("form4", form4)
+    store.write("form4_sec", form4)                   # the frozen file a live copy would extend
+    store.write("form4_bridge", pd.DataFrame(columns=FORM4_COLS))
+    report["insiders"] = {"rows": int(len(ins)), "form4_rows": int(len(form4))}
+    log(f"insiders: {len(ins):,} rows; form4 {len(form4):,} rows")
+    del frames, raw_sf2
+    store.set_manifest("sharadar", {"since": str(today.date()), "form4_sec_through": str(today.date()),
+                                    "built_at": str(pd.Timestamp.now()), "universe": f"top{n}"})
+    store.set_manifest("universe", {"rule": f"top{n} domestic common stock by market cap at each calendar "
+                                            f"quarter end since {pd.Timestamp(start).date()}; a name is a member "
+                                            f"from the first snapshot that ranks it until the first that does not",
+                                    "n": n, **report["membership"]})
+    if sec:
+        report["sec"] = refresh_sec(store, cfg, universe, log=log)
+    if panel:
+        build_world_panel(root, cfg, log=log)
+    return report
+
+
 def refresh_world(live_dir, cfg, data_dir="data", fetch_fn=None, log=_log,
                   sec: bool = True) -> dict:
     from stocks_ml.data.sharadar import api_key
@@ -607,6 +871,105 @@ class _PanelStore(DataStore):
         if name == "prices":
             df = df[~df["ticker"].isin(PANEL_EXCLUDED)].reset_index(drop=True)
         return df
+
+
+def sharadar_frame(store, cfg, panel: pd.DataFrame, fundamentals_file=None) -> pd.DataFrame:
+    """The Sharadar fundamental features for `panel` (build_world_panel's
+    step, factored out): ratios on the split-adjusted close under the
+    nominal basis, ranked within the week."""
+    from stocks_ml.features.ranking import rank_normalize
+    from stocks_ml.features.sharadar_fundamentals import SF_RAW_COLS, sharadar_fundamental_features
+    prices = store.read("prices")
+    fund = pd.read_parquet(fundamentals_file) if fundamentals_file else store.read("fundamentals")
+    nominal = getattr(cfg, "price_basis", "closeadj") == "nominal"
+    px_field = "close_split" if nominal else "close"
+    cw = prices.pivot(index="date", columns="ticker", values=px_field).sort_index().ffill()
+    wk = cw.reindex(pd.Index(sorted(panel["date"].unique())), method="ffill")
+    close = pd.Series(wk.stack().reindex(
+        pd.MultiIndex.from_frame(panel[["date", "ticker"]])).values, index=panel.index)
+    ff = sharadar_fundamental_features(fund, panel, close)
+    return rank_normalize(pd.concat([panel[["date", "ticker"]], ff], axis=1), SF_RAW_COLS)[SF_RAW_COLS]
+
+
+def append_sector_relative(root, log=_log, cols=None) -> list[str]:
+    """Append the sector-relative ranks (features/panel.sector_relative_ranks)
+    of the admitted features to a panel as x_sr_* columns — derived from the
+    panel's own ranked columns and the membership's sector map; existing
+    columns untouched. Columns already present are left alone."""
+    from stocks_ml.features.panel import SR_PREFIX, feature_cols, sector_relative_ranks
+    root = Path(root)
+    path = root / "panel_sf.parquet"
+    panel = pd.read_parquet(path)
+    cols = [c for c in (cols or feature_cols(panel)) if SR_PREFIX + c not in panel.columns]
+    if not cols:
+        log(f"{path}: every sector-relative column present; nothing to append")
+        return []
+    mem = DataStore(root).read("membership")
+    smap = dict(mem.dropna(subset=["sector"]).drop_duplicates("ticker")[["ticker", "sector"]].values)
+    sr = sector_relative_ranks(panel, panel["ticker"].map(smap), cols)
+    for c in sr.columns:
+        panel[c] = sr[c].to_numpy()
+    panel.to_parquet(path, index=False)
+    log(f"{path}: appended {len(sr.columns)} sector-relative columns ({SR_PREFIX}*)")
+    return list(sr.columns)
+
+
+def append_clean_dollar_volume(root, log=_log, col: str = "x_dollar_vol") -> list[str]:
+    """Append the split-consistent dollar volume (split-adjusted close x
+    split-adjusted volume, 20-day mean, log, ranked within the week) to a
+    frozen panel as `col`: the fixed f_dollar_vol, opt-in by recipe
+    (features=x_dollar_vol,drop=f_dollar_vol). Existing columns untouched."""
+    from stocks_ml.features.ranking import rank_normalize
+    root = Path(root)
+    path = root / "panel_sf.parquet"
+    panel = pd.read_parquet(path)
+    if col in panel.columns:
+        log(f"{path}: {col} present; nothing to append")
+        return []
+    panel["date"] = pd.to_datetime(panel["date"])
+    prices = _PanelStore(root).read("prices")
+    px = "close_split" if "close_split" in prices.columns else "close"
+    c = prices.pivot(index="date", columns="ticker", values=px).sort_index()
+    v = prices.pivot(index="date", columns="ticker", values="volume").sort_index()
+    dv = np.log((c * v).rolling(20).mean().where(lambda d: d > 0))
+    wk = dv.reindex(pd.Index(sorted(panel["date"].unique())), method="ffill")
+    raw = pd.Series(wk.stack().reindex(pd.MultiIndex.from_frame(panel[["date", "ticker"]])).values, index=panel.index)
+    ranked = rank_normalize(pd.DataFrame({"date": panel["date"], "ticker": panel["ticker"], col: raw}), [col])[col]
+    panel[col] = ranked.to_numpy()
+    panel.to_parquet(path, index=False)
+    log(f"{path}: appended {col} (split-consistent dollar volume)")
+    return [col]
+
+
+def append_sf_columns(root, cfg, log=_log) -> list[str]:
+    """Append the Sharadar columns a frozen panel lacks (a newer SF_RAW_COLS),
+    after verifying that EVERY Sharadar column it already has recomputes
+    exactly from the store's tables (the fundamentals vintage the panel was
+    built from: leak_audit.fundamentals_file). Existing columns are never
+    touched; a mismatch refuses the append (the 2026-09-16 rule)."""
+    from stocks_ml.features.sharadar_fundamentals import SF_RAW_COLS
+    from stocks_ml.leak_audit import fundamentals_file
+    root = Path(root)
+    store = _PanelStore(root)
+    path = root / "panel_sf.parquet"
+    panel = pd.read_parquet(path)
+    panel["date"] = pd.to_datetime(panel["date"])
+    have = [c for c in SF_RAW_COLS if c in panel.columns]
+    new = [c for c in SF_RAW_COLS if c not in panel.columns]
+    if not new:
+        log(f"{path}: every Sharadar column present; nothing to append")
+        return []
+    sf = sharadar_frame(store, cfg, panel[["date", "ticker"]].reset_index(drop=True), fundamentals_file(root))
+    sf.index = panel.index
+    worst = max(float(np.nanmax(np.abs(panel[c].to_numpy(float) - sf[c].to_numpy(float)))) for c in have)
+    if not worst <= 1e-9:
+        raise SystemExit(f"{path}: the existing Sharadar columns do not recompute from the store's tables "
+                         f"(max |diff| {worst:.3g}); nothing appended")
+    for c in new:
+        panel[c] = sf[c].to_numpy()
+    panel.to_parquet(path, index=False)
+    log(f"{path}: verified {len(have)} Sharadar columns exact; appended {new}")
+    return new
 
 
 def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
@@ -683,6 +1046,11 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     peers = comovement_peer_features(prices, panel_sf)
     panel_sf = rank_normalize(pd.concat([panel_sf, peers], axis=1), PEER_COLS)
     log(f"panel_sf: + {len(PEER_COLS)} co-movement peer columns (x_cm_*)")
+    # x_dollar_vol: the split-consistent dollar volume under its research name. A panel built by this
+    # code already has it as f_dollar_vol; the frozen research panel keeps its leaky f_dollar_vol and
+    # carries the clean column appended as x_dollar_vol (append_clean_dollar_volume), so the recipe
+    # `features=x_dollar_vol,drop=f_dollar_vol` is the same 64-column matrix everywhere.
+    panel_sf["x_dollar_vol"] = panel_sf["f_dollar_vol"]
     panel_sf.to_parquet(Path(live_dir) / "panel_sf.parquet", index=False)
     log(f"panel_sf: {panel_sf.shape[0]:,} x {panel_sf.shape[1]} ({time.time() - t0:.0f}s)")
     return panel_sf

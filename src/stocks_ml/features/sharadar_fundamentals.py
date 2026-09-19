@@ -20,6 +20,7 @@ SF_RAW_COLS = [
     "f_sf_de", "f_sf_roe", "f_sf_gross_prof", "f_sf_ebitda_margin",
     "f_sf_netinc_yoy", "f_sf_revenue_yoy", "f_sf_issuance",
     "f_sf_neg_ebitda",
+    "f_sf_log_mktcap",      # 2026-09-18: log(close_split x sharesbas as-of); opt-in (PENDING) — see panel.py
 ]
 SFI_RAW_COLS = ["f_sfi_net_13w", "f_sfi_buyers_13w"]
 
@@ -46,18 +47,26 @@ def _asof(base, facts, cols):
     return merged.set_index("index").reindex(base.index)[cols]
 
 
+def prepared_arq(fund: pd.DataFrame) -> pd.DataFrame:
+    """The ARQ rows the as-of join sees: one row per (ticker, reportperiod),
+    the LAST filed (a re-filed quarter — STRZA filed 2009Q4 three times in
+    2010-12..2011-02 — becomes available at its last filing date). The
+    leak audit's identity check recomputes from this same frame."""
+    arq = fund[fund.dimension == "ARQ"].copy()
+    return (arq.sort_values(["ticker", "date", "reportperiod"])
+               .drop_duplicates(["ticker", "reportperiod"], keep="last")
+               .sort_values(["ticker", "reportperiod"]))
+
+
 def sharadar_fundamental_features(fund: pd.DataFrame, base: pd.DataFrame,
                                   close: pd.Series) -> pd.DataFrame:
     """base: panel rows with date/ticker; close: aligned decision-date close."""
-    arq = fund[fund.dimension == "ARQ"].copy()
     art = fund[fund.dimension == "ART"].copy()
 
     # YoY comparisons on ARQ (prior-year quarter filed long before -> knowable
     # at the current row's filing date). Duplicate (ticker, reportperiod) rows
     # (re-filings) misalign shift(4): keep the last filed.
-    arq = (arq.sort_values(["ticker", "date", "reportperiod"])
-              .drop_duplicates(["ticker", "reportperiod"], keep="last")
-              .sort_values(["ticker", "reportperiod"]))
+    arq = prepared_arq(fund)
     g = arq.groupby("ticker")
     gap = g["reportperiod"].diff(4).dt.days
     ok = (gap > 330) & (gap < 400)
@@ -95,6 +104,9 @@ def sharadar_fundamental_features(fund: pd.DataFrame, base: pd.DataFrame,
         # (indicator, not ranked; NaN where no ART row is available)
         out["f_sf_neg_ebitda"] = (t["ebitda"] < 0).astype(float).where(
             t["ebitda"].notna())
+        # size from the vendor's shares (present for ~98% of names on the top-2000
+        # world; the EDGAR f_log_mktcap is missing for 54-77%): opt-in by recipe
+        out["f_sf_log_mktcap"] = np.log(mkt.where(mkt > 0))
     return out
 
 
