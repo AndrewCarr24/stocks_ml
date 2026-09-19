@@ -25995,5 +25995,94 @@
   "max_dd": 0.382,
   "n_weeks": 446,
   "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/dv_fix_weekly replayed by selection.simulate at K=16 for reports/champion_explorer.html: $701 (+25.5%/yr, SR 0.98, DD 38%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_depth5",
+  "cv_metric": -0.184,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {
+    "max_depth": 5
+   },
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 500, \"champion_mean\": 1.092, \"altered_mean\": 0.908, \"diff_mean\": -0.184, \"diff_se\": 0.291, \"diff_ci90\": [-0.663, 0.296], \"diff_t\": -0.63, \"share_altered_ahead\": 0.49, \"per_book\": {\"top3\": {\"champion\": 1.599, \"altered\": 1.021, \"diff\": -0.578, \"se\": 0.444}, \"top6\": {\"champion\": 0.927, \"altered\": 0.959, \"diff\": 0.032, \"se\": 0.304}, \"top10\": {\"champion\": 0.75, \"altered\": 0.745, \"diff\": -0.005, \"se\": 0.245}}, \"converged\": false}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_lr01",
+  "cv_metric": -0.058,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {
+    "learning_rate": 0.01
+   },
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 60, \"champion_mean\": 2.734, \"altered_mean\": 2.676, \"diff_mean\": -0.058, \"diff_se\": 0.348, \"diff_ci90\": [-0.631, 0.515], \"diff_t\": -0.17, \"share_altered_ahead\": 0.333, \"per_book\": {\"top3\": {\"champion\": 2.485, \"altered\": 2.614, \"diff\": 0.129, \"se\": 0.469}, \"top6\": {\"champion\": 2.627, \"altered\": 2.543, \"diff\": -0.085, \"se\": 0.429}, \"top10\": {\"champion\": 3.09, \"altered\": 2.871, \"diff\": -0.219, \"se\": 0.303}}, \"converged\": true, \"stop_reason\": \"measured\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_lr03",
+  "cv_metric": -0.055,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {
+    "learning_rate": 0.03
+   },
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 111, \"champion_mean\": 2.278, \"altered_mean\": 2.224, \"diff_mean\": -0.055, \"diff_se\": 0.349, \"diff_ci90\": [-0.629, 0.519], \"diff_t\": -0.16, \"share_altered_ahead\": 0.405, \"per_book\": {\"top3\": {\"champion\": 2.747, \"altered\": 2.44, \"diff\": -0.307, \"se\": 0.56}, \"top6\": {\"champion\": 2.06, \"altered\": 2.366, \"diff\": 0.306, \"se\": 0.399}, \"top10\": {\"champion\": 2.029, \"altered\": 1.865, \"diff\": -0.164, \"se\": 0.266}}, \"converged\": true, \"stop_reason\": \"measured\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "eval",
+  "name": "eval_champion_dv_fix_weekly_k16",
+  "pre_holdout_sharpe": 0.762,
+  "notes": "{\"walk\": \"data/experiments/dv_fix_weekly\", \"settings\": {\"book\": 3, \"floor\": \"60/40\", \"stop\": null, \"cap\": null, \"vol_cut\": null}, \"2016_2024\": {\"terminal_100\": 701.1, \"cagr_pct\": 25.49, \"sharpe\": 0.977, \"max_dd\": 0.382, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 2945.1, \"cagr_pct\": 19.97, \"sharpe\": 0.762, \"max_dd\": 0.549, \"n_weeks\": 966}, \"falsification_t\": -0.89, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_sp800",
+  "cv_metric": -0.845,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {},
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 317, \"champion_mean\": 1.021, \"altered_mean\": 0.176, \"diff_mean\": -0.845, \"diff_se\": 0.479, \"diff_ci90\": [-1.632, -0.058], \"diff_t\": -1.77, \"share_altered_ahead\": 0.514, \"per_book\": {\"top3\": {\"champion\": 1.201, \"altered\": 0.426, \"diff\": -0.775, \"se\": 0.69}, \"top6\": {\"champion\": 1.028, \"altered\": 0.101, \"diff\": -0.927, \"se\": 0.462}, \"top10\": {\"champion\": 0.833, \"altered\": 0.0, \"diff\": -0.833, \"se\": 0.371}}, \"converged\": true, \"stop_reason\": \"decided\"}"
  }
 ]

@@ -606,3 +606,17 @@ def test_derive_research_store_can_take_another_stores_membership(tmp_path, monk
     mem = DataStore(tmp_path / "ctrl").read("membership")
     assert mem["ticker"].tolist() == ["BBB"]                    # ZZZ has no prices in the parent: dropped
     assert rep["universe"].startswith("membership of") and DataStore(tmp_path / "ctrl").manifest["universe"]["membership_from"] == str(other)
+
+
+def test_membership_topped_up_adds_the_largest_non_members_each_quarter():
+    d1, d2 = pd.Timestamp("2010-03-31"), pd.Timestamp("2010-06-30")
+    base = pd.DataFrame({"ticker": ["A", "B"], "start_date": [pd.Timestamp("2000-01-01")] * 2,
+                         "end_date": [pd.NaT, d2], "sector": ["S", "S"]})          # B leaves the index on d2
+    snaps = pd.DataFrame([(d1, "A", 100), (d1, "B", 90), (d1, "C", 80), (d1, "D", 70), (d1, "E", 60),
+                          (d2, "A", 100), (d2, "B", 90), (d2, "C", 80), (d2, "D", 70), (d2, "E", 60)],
+                         columns=["date", "ticker", "marketcap"])
+    mem = world.membership_topped_up(base, snaps, eligible={"A", "B", "C", "D", "E"}, sectors={"C": "T"}, n=3)
+    from stocks_ml.data.membership import members_asof
+    assert members_asof(mem, "2010-04-01") == ["A", "B", "C"]         # the index (A, B) + the largest non-member
+    assert members_asof(mem, "2010-07-01") == ["A", "B", "C"]         # B left the index on d2 but is still the 2nd largest name: it stays as a top-up
+    assert (mem.ticker == "B").sum() == 2 and mem[mem.ticker == "C"]["sector"].iloc[0] == "T" and len(mem) == 4

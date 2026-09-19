@@ -127,6 +127,8 @@ uv run stocks-ml train ... --refit-every 4                                   # s
 uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "drop=f_x+f_y"] [--candidate "params=name:v"] [--candidate "store=data/<world>,train_top=500"] [--adjudicate] [--k16]
 uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 26] [--seed 0]   # the prototype: stratified sample, K=16, seed-twin null, ranks only
 uv run stocks-ml explain [--years 2007-2024] [--copies 1] [--features a,b --drop f_x --tag T]   # Shapley importance -> reports/champion_shap[_T].{png,md}
+uv run stocks-ml challenger2 --candidate "params=max_depth:5" [--name depth5] [--store S] [--workers 6]   # the champion vs one altered recipe, paired on random weeks+seeds until the 90% CI on the difference excludes zero or its SE <= 0.35 -> challenger2_convergence/<name>.png (+ a ledger row)
+uv run stocks-ml audit-live [--live-dir data/r5_live] [--panel P]      # the rows the live job scored vs the same rows in a later build (a feature whose history is rewritten is a leak)
 uv run stocks-ml r5-weekly [--as-of F] [--no-refresh] [--no-sec] [--dry-run] [--commit]
 /opt/homebrew/Caskroom/miniconda/base/bin/python -m pytest tests/e2e  # the Playwright page test
 ```
@@ -282,6 +284,20 @@ comes from the keychain through `git credential fill`; never print it).
   `challenge-fast` now refuse any named feature whose correlation with the
   future split factor exceeds 0.15 (`leak_audit.feature_factor_check`)
   before a single copy is fit.
+- **challenger2 (owner's design, 2026-09-19):** `stocks-ml challenger2` pairs
+  the champion with one altered recipe on random (week, seed) draws of
+  2006-2015 — both fit at that week with that seed, each scored by the mean
+  4-week return of its top-3/6/10 (the three-book average, % per hold) —
+  and stops when the 90% interval on the paired difference excludes zero
+  (decided) or its SE reaches 0.35 pp (a near-tie, measured), max 500. The
+  plot (running means, 90% bands) is the record, plus a ledger row; no
+  per-iteration file. `store=` in the candidate trains, picks and scores the
+  altered model on another world. Ranks only, nothing adopted by it. First
+  results: depth 5 tie (-0.18 ± 0.29), learning rate 0.01 tie (-0.06),
+  0.03 tie (-0.06), sp800 (the S&P stints topped up to 800 names by cap each
+  quarter, `world --top 800 --derive-from <2000 store> --membership-from
+  <S&P store> --top-up`) decided against: -0.85 pp per hold (90% CI -1.63
+  to -0.06), the fourth wider universe to lose.
 - **The dollar-volume split leak (2026-09-19).** The claim that "the panel's
   own features sit within ±0.05" was never tested and was false: running the
   gate on the champion's 64 features found `f_dollar_vol` at -0.42. SEP

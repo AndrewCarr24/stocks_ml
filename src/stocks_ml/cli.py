@@ -32,7 +32,8 @@ def cmd_world(args, cfg):
         if args.dir == "data/r5_live":
             raise SystemExit("--top builds a NEW research world: give it its own --dir")
         if args.derive_from:
-            derive_research_store(args.dir, args.derive_from, cfg, n=args.top, membership_from=args.membership_from)
+            derive_research_store(args.dir, args.derive_from, cfg, n=args.top, membership_from=args.membership_from,
+                                  top_up=args.top_up)
             return
         from stocks_ml.data.sharadar import api_key
         build_research_store(args.dir, api_key(), cfg, n=args.top, sec=not args.no_sec)
@@ -154,6 +155,12 @@ def cmd_app(args, cfg):
     build(store=args.store, out=args.out)
 
 
+def cmd_challenger2(args, cfg):
+    from stocks_ml.challenger2 import run
+    run(args.candidate, name=args.name, store=args.store, seed=args.seed, min_iters=args.min_iters,
+        max_iters=args.max_iters, se_tol=args.se_tol, workers=args.workers)
+
+
 def cmd_audit_live(args, cfg):
     """Archived live rows vs the same rows in a later panel build (the leak detector)."""
     from stocks_ml.leak_audit import live_vs_rebuilt
@@ -246,6 +253,9 @@ def main():
     p.add_argument("--append-sf", action="store_true",
                    help="append the Sharadar feature columns a frozen panel lacks, after verifying every "
                         "existing one recomputes exactly (append-only; never rebuilds)")
+    p.add_argument("--top-up", action="store_true",
+                   help="with --membership-from and --top N: add the largest non-members by market cap at each quarter "
+                        "end until the universe holds N names (the index plus the next names by size)")
     p.add_argument("--membership-from", default=None, metavar="STORE",
                    help="with --derive-from: take the membership stints from STORE instead of the top-N cut "
                         "(a control: the champion's names on the new world's tables and build)")
@@ -373,6 +383,18 @@ def main():
     p.add_argument("--drop", default=None, help="a variant: admitted f_ columns withheld, comma-separated")
     p.add_argument("--tag", default=None, help="a variant writes reports/champion_shap_<tag>.* instead")
 
+    p = sub.add_parser("challenger2", help="the champion vs one altered recipe, paired on random weeks and seeds "
+                       "until the running means converge; challenger2_convergence/<name>.png")
+    p.add_argument("--candidate", required=True, metavar="RECIPE",
+                   help="what differs from the champion, e.g. 'params=max_depth:5', 'train_years=12', 'label=label_4w_sector_log'")
+    p.add_argument("--name", default=None, help="experiment name (default: from the candidate text)")
+    p.add_argument("--store", default=STORE)
+    p.add_argument("--seed", type=int, default=0, help="the draw's seed (weeks and model seeds)")
+    p.add_argument("--min-iters", type=int, default=50)
+    p.add_argument("--max-iters", type=int, default=500)
+    p.add_argument("--se-tol", type=float, default=0.35, help="stop when the paired difference's SE is at or below this (pp per hold)")
+    p.add_argument("--workers", type=int, default=4, help="paired fits in parallel processes; STOCKS_ML_CORES=N caps the cores")
+
     p = sub.add_parser("audit-live", help="compare the rows the live job scored (its archive) with the same rows "
                        "in a later panel build: a feature whose history is rewritten by later data is a leak")
     p.add_argument("--live-dir", default="data/r5_live")
@@ -404,6 +426,7 @@ def main():
         args.incumbent = json.loads(SPEC_PATH.read_text())["procedure"]["preds"]["path"]
     cfg = load_config(args.config)
     {"world": cmd_world, "train": cmd_train, "backtest": cmd_backtest, "audit-live": cmd_audit_live,
+     "challenger2": cmd_challenger2,
      "procedure": cmd_procedure, "procedure-card": cmd_procedure_card,
      "eval": cmd_eval, "app": cmd_app, "challenge": cmd_challenge,
      "challenge-fast": cmd_challenge_fast, "explain": cmd_explain,

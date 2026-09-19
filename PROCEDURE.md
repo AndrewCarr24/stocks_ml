@@ -11,7 +11,7 @@ not this file). Rationale and history: AGENTS.md.
 | Model | XGBoost: gradient-boosted trees of depth 3, learning rate 0.02, up to 1,500 rounds with early stopping on a time-ordered tail (weekly rank correlation), 16 bootstrap-seeded copies averaged; parameters fixed, never tuned (tuning measured as noise) |
 | Prediction target | label_4w_sector_rank: the stock's 4-week return minus the same-week median of its sector, replaced by its within-week rank as a normal score (35-day purge) |
 | Training | weekly refit on trailing 8 years; early stop on validation rank correlation |
-| Features | the panel's f_ columns plus the extra columns x_dollar_vol (asterisk: see features_note) |
+| Features | the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*) with the dollar-volume column on the split-consistent basis (x_dollar_vol in place of f_dollar_vol: the 2026-09-19 correction — SEP volume is split-adjusted, so the nominal close x volume carried future splits); no screened bundle |
 | Price basis / labels | level features on the nominal basis; a delisting's label grades to its final print (last_print) |
 | Ensemble | K=16 copies (random_state + whole-week bootstrap), predictions averaged |
 | Book | top-3, equal weight, 4 staggered sleeves rotating weekly, 4-week holds; weekly re-leveling; no sector cap; no stop; no volatility cut |
