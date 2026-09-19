@@ -32,9 +32,9 @@ def test_render_tracks_spec_changes():
 def test_render_names_the_features():
     spec = json.loads(Path(SPEC_PATH).read_text())
     card = render(spec)
-    # the champion carries no extra columns since 2026-09-11 (the split-leak bundle retired)
-    assert spec["features"] == []
-    assert "| Features |" in card and "no screened bundle" in card
+    # since 2026-09-19 the champion's one extra column is the split-consistent dollar volume (a correction, not a bundle)
+    assert spec["features"] == ["x_dollar_vol"] and spec["drop_features"] == ["f_dollar_vol"]
+    assert "| Features |" in card and "no screened bundle" in card and "split-consistent" in card
     assert "level features on the nominal basis" in card and "final print (last_print)" in card
     spec["features"] = ["x_cash_runway", "f_vol_chg_12w"]      # extra columns carry the asterisk
     assert "extra columns x_cash_runway, f_vol_chg_12w" in render(spec) and "asterisk" in render(spec)

@@ -123,3 +123,22 @@ def test_run_is_the_champion_only_when_the_walk_is_the_specs(tmp_path, monkeypat
         "decision": {"book_size": 10, "floor": "halfgate", "stop_loss": None, "sector_cap": None}})
     with pytest.raises(SystemExit, match="run stocks-ml procedure"):
         ev.run(walk, store="w", spec_path=spec, log=lambda m: None)
+
+
+def test_walk_settings_cache_is_keyed_by_the_procedure_menus(tmp_path, monkeypatch):
+    import hashlib, json
+    import stocks_ml.eval as ev
+    walk = tmp_path / "w"; (walk / "select").mkdir(parents=True)
+    (walk / "select" / "preds.parquet").write_bytes(b"x")
+    sha = hashlib.sha256(b"x").hexdigest()
+    stale = {"preds": {"sha256": sha}, "k_copies": 16,
+             "decision": {"book_size": 3, "floor": "halfgate", "stop_loss": None, "sector_cap": None, "vol_cut": "abs_or_sector"}}
+    (walk / "procedure.json").write_text(json.dumps(stale))          # the 2026-09-17 cache: no menus, a retired cut
+    calls = []
+    monkeypatch.setattr("stocks_ml.procedure.decide", lambda p, store, k, log=None: (calls.append(p), {"preds": {"sha256": sha}, "k_copies": 16,
+                        "decision": {"book_size": 3, "floor": "halfgate", "stop_loss": None, "sector_cap": 2, "vol_cut": None}})[1])
+    proc = ev.walk_settings(walk, "s", 16, log=lambda m: None)
+    assert calls and proc["decision"]["vol_cut"] is None and proc["menus"] == ev.procedure_menus()
+    assert json.loads((walk / "procedure.json").read_text())["menus"] == ev.procedure_menus()
+    ev.walk_settings(walk, "s", 16, log=lambda m: None)
+    assert len(calls) == 1                                            # now cached under the current menus

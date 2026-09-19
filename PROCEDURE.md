@@ -1,6 +1,6 @@
 # Procedure card
 
-Blueprint of the production procedure (generated 2026-09-17 by
+Blueprint of the production procedure (generated 2026-09-19 by
 `stocks-ml procedure-card` from models/champion_spec.json — edit the spec,
 not this file). Rationale and history: AGENTS.md.
 
@@ -11,12 +11,12 @@ not this file). Rationale and history: AGENTS.md.
 | Model | XGBoost: gradient-boosted trees of depth 3, learning rate 0.02, up to 1,500 rounds with early stopping on a time-ordered tail (weekly rank correlation), 16 bootstrap-seeded copies averaged; parameters fixed, never tuned (tuning measured as noise) |
 | Prediction target | label_4w_sector_rank: the stock's 4-week return minus the same-week median of its sector, replaced by its within-week rank as a normal score (35-day purge) |
 | Training | weekly refit on trailing 8 years; early stop on validation rank correlation |
-| Features | the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*); no screened bundle (the split-leak bundle retired 2026-09-11) |
+| Features | the panel's f_ columns plus the extra columns x_dollar_vol (asterisk: see features_note) |
 | Price basis / labels | level features on the nominal basis; a delisting's label grades to its final print (last_print) |
 | Ensemble | K=16 copies (random_state + whole-week bootstrap), predictions averaged |
-| Book | top-3, equal weight, 4 staggered sleeves rotating weekly, 4-week holds; weekly re-leveling; max 2/sector (blocked slots to next-ranked other-sector name); no stop; no volatility cut |
-| Ballast | halfgate: book 100/83/67/50% of NAV by SPY trend gates down (30/40/52w), rest IEF — the book shrinks one sixth of NAV per breached SPY trailing MA, the freed money sits in IEF (no fixed SPY ballast) |
-| Decided by | `stocks-ml procedure` on data/experiments/labels/rank_k16/select/preds.parquet (K=16, 522 rank weeks of 2006-01-01 -> 2015-12-31, world data/sharadar_world2000_nominal_dl), 2026-09-17 14:38:53: book 3 / floor halfgate / stop None / cap 2; model fields from the walk's own record: label_4w_sector_rank / 8-year window — tests hold the spec's model and strategy fields and the live job to this record |
+| Book | top-3, equal weight, 4 staggered sleeves rotating weekly, 4-week holds; weekly re-leveling; no sector cap; no stop; no volatility cut |
+| Ballast | 60% book / 40% ballast: ballast in SPY, shifted to IEF one-third per breached trailing MA (30/40/52w) |
+| Decided by | `stocks-ml procedure` on data/experiments/dv_fix_weekly/select/preds.parquet (K=16, 522 rank weeks of 2006-01-01 -> 2015-12-31, world data/sharadar_world2000_nominal_dl), 2026-09-19 12:10:31: book 3 / floor 60/40 / stop None / cap None; model fields from the walk's own record: label_4w_sector_rank / 8-year window — tests hold the spec's model and strategy fields and the live job to this record |
 | Honest expectation | several %/yr over SPY in expectation (2016-2024 excess CAGR +9.0%/yr, 95% nested CI -3.9..+24.2; 2006-2024 +6.5%/yr, -2.5..+16.2), a band that still includes no edge; 60%+ drawdowns are on the record (2008-2009 at 10 names, no cap, halfgate at 50% book): capital preservation is not what this configuration buys; edge era-concentrated (years high-volatility names win: 2009, 2016, 2019-2021; index-matching in 2010-2015 and 2022-2024); pre-holdout numbers carry design-iteration shine — the label and window were chosen among ~15 candidates on 2006-2015 and 2016-2024 was read once; sizing should assume SPY-like outcomes in adverse regimes and a deeper hole than SPY's in a crash |
 
 ## Cadences

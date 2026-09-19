@@ -72,7 +72,7 @@ def test_live_spec_is_read_from_the_procedure():
     assert r5.SPEC["train_years"] == SPEC["training_window_years"] == SPEC["procedure"]["model"]["train_years"]
     assert r5.SPEC["horizon"] == "4w"
     assert r5.SPEC["label"] == SPEC["horizon"]["label"] == SPEC["procedure"]["model"]["label"]
-    assert list(r5.SPEC["features"]) == list(SPEC["features"]) == []
+    assert list(r5.SPEC["features"]) == list(SPEC["features"]) == ["x_dollar_vol"]
     assert r5.load_spec(r5.spec_path()) == r5.SPEC
 
 
@@ -152,7 +152,9 @@ def test_apply_writes_every_decision_field_and_nothing_prose():
         want["label"] = (SPEC["horizon"]["label"], "label_4w")
     if SPEC["training_window_years"] != 2:
         want["train_years"] = (SPEC["training_window_years"], 2)
-    want["drop_features"] = ([], ["f_z"])
+    want["drop_features"] = (list(SPEC.get("drop_features") or []), ["f_z"])
+    if list(SPEC.get("features") or []):
+        want["features"] = (list(SPEC["features"]), [])
     assert drift(SPEC, rec) == want
 
 

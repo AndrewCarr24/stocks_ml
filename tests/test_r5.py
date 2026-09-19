@@ -128,8 +128,8 @@ def test_live_spec_mirrors_the_champion_spec():
     from stocks_ml.selection import K_COPIES
     spec = json.loads((Path(__file__).resolve().parents[1] / "models/champion_spec.json").read_text())
     assert spec["ensemble"]["k_copies"] == K_COPIES == 16       # the live job averages K_COPIES copies
-    assert list(r5.SPEC["features"]) == list(spec["features"]) == []   # the panel's f_ columns only
-    assert list(r5.SPEC["drop"]) == list(spec.get("drop_features") or []) == []   # none withheld
+    assert list(r5.SPEC["features"]) == list(spec["features"]) == ["x_dollar_vol"]   # the split-consistent dollar volume
+    assert list(r5.SPEC["drop"]) == list(spec.get("drop_features") or []) == ["f_dollar_vol"]   # in place of the leaky one
     assert r5.SPEC["train_years"] == spec["training_window_years"]
     assert r5.SPEC["book"] == spec["strategy"]["book_size"]
     assert r5.SPEC["cap"] == spec["strategy"]["sector_cap"]

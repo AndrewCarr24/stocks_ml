@@ -24,21 +24,21 @@ edited by hand.
 | Target | the stock's 4-week return minus the same-week median of its sector, replaced by its within-week rank as a normal score; 35-day purge |
 | Training | refit every week on the trailing 8 years; early stopping on a purged, time-ordered tail |
 | Ensemble | 16 copies (seed + whole-week bootstrap), scores averaged |
-| Features | the point-in-time panel's `f_` columns: prices, fundamentals, filings, insider trades, short interest, macro |
-| Book | top-3 per sleeve, equal weight, 4 staggered sleeves — one rotates each week, so every name is held 4 weeks; at most 2 per sector; no stop-loss; no volatility cut |
-| Ballast | halfgate: book 100/83/67/50% of NAV by SPY trend gates down (30/40/52w), rest IEF — the book shrinks one sixth of NAV per breached SPY trailing MA, the freed money sits in IEF (no fixed SPY ballast) |
+| Features | the point-in-time panel's `f_` columns: prices, fundamentals, filings, insider trades, short interest, macro plus 1 named columns |
+| Book | top-3 per sleeve, equal weight, 4 staggered sleeves — one rotates each week, so every name is held 4 weeks; no sector cap; no stop-loss; no volatility cut |
+| Ballast | 60% book / 40% ballast: ballast in SPY, shifted to IEF one-third per breached trailing MA (30/40/52w) |
 | Costs | 5 bp one-way, fills at the next session's open |
 
-**Record** (`stocks-ml eval`, [reports/champion_eval.md](reports/champion_eval.md), 2026-09-14), $100 at the start of each span, costs included, holdout excluded:
+**Record** (`stocks-ml eval`, [reports/dv_fix_weekly_eval.md](reports/dv_fix_weekly_eval.md), 2026-09-19), $100 at the start of each span, costs included, holdout excluded:
 
 | model | 2006-2024: $100, %/yr | SR, DD | 2016-2024: $100, %/yr | SR, DD | 2006-2015: $100, %/yr | SR, DD | weekly t vs sp500 (06-24 / 16-24) |
 |---|---|---|---|---|---|---|---|
-| champion | $4,940, +23.4% | 0.82, 49% | $844, +28.2% | 0.92, 38% | $585, +19.3% | 0.73, 49% | +2.53 / +1.71 |
+| champion | $2,945, +20.0% | 0.76, 55% | $701, +25.5% | 0.98, 38% | $420, +15.4% | 0.61, 55% | +2.32 / +1.79 |
 | sp500 | $621, +10.3% | 0.64, 55% | $316, +14.3% | 0.87, 32% | $197, +7.0% | 0.46, 55% | — |
 
-2006–2015 is where the label, window and strategy layers were chosen. 2016–2024 was read once, for this grade. The excess over the S&P 500 on 2016–2024 is +12.2%/yr; resampling both the model's seeds and the history gives a 95% interval of -4.8 to +33.1%/yr, and 92% of the resampled histories beat the index. Against the previous champion the paired weekly excess on 2016–2024 has t +0.76 (not rejected; t < −2 would have rejected it). Leak audit PASS. The rank label tempers the target, so the model buys less volatile, less beaten-down names than its predecessor (volatility rank 0.48 vs 0.60 among its picks on 2006-2015, 12-month momentum -0.16 vs -0.36) and its book swings less month to month. It still trails the index in the same years the predecessor did (2011, 2014, 2015; 2010-2015 as a whole $158 vs the S&P's $207, with a shallower worst drop, 24% vs 33%), so the edge remains concentrated in rebound years. Worst drawdowns: 49% on 2006–2015 and 38% on 2016–2024 (the S&P: 55% and 32%). Sizing should assume index-like outcomes in adverse regimes. The holdout (2024-07-19 onward) has never been graded.
+2006–2015 is where the label, window and strategy layers were chosen. 2016–2024 was read once, for this grade. The excess over the S&P 500 on 2016–2024 is +9.8%/yr; resampling both the model's seeds and the history gives a 95% interval of -1.3 to +23.8%/yr, and 96% of the resampled histories beat the index. Against the previous champion the paired weekly excess on 2016–2024 has t +1.78 (not rejected; t < −2 would have rejected it). Leak audit PASS. The rank label tempers the target, so the model buys less volatile, less beaten-down names than its predecessor (volatility rank 0.48 vs 0.60 among its picks on 2006-2015, 12-month momentum -0.16 vs -0.36) and its book swings less month to month. It still trails the index in the same years the predecessor did (2011, 2014, 2015; 2010-2015 as a whole $158 vs the S&P's $207, with a shallower worst drop, 24% vs 33%), so the edge remains concentrated in rebound years. Worst drawdowns: 55% on 2006–2015 and 38% on 2016–2024 (the S&P: 55% and 32%). Sizing should assume index-like outcomes in adverse regimes. The holdout (2024-07-19 onward) has never been graded.
 
-![Growth of $100, 2016-2024, out of sample](reports/champion_vs_sp500_2016_2024.png)
+![Growth of $100, 2016-2024, out of sample](reports/dv_fix_weekly_vs_sp500_2016_2024.png)
 
 The chart shows the out-of-sample years only. 2006–2015 chose the settings, so a curve that includes it overstates the model.
 <!-- champion:end -->

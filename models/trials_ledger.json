@@ -25960,5 +25960,40 @@
    ]
   },
   "notes": "{\"metric\": {\"3\": -1.31, \"6\": -2.98, \"10\": -5.67}, \"score\": -3.32, \"gap\": -9.56, \"gap_vs_incumbent_seeds_1_16\": -9.56, \"null_percentile\": 0.015, \"flagged\": false, \"mean_excess_pp\": 0.29, \"copies\": [1.5833333333333333, 0.4533333333333333, 4.3133333333333335, 9.07, 19.156666666666666, -5.699999999999999, -8.326666666666666, -3.69, 2.023333333333333, -7.710000000000001, 17.286666666666665, -2.763333333333333, -10.913333333333334, -3.596666666666667, 17.893333333333334, 17.43], \"paired_t_vs_incumbent\": -1.54, \"sample\": \"240 weeks in runs of 4, a stratified random sample (26 per year, seed 0), one fit per run (screening cadence)\", \"flag_threshold\": 7.14}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "eval",
+  "name": "eval_dv_fix_weekly_dv_fix_weekly_k16",
+  "pre_holdout_sharpe": 0.762,
+  "notes": "{\"walk\": \"data/experiments/dv_fix_weekly\", \"settings\": {\"book\": 3, \"floor\": \"60/40\", \"stop\": null, \"cap\": null, \"vol_cut\": null}, \"2016_2024\": {\"terminal_100\": 701.1, \"cagr_pct\": 25.49, \"sharpe\": 0.977, \"max_dd\": 0.382, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 2945.1, \"cagr_pct\": 19.97, \"sharpe\": 0.762, \"max_dd\": 0.549, \"n_weeks\": 966}, \"falsification_t\": 1.78, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "procedure",
+  "name": "procedure_2006-01-01_2015-12-31_dv_fix_weekly_select",
+  "pre_holdout_sharpe": 0.608,
+  "notes": "{\"decision\": {\"book_size\": 3, \"floor\": \"60/40\", \"stop_loss\": null, \"sector_cap\": null, \"vol_cut\": null}, \"evidence\": {\"book\": {\"3\": 12.58, \"6\": 10.67, \"10\": 9.23}, \"vol_cut\": {\"None\": 0.547}, \"floor\": {\"none\": 0.547, \"halfgate\": 0.579, \"80/20\": 0.572, \"70/30\": 0.587, \"60/40\": 0.608}, \"stop\": {\"None\": 0.608, \"-0.25\": 0.552}, \"cap\": {\"None\": 0.608, \"2\": 0.566}}, \"preds_sha256\": \"4e3dee7e9304\", \"changed\": {\"floor\": [\"halfgate\", \"60/40\"], \"sector_cap\": [2, null], \"features\": [[], [\"x_dollar_vol\"]], \"drop_features\": [[], [\"f_dollar_vol\"]]}}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "app",
+  "name": "app_champion_dv_fix_weekly_k16",
+  "config": {
+   "horizon": "4w",
+   "book": 3,
+   "floor": "60/40",
+   "stop": null,
+   "cap": null,
+   "vol_cut": null,
+   "train_years": 8,
+   "fills": "next open"
+  },
+  "terminal_100": 701.1,
+  "cagr_pct": 25.49,
+  "sharpe": 0.977,
+  "max_dd": 0.382,
+  "n_weeks": 446,
+  "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/dv_fix_weekly replayed by selection.simulate at K=16 for reports/champion_explorer.html: $701 (+25.5%/yr, SR 0.98, DD 38%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
  }
 ]

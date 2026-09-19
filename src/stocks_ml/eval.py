@@ -78,20 +78,35 @@ def segments(walk: Path) -> list[Path]:
     return paths
 
 
+def procedure_menus() -> dict:
+    """The menus the procedure decides from: part of the cache key, so a
+    decision cached under another menu (the vol-cut episode of 2026-09-17
+    left `abs_or_sector` in the champion's procedure.json after the menu
+    was reverted; the 2026-09-19 eval graded the incumbent at it) is
+    stale."""
+    import stocks_ml.selection as sel
+    from stocks_ml.ledger import FLOORS
+    return {"books": list(sel.BOOKS), "floors": list(FLOORS), "vol_cuts": [str(v) for v in sel.VOL_CUT_MENU]}
+
+
 def walk_settings(walk: Path, store: str = STORE, k: int | None = None, log=log) -> dict:
     """The strategy layers the procedure's code decides on the walk's select
-    segment — cached as <walk>/procedure.json, keyed by the file's sha256."""
+    segment — cached as <walk>/procedure.json, keyed by the file's sha256
+    and the procedure's menus."""
     from stocks_ml.procedure import decide
     walk = Path(walk)
     sel_path = walk / "select" / "preds.parquet"
     sha = hashlib.sha256(sel_path.read_bytes()).hexdigest()
     cache = walk / "procedure.json"
+    menus = procedure_menus()
     if cache.exists():
         proc = json.loads(cache.read_text())
         if proc["preds"]["sha256"] == sha and (k is None or proc["k_copies"] == k) \
-                and "vol_cut" in proc["decision"]:            # a cache from before the fifth layer is stale
+                and proc.get("menus") == menus:               # decided under these menus, on this file
             return proc
+        log(f"procedure cache {cache}: decided under other menus ({proc.get('menus')}); re-deciding")
     proc = decide(sel_path, store, k, log=log)
+    proc["menus"] = menus
     cache.write_text(json.dumps(proc, indent=1, default=str))
     return proc
 

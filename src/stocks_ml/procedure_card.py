@@ -74,6 +74,12 @@ def features_summary(s: dict) -> str:
     """The model's inputs: the panel's standing f_ columns plus any extra
     panel columns the spec names (`features`; none since 2026-09-11)."""
     feats = s.get("features") or []
+    dropped = s.get("drop_features") or []
+    if feats == ["x_dollar_vol"] and dropped == ["f_dollar_vol"]:
+        return ("the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*) with the dollar-volume "
+                "column on the split-consistent basis (x_dollar_vol in place of f_dollar_vol: the 2026-09-19 "
+                "correction — SEP volume is split-adjusted, so the nominal close x volume carried future splits); "
+                "no screened bundle")
     if not feats:
         return ("the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*); no screened bundle "
                 "(the split-leak bundle retired 2026-09-11)")
