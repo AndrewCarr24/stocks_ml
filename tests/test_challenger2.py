@@ -26,8 +26,8 @@ def test_recipes_names_and_draws(tmp_path):
     assert d == c2.draws(ctx, 200, seed=1) and d != c2.draws(ctx, 200, seed=2)
     assert len(c2.draws(ctx, 10 ** 6, seed=0)) == sum(c2.SELECT[0] <= t <= c2.SELECT[1] for t in weeks)  # capped at the window
     t = pd.Timestamp("2010-01-08")
-    assert c2.week_seeds(t, 16) == list(range(1, 17)) and len(c2.week_seeds(t, 4)) == 4
-    assert c2.week_seeds(t, 1) == c2.week_seeds(t, 1) and set(c2.week_seeds(t, 4)) <= set(range(1, 17))
+    assert c2.week_seeds(t, 64) == list(range(1, 65)) and len(c2.week_seeds(t, 16)) == 16 and len(c2.week_seeds(t, 4)) == 4
+    assert c2.week_seeds(t, 1) == c2.week_seeds(t, 1) and set(c2.week_seeds(t, 16)) <= set(range(1, 65))
     assert c2.week_seeds(t, 4) != c2.week_seeds(pd.Timestamp("2010-01-15"), 4) or True         # week-determined
 
 
@@ -125,17 +125,21 @@ def test_pred_cache_roundtrip_and_walk_seed(tmp_path):
     assert (tmp_path / "some_store" / f"{c2.recipe_hash(rec)}.json").exists()
 
 
-def test_champion_walk_for_matches_store_and_recipe(tmp_path):
+def test_champion_walks_for_finds_every_seed_set(tmp_path):
     rec = {"label": "label_4w_sector_rank", "train_years": 8, "features": ["x_dollar_vol"], "drop": ["f_dollar_vol"], "params": {}, "train_top": None}
-    w = tmp_path / "select"; w.mkdir()
-    (w / "preds.parquet").write_bytes(b"x")
-    (w / "spec.json").write_text(json.dumps({"k": 16, "store": "data/w", "recipe": {"label": "label_4w_sector_rank", "train_years": 8,
-                                                                                    "features": ["x_dollar_vol"], "drop": ["f_dollar_vol"]}}))
-    spec = {"procedure": {"preds": {"path": str(w / "preds.parquet")}}}
+    r = {"label": "label_4w_sector_rank", "train_years": 8, "features": ["x_dollar_vol"], "drop": ["f_dollar_vol"]}
+    root = tmp_path / "walk"
+    for name, extra in (("select", {}), ("twin", {"copies": [17, 32]}), ("seeds_33_64", {"copies": [33, 64]}),
+                        ("extend", {"weeks": "every week of 2016-01-01 -> 2024-07-18"}), ("fast", {"refit_every": 4})):
+        d = root / name; d.mkdir(parents=True)
+        (d / "preds.parquet").write_bytes(b"x")
+        (d / "spec.json").write_text(json.dumps({"k": 16, "store": "data/w", "recipe": r, "weeks": "every week of 2006-01-01 -> 2015-12-31", **extra}))
+    spec = {"procedure": {"preds": {"path": str(root / "select" / "preds.parquet")}}}
     sp = tmp_path / "spec.json"; sp.write_text(json.dumps(spec))
-    assert c2.champion_walk_for("data/w", rec, sp) == w / "preds.parquet"
-    assert c2.champion_walk_for("data/other", rec, sp) is None
-    assert c2.champion_walk_for("data/w", {**rec, "params": {"max_depth": 5}}, sp) is None
+    got = [p.parent.name for p in c2.champion_walks_for("data/w", rec, sp)]
+    assert got == ["seeds_33_64", "select", "twin"]                     # the window's weekly walks only
+    assert c2.champion_walks_for("data/other", rec, sp) == []
+    assert c2.champion_walks_for("data/w", {**rec, "params": {"max_depth": 5}}, sp) == []
 
 
 def test_altered_recipe_may_name_a_training_world():

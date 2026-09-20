@@ -54,7 +54,7 @@ BOOKS = (3, 6, 10)
 MIN_ITERS = 50
 MAX_ITERS = 500
 SE_TOL = 0.35            # pp per hold (owner 2026-09-19: 0.25 took too many iterations): the standard error of the paired difference at which the test stops
-SEED_POOL = 16           # model seeds per week come from 1..16 (a K=16 walk's copies), week-determined
+SEED_POOL = 64           # model seeds per week come from 1..64 (the champion's walks: select + twin + seeds 33-64), week-determined
 CACHE_DIR = Path("data/challenger2_cache")
 Z = 1.645                # the 90% interval (owner 2026-09-19)
 YLIM = (-20, 20)         # the plot's y-axis, fixed so the lines are readable and the frame does not jump
@@ -144,7 +144,7 @@ class PredCache:
             self.frames[t] = self.frames[t].combine_first(new) if t in self.frames else new     # what is cached stays
 
     def seed_from_walk(self, preds_path) -> int:
-        """Absorb a K=16 walk's copies (copy c = seed c) — the champion's own."""
+        """Absorb a walk's copies (copy c = seed c: c1..c16, c17..c32, c33..c64)."""
         df = pd.read_parquet(preds_path)
         self._absorb(df); self.dirty = True
         return int(df["week"].nunique())
@@ -172,21 +172,27 @@ class PredCache:
         df[cols].to_parquet(self.path, index=False); self.dirty = False
 
 
-def champion_walk_for(store: str, recipe: dict, spec_path: Path | None = None) -> Path | None:
-    """The spec's K=16 select walk when it was made on `store` with `recipe`."""
+def champion_walks_for(store: str, recipe: dict, spec_path: Path | None = None) -> list[Path]:
+    """The champion's weekly walks on `store` with `recipe`, every seed set
+    beside the spec's select walk (select: copies 1-16; twin: 17-32; any
+    seeds_<a>_<b> directory), each checked against its record."""
     from stocks_ml.procedure import SPEC_PATH
     spec = json.loads(Path(spec_path or SPEC_PATH).read_text())
     p = Path(spec["procedure"]["preds"]["path"])
-    rec_path = p.parent / "spec.json"
-    if not p.exists() or not rec_path.exists():
-        return None
-    rec = json.loads(rec_path.read_text())
-    r = rec.get("recipe", {})
-    same = (rec.get("store") == store and r.get("label") == recipe["label"] and int(r.get("train_years", 0)) == recipe["train_years"]
-            and list(r.get("features") or []) == recipe["features"] and list(r.get("drop") or []) == recipe["drop"]
-            and dict(r.get("params") or {}) == recipe["params"] and r.get("train_top") == recipe["train_top"]
-            and int(rec.get("k", 0)) == SEED_POOL and "copies" not in rec)
-    return p if same else None
+    out = []
+    for d in sorted(p.parent.parent.glob("*")):
+        preds, rec_path = d / "preds.parquet", d / "spec.json"
+        if not (d.is_dir() and preds.exists() and rec_path.exists()):
+            continue
+        rec = json.loads(rec_path.read_text())
+        r = rec.get("recipe", {})
+        same = (rec.get("store") == store and r.get("label") == recipe["label"] and int(r.get("train_years", 0)) == recipe["train_years"]
+                and list(r.get("features") or []) == recipe["features"] and list(r.get("drop") or []) == recipe["drop"]
+                and dict(r.get("params") or {}) == recipe["params"] and r.get("train_top") == recipe["train_top"]
+                and "refit_every" not in rec and str(rec.get("weeks", "")).startswith("every week of 2006-01-01"))
+        if same:
+            out.append(preds)
+    return out
 
 
 def book_returns(sel, ctx, t, preds: pd.Series) -> dict | None:
@@ -348,10 +354,10 @@ def run(candidate: str, name: str | None = None, store: str | None = None, seed:
             raise SystemExit(f"a panel lacks the feature column {c}")
     weeks = draws(ctx, max_iters, seed)
     caches = {"champion": PredCache(store, champ), "altered": PredCache(alt_store or store, alt)}
-    walk = champion_walk_for(store, champ, spec_path)
-    if walk is not None and not caches["champion"].frames:
-        n_w = caches["champion"].seed_from_walk(walk)
-        log(f"champion cache seeded from its K=16 walk {walk} ({n_w} weeks)")
+    if not caches["champion"].frames:
+        for walk in champion_walks_for(store, champ, spec_path):
+            n_w = caches["champion"].seed_from_walk(walk)
+            log(f"champion cache seeded from {walk} ({n_w} weeks)")
     log(f"challenger2 {name}: champion {champ} on {store} vs altered {alt}"
         + (f" on {alt_store} (trained, picked and scored there)" if alt_ctx is not None else "")
         + f"; {copies} seeded copies per model per iteration (seeds from 1..{SEED_POOL}, week-determined)"
