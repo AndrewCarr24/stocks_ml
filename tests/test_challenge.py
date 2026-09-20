@@ -93,7 +93,7 @@ def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch)
     monkeypatch.setattr(ch, "metrics_on_common", fake_metrics)
     monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0, 2.0, 3.0, 4.0])
     monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
-    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.24)
+    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 2.4)
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx_: {"VERDICT": "PASS", "worst_retention": 0.9})
     monkeypatch.setattr(ch, "leak_line", lambda la: "PASS")
     led = []
@@ -188,7 +188,7 @@ def test_run_fast_walks_the_sample_flags_by_the_null_and_prints_the_promotion(tm
                          {n: pd.DataFrame({"week": weeks[:5], "top3": 0.02, "top6": 0.02, "top10": 0.02,
                                            "rand_mean": 0.01}) for n in walks}, 5))
     monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0] * ch.FAST_K)
-    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.5)
+    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 2.5)
     led, lines = [], []
     monkeypatch.setattr(ch, "record_trials", lambda rows: led.extend(rows))
     cands = [ch.parse_candidate(f"label=label_4w_sector_{s}", BASE) for s in ("log", "clip", "rank")]
@@ -249,7 +249,7 @@ def test_run_walks_and_scores_a_store_candidate_on_its_own_world(tmp_path, monke
     copied = []
     monkeypatch.setattr(ch, "copy_metrics", lambda sel, ctx_, *a, **k: (copied.append(ctx_.name), [1.0])[1])
     monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
-    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.5)
+    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 2.5)
     audited = []
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx_: (audited.append((store, ctx_.name)),
                                                                           {"VERDICT": "PASS"})[1])
@@ -307,7 +307,7 @@ def test_adjudicate_walks_the_twin_and_the_candidate_on_the_window_and_decides(t
         return {n: {3: sc.get(n, 12.0), 6: sc.get(n, 12.0), 10: sc.get(n, 12.0)} for n in walks}, H, len(adj_weeks)
     monkeypatch.setattr(ch, "metrics_on_common", fake_metrics)
     monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
-    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 1.5)
+    monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 2.5)
     monkeypatch.setattr(ch, "window_table", lambda *a, **k: {"rows": {}, "md": ["| table |"], "settings": {}})
     led = []
     monkeypatch.setattr(ch, "record_trials", lambda rows: led.extend(rows))
@@ -391,3 +391,13 @@ def test_merged_copies_continues_the_numbering(tmp_path):
     m = ch.merged_copies(a, b)
     assert [c for c in m.columns if c.startswith("c")] == ["c1", "c2", "c3", "c4"] and len(m) == len(a)
     assert (m["c3"] == 2 * m["c1"]).all()
+
+
+def test_decide_needs_the_seed_band_and_the_weeks_to_agree():
+    band = {"sd16": 1.0}
+    assert ch.decide(10.0, 5.0, band, band, paired_t=2.5) == ("candidate", 5.0, 2 * 2 ** 0.5)
+    assert ch.decide(10.0, 5.0, band, band, paired_t=1.5)[0] == "tie"          # the weeks do not agree
+    assert ch.decide(10.0, 5.0, band, band, paired_t=-2.5)[0] == "tie"         # nor in that direction
+    assert ch.decide(5.0, 10.0, band, band, paired_t=-2.5)[0] == "incumbent"
+    assert ch.decide(6.0, 5.0, band, band, paired_t=3.0)[0] == "tie"           # inside the seed band
+    assert ch.decide(10.0, 5.0, band, band)[0] == "candidate"                  # no t given: the band alone

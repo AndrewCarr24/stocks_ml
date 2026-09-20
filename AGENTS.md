@@ -179,9 +179,17 @@ comes from the keychain through `git credential fill`; never print it).
    scored +12.4 and +7.3) — and a gap is decided only beyond 2 x the two
    walks' combined seed sd; otherwise a TIE, the incumbent keeps its place and
    nothing is claimed. The incumbent with a twin is scored as one 32-copy
-   ensemble (racing two seed sets let it stand two times in three on a tie).
+   ensemble (racing two seed sets let it stand two times in three on a tie)
+   — AND the paired weekly t of the three-book average must reach 2 in the
+   gap's direction (2026-09-20: at K=64 the S&P names and the S&P+1 still
+   differed by 4 points with t -1.6 — a one-name perturbation moves every
+   copy the same way, so seeds cannot average it out; only the weeks can).
    Under this rule sp800, the S&P+1 sanity check and the dollar-volume fix all
-   read as ties on both windows; the strategy layers are
+   read as ties on both windows. The deployed 16 seeds are the luckiest of
+   four 16-seed sets (10.8 / 8.9 / 7.7 / 10.7); 64 copies score 12.0 — more
+   copies are a model improvement too (data/experiments/dv_fix_weekly/
+   seeds_33_64). On one window this metric cannot resolve differences under
+   ~4-5 points a year, by any number of seeds; the strategy layers are
    `selection.decide_strategy` (book by cost-adjusted compounded %/yr;
    floor, stop, cap by Sharpe, stop and cap adopted only if higher). t
    statistics are reported, not gated. A doubt about a winner becomes a

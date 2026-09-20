@@ -329,7 +329,10 @@ def rank_by_metric(M: dict, names) -> list:
 
 
 BAND_DRAWS = 40           # random half-ensembles scored per walk for its seed band
-BAND_Z = 2.0              # a gap is decided when it exceeds BAND_Z x the two walks' combined seed sd
+BAND_Z = 2.0              # a gap is decided when it exceeds BAND_Z x the two walks' combined seed sd ...
+PAIRED_T = 2.0            # ... AND the paired weekly t of the three-book average is at least this (2026-09-20: two
+                          # walks of the same recipe still differed by 4 points at K=64 — a one-name perturbation
+                          # moves every copy the same way; only the weeks can say whether a gap is real)
 
 
 def seed_band(sel, ctx, preds: pd.DataFrame, copies, common, lo=SELECT[0], hi=SELECT[1], draws: int = BAND_DRAWS) -> dict:
@@ -352,17 +355,19 @@ def seed_band(sel, ctx, preds: pd.DataFrame, copies, common, lo=SELECT[0], hi=SE
             "sd16": round(float(scores.std(ddof=1) / np.sqrt(2)), 2), "draws": draws, "copies": len(copies)}
 
 
-def decide(score_c: float, score_i: float, band_c: dict, band_i: dict) -> tuple[str, float, float]:
-    """The symmetric verdict: the candidate wins when its score beats the
-    incumbent's by more than BAND_Z x the combined seed sd of the two
-    walks; the incumbent stands when it leads by that much; else a tie
-    (the incumbent keeps its place, nothing is claimed). Returns (verdict,
-    gap, threshold)."""
+def decide(score_c: float, score_i: float, band_c: dict, band_i: dict, paired_t: float | None = None) -> tuple[str, float, float]:
+    """The symmetric verdict: a gap is decided only when it beats BAND_Z x
+    the two walks' combined seed sd AND (when given) the paired weekly t
+    of the three-book average is at least PAIRED_T in magnitude in the same
+    direction; the candidate wins on a positive decided gap, the incumbent
+    stands on a negative one; otherwise a tie (the incumbent keeps its
+    place, nothing is claimed). Returns (verdict, gap, threshold)."""
     gap = score_c - score_i
     thr = BAND_Z * float(np.sqrt(band_c["sd16"] ** 2 + band_i["sd16"] ** 2))
-    if gap > thr:
+    weeks_agree = paired_t is None or (abs(paired_t) >= PAIRED_T and np.sign(paired_t) == np.sign(gap))
+    if gap > thr and weeks_agree:
         return "candidate", gap, thr
-    if gap < -thr:
+    if gap < -thr and weeks_agree:
         return "incumbent", gap, thr
     return "tie", gap, thr
 
@@ -602,7 +607,8 @@ def adjudicate(name: str, cand: dict, incumbent: Path, out: Path, worlds: "World
     scores = {k: round(model_score(M[k]), 2) for k in walks}
     bands = {"incumbent": seed_band(sel, ctx, walks["incumbent"], range(1, 2 * FINAL_K + 1), common, lo, hi),
              name: seed_band(sel, ctx_c, walks[name], range(1, FINAL_K + 1), common, lo, hi)}
-    verdict, gap, thr = decide(scores[name], scores["incumbent"], bands[name], bands["incumbent"])
+    t_pair = round(paired_t_books(H[name], H["incumbent"]), 2)
+    verdict, gap, thr = decide(scores[name], scores["incumbent"], bands[name], bands["incumbent"], t_pair)
     winner = name if verdict == "candidate" else "incumbent"
     tab = window_table(sel, ctx, ctx_c, name, incumbent, out / name / "select" / "preds.parquet", H, lo, hi)
     md = ["| model | top-3 | top-6 | top-10 | score (mean of the three) | seed band (sd of the score at K) | paired t vs incumbent |", "|---|---|---|---|---|---|---|"]
@@ -612,7 +618,7 @@ def adjudicate(name: str, cand: dict, incumbent: Path, out: Path, worlds: "World
                   + f" | **{scores[k]:+.2f}** | ±{bands[k]['sd16']:.2f} (K={k_of[k]}; half-ensembles {bands[k]['half_mean']:+.2f} ± {bands[k]['half_sd']:.2f})"
                   + f" | {'—' if k == 'incumbent' else f'{paired_t_books(H[k], H['incumbent']):+.2f}'} |")
     log(f"adjudication ({n} common weeks): the incumbent (both seed sets, K={2 * FINAL_K}) {scores['incumbent']:+.2f} ± {bands['incumbent']['sd16']:.2f}; "
-        f"{name} {scores[name]:+.2f} ± {bands[name]['sd16']:.2f}; gap {gap:+.2f}, decided beyond ±{thr:.2f} -> "
+        f"{name} {scores[name]:+.2f} ± {bands[name]['sd16']:.2f}; gap {gap:+.2f}, decided beyond ±{thr:.2f} with paired t {t_pair:+.2f} (|t| >= {PAIRED_T} needed) -> "
         + (f"{name} wins" if verdict == "candidate" else "the incumbent stands" if verdict == "incumbent" else "a TIE (inside seed luck)"))
     log("\n".join(md))
     log("strategy on the window, each at its own settings:\n" + "\n".join(tab["md"]))
@@ -734,7 +740,8 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
     order2 = rank_by_metric(M2, eligible)
     best = next((n for n in order2 if n not in incumbents), None)
     verdict, gap, thr = ("incumbent", 0.0, 0.0) if best is None else decide(
-        model_score(M2[best]), model_score(M2["incumbent"]), detail[best]["band"], detail["incumbent"]["band"])
+        model_score(M2[best]), model_score(M2["incumbent"]), detail[best]["band"], detail["incumbent"]["band"],
+        detail[best]["paired_t_vs_incumbent"])
     winner = best if verdict == "candidate" else "incumbent"
     res["stage2"] = {"weeks": n2, "detail": detail, "order": order2, "winner": winner, "verdict": verdict,
                      "gap": round(gap, 2), "threshold": round(thr, 2), "best_candidate": best}
@@ -750,7 +757,8 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
                   f" | {d.get('leak_audit', {}).get('verdict', '—')} |")
     res["stage2"]["md"] = md
     log(f"stage 2 ({n2} common weeks, every week): "
-        + (f"{best} vs the incumbent: gap {gap:+.2f}, decided beyond ±{thr:.2f} ({BAND_Z} x the combined seed sd) -> "
+        + (f"{best} vs the incumbent: gap {gap:+.2f}, decided beyond ±{thr:.2f} ({BAND_Z} x the combined seed sd) "
+           f"with paired t {detail[best]['paired_t_vs_incumbent']:+.2f} (|t| >= {PAIRED_T} needed) -> "
            f"{'the candidate wins' if verdict == 'candidate' else 'the incumbent stands' if verdict == 'incumbent' else 'a TIE (inside seed luck; the incumbent keeps its place, nothing is claimed)'}"
            if best else "no eligible candidate"))
     log("\n".join(md))
