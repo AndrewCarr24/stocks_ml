@@ -168,11 +168,20 @@ comes from the keychain through `git credential fill`; never print it).
    then meets the challenger's stage-2 winner and the incumbent once on
    2016-2019, neither selected there — the incumbent's extend walk, its seed
    twin walked on the window, the candidate walked on the window, each at its
-   own procedure-decided settings; the candidate must beat both seed sets;
-   owner's rule 2026-09-18, for final head-to-heads only; 2020 -> the holdout
-   stays untouched; `--refit-every 4` runs every walk of a challenge at the
-   screening cadence — the incumbent's own walk must be at the same cadence,
-   e.g. data/experiments/cadence/sp500_r4); the strategy layers are
+   own procedure-decided settings; owner's rule 2026-09-18, for final
+   head-to-heads only; 2020 -> the holdout stays untouched; `--refit-every 4`
+   runs every walk of a challenge at the screening cadence — the incumbent's
+   own walk must be at the same cadence, e.g. data/experiments/cadence/sp500_r4).
+   **The verdict (2026-09-19, the owner's sanity check):** every walk carries
+   a seed band — the sd of its model score across 40 random half-ensembles of
+   its own copies, scaled to the full ensemble (`challenge.seed_band`; a K=16
+   score moves 1.5-2.5 points on seed luck alone: two walks of the SAME recipe
+   scored +12.4 and +7.3) — and a gap is decided only beyond 2 x the two
+   walks' combined seed sd; otherwise a TIE, the incumbent keeps its place and
+   nothing is claimed. The incumbent with a twin is scored as one 32-copy
+   ensemble (racing two seed sets let it stand two times in three on a tie).
+   Under this rule sp800, the S&P+1 sanity check and the dollar-volume fix all
+   read as ties on both windows; the strategy layers are
    `selection.decide_strategy` (book by cost-adjusted compounded %/yr;
    floor, stop, cap by Sharpe, stop and cap adopted only if higher). t
    statistics are reported, not gated. A doubt about a winner becomes a

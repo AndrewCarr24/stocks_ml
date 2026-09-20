@@ -25792,7 +25792,7 @@
     "f_dollar_vol"
    ]
   },
-  "notes": "{\"metric\": {\"3\": 11.78, \"6\": 12.57, \"10\": 9.67}, \"copies\": [15.806666666666667, 34.663333333333334, -5.783333333333332, 9.333333333333334, 11.829999999999998, 2.9466666666666668, -3.356666666666667, 1.9266666666666665, 15.643333333333333, 17.299999999999997, 10.443333333333333, 7.580000000000001, -0.15666666666666673, 7.6066666666666665, 1.64, 6.916666666666667], \"paired_t_vs_incumbent\": -0.3, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor +0.009 (t +1.3), IC +0.0072 (t +0.9), retention 1.117.\"}, \"weeks\": 522, \"winner\": false}"
+  "notes": "{\"metric\": {\"3\": 11.78, \"6\": 12.57, \"10\": 9.67}, \"k\": 16, \"copies\": [15.806666666666667, 34.663333333333334, -5.783333333333332, 9.333333333333334, 11.829999999999998, 2.9466666666666668, -3.356666666666667, 1.9266666666666665, 15.643333333333333, 17.299999999999997, 10.443333333333333, 7.580000000000001, -0.15666666666666673, 7.6066666666666665, 1.64, 6.916666666666667], \"band\": {\"half_mean\": 10.32, \"half_sd\": 3.38, \"sd16\": 2.39, \"draws\": 40, \"copies\": 16}, \"paired_t_vs_incumbent\": -0.77, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor +0.009 (t +1.3), IC +0.0072 (t +0.9), retention 1.117; feature scan: 6 of 64 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.21, f_book_to_market +0.17, f_sf_roe -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15).\"}, \"weeks\": 522, \"winner\": false}"
  },
  {
   "date": "2026-09-19",
@@ -25809,7 +25809,7 @@
     "f_dollar_vol"
    ]
   },
-  "notes": "{\"metric\": {\"3\": 43.98, \"6\": 31.06, \"10\": 28.56}, \"scores\": {\"incumbent\": 31.8, \"incumbent (twin seeds)\": 28.55, \"label_4w_sector_rank_8y_016d6d60\": 34.53}, \"winner\": \"label_4w_sector_rank_8y_016d6d60\", \"window\": [\"2016-01-01\", \"2019-12-31\"], \"weeks\": 208}"
+  "notes": "{\"metric\": {\"3\": 43.98, \"6\": 31.06, \"10\": 28.56}, \"scores\": {\"incumbent\": 31.27, \"label_4w_sector_rank_8y_016d6d60\": 34.53}, \"winner\": \"incumbent\", \"window\": [\"2016-01-01\", \"2019-12-31\"], \"weeks\": 208}"
  },
  {
   "date": "2026-09-19",
@@ -26083,6 +26083,209 @@
    "params": {},
    "train_top": null
   },
-  "notes": "{\"iterations\": 317, \"champion_mean\": 1.021, \"altered_mean\": 0.176, \"diff_mean\": -0.845, \"diff_se\": 0.479, \"diff_ci90\": [-1.632, -0.058], \"diff_t\": -1.77, \"share_altered_ahead\": 0.514, \"per_book\": {\"top3\": {\"champion\": 1.201, \"altered\": 0.426, \"diff\": -0.775, \"se\": 0.69}, \"top6\": {\"champion\": 1.028, \"altered\": 0.101, \"diff\": -0.927, \"se\": 0.462}, \"top10\": {\"champion\": 0.833, \"altered\": 0.0, \"diff\": -0.833, \"se\": 0.371}}, \"converged\": true, \"stop_reason\": \"decided\"}"
+  "notes": "{\"iterations\": 317, \"champion_mean\": 1.021, \"altered_mean\": 0.176, \"diff_mean\": -0.845, \"diff_se\": 0.479, \"diff_ci90\": [-1.632, -0.058], \"diff_t\": -1.77, \"share_altered_ahead\": 0.514, \"per_book\": {\"top3\": {\"champion\": 1.201, \"altered\": 0.426, \"diff\": -0.775, \"se\": 0.69}, \"top6\": {\"champion\": 1.028, \"altered\": 0.101, \"diff\": -0.927, \"se\": 0.462}, \"top10\": {\"champion\": 0.833, \"altered\": 0.0, \"diff\": -0.833, \"se\": 0.371}}, \"converged\": true, \"stop_reason\": \"decided\", \"note\": \"stopped 'decided' under the 2026-09-19 afternoon rule (90% CI at every look: 44% false positives on a tie); superseded by the |t|>=3 rule; see the rerun\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_sp500up",
+  "cv_metric": 0.656,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {},
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 284, \"champion_mean\": 0.653, \"altered_mean\": 1.309, \"diff_mean\": 0.656, \"diff_se\": 0.35, \"diff_ci90\": [0.081, 1.232], \"diff_t\": 1.88, \"share_altered_ahead\": 0.528, \"per_book\": {\"top3\": {\"champion\": 0.7, \"altered\": 1.734, \"diff\": 1.034, \"se\": 0.538}, \"top6\": {\"champion\": 0.66, \"altered\": 1.334, \"diff\": 0.674, \"se\": 0.376}, \"top10\": {\"champion\": 0.599, \"altered\": 0.861, \"diff\": 0.262, \"se\": 0.256}}, \"converged\": true, \"stop_reason\": \"measured\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_sp500up_s1",
+  "cv_metric": -0.246,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {},
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 280, \"champion_mean\": 1.24, \"altered_mean\": 0.994, \"diff_mean\": -0.246, \"diff_se\": 0.349, \"diff_ci90\": [-0.82, 0.329], \"diff_t\": -0.7, \"share_altered_ahead\": 0.479, \"per_book\": {\"top3\": {\"champion\": 1.592, \"altered\": 1.297, \"diff\": -0.295, \"se\": 0.551}, \"top6\": {\"champion\": 1.092, \"altered\": 0.846, \"diff\": -0.246, \"se\": 0.353}, \"top10\": {\"champion\": 1.035, \"altered\": 0.838, \"diff\": -0.197, \"se\": 0.26}}, \"converged\": true, \"stop_reason\": \"measured\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_sp500up_s2",
+  "cv_metric": -0.528,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {},
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 173, \"champion_mean\": 0.755, \"altered_mean\": 0.228, \"diff_mean\": -0.528, \"diff_se\": 0.35, \"diff_ci90\": [-1.103, 0.048], \"diff_t\": -1.51, \"share_altered_ahead\": 0.434, \"per_book\": {\"top3\": {\"champion\": 0.885, \"altered\": 0.176, \"diff\": -0.709, \"se\": 0.524}, \"top6\": {\"champion\": 0.78, \"altered\": 0.256, \"diff\": -0.524, \"se\": 0.392}, \"top10\": {\"champion\": 0.6, \"altered\": 0.25, \"diff\": -0.35, \"se\": 0.296}}, \"converged\": true, \"stop_reason\": \"measured\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_sp500up_k16",
+  "cv_metric": 0.403,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {},
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 78, \"champion_mean\": 0.698, \"altered_mean\": 1.1, \"diff_mean\": 0.403, \"diff_se\": 0.347, \"diff_ci90\": [-0.169, 0.974], \"diff_t\": 1.16, \"share_altered_ahead\": 0.615, \"per_book\": {\"top3\": {\"champion\": 0.29, \"altered\": 0.982, \"diff\": 0.692, \"se\": 0.546}, \"top6\": {\"champion\": 0.989, \"altered\": 0.972, \"diff\": -0.017, \"se\": 0.433}, \"top10\": {\"champion\": 0.813, \"altered\": 1.347, \"diff\": 0.533, \"se\": 0.295}}, \"converged\": true, \"stop_reason\": \"measured\", \"copies\": 16, \"seed\": 0}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenger2",
+  "name": "challenger2_sp800_k16",
+  "cv_metric": 0.478,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {},
+   "train_top": null
+  },
+  "notes": "{\"iterations\": 296, \"champion_mean\": 0.306, \"altered_mean\": 0.784, \"diff_mean\": 0.478, \"diff_se\": 0.35, \"diff_ci90\": [-0.097, 1.053], \"diff_t\": 1.37, \"share_altered_ahead\": 0.527, \"per_book\": {\"top3\": {\"champion\": 0.607, \"altered\": 1.319, \"diff\": 0.712, \"se\": 0.596}, \"top6\": {\"champion\": 0.243, \"altered\": 0.534, \"diff\": 0.292, \"se\": 0.337}, \"top10\": {\"champion\": 0.067, \"altered\": 0.498, \"diff\": 0.431, \"se\": 0.242}}, \"converged\": true, \"stop_reason\": \"measured\", \"copies\": 16, \"seed\": 0}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenge",
+  "name": "challenge_sp800_test_stage1_label_4w_sector_rank_8y_248f1400",
+  "cv_metric": 9.733333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp800_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 11.33, \"6\": 9.87, \"10\": 8.0}, \"weeks\": 131, \"advanced\": true, \"note\": \"sample; ranks only\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenge",
+  "name": "challenge_sp800_test_stage2_label_4w_sector_rank_8y_248f1400",
+  "cv_metric": 9.479999999999999,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp800_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 7.18, \"6\": 10.26, \"10\": 11.0}, \"k\": 16, \"copies\": [4.026666666666666, 9.909999999999998, 18.156666666666666, 23.069999999999997, 16.459999999999997, 4.513333333333333, 15.546666666666667, 4.386666666666667, 9.799999999999999, 2.486666666666667, 6.223333333333334, -0.7200000000000001, 11.206666666666669, 7.756666666666667, 7.593333333333334, 7.253333333333333], \"band\": {\"half_mean\": 9.9, \"half_sd\": 1.89, \"sd16\": 1.33, \"draws\": 40, \"copies\": 16}, \"paired_t_vs_incumbent\": -1.17, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor -0.009 (t -1.7), IC +0.0141 (t +2.0), retention 1.02; feature scan: 4 of 64 beyond 0.15 (f_sf_debt_ebitda +0.20, f_sf_book_to_market +0.18, f_sf_roe -0.16, f_sf_gross_prof -0.15).\"}, \"weeks\": 522, \"winner\": false}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenge",
+  "name": "challenge_sp800_test_adjudicate_label_4w_sector_rank_8y_248f1400",
+  "cv_metric": 7.663333333333334,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp800_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 2.71, \"6\": 9.2, \"10\": 11.08}, \"scores\": {\"incumbent\": 8.72, \"label_4w_sector_rank_8y_248f1400\": 7.66}, \"winner\": \"incumbent\", \"window\": [\"2016-01-01\", \"2019-12-31\"], \"weeks\": 208}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenge",
+  "name": "challenge_sp500up_test_stage1_label_4w_sector_rank_8y_51c5e7b7",
+  "cv_metric": 5.486666666666667,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp500up_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 6.95, \"6\": 3.34, \"10\": 6.17}, \"weeks\": 131, \"advanced\": true, \"note\": \"sample; ranks only\"}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenge",
+  "name": "challenge_sp500up_test_stage2_label_4w_sector_rank_8y_51c5e7b7",
+  "cv_metric": 7.253333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp500up_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 9.53, \"6\": 5.72, \"10\": 6.51}, \"k\": 16, \"copies\": [0.81, 14.056666666666667, 1.8866666666666667, 5.713333333333334, -1.5133333333333334, 10.396666666666667, 21.953333333333333, 11.343333333333334, 10.396666666666667, -2.1366666666666667, 17.936666666666667, 14.696666666666667, -4.013333333333333, 0.11333333333333329, 15.386666666666665, -1.0033333333333332], \"band\": {\"half_mean\": 7.72, \"half_sd\": 2.64, \"sd16\": 1.87, \"draws\": 40, \"copies\": 16}, \"paired_t_vs_incumbent\": -1.59, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor +0.025 (t +3.3), IC +0.0046 (t +0.5), retention 1.357; feature scan: 6 of 64 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.20, f_book_to_market +0.17, f_sf_roe -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15).\"}, \"weeks\": 522, \"winner\": false}"
+ },
+ {
+  "date": "2026-09-19",
+  "kind": "challenge",
+  "name": "challenge_sp500up_test_adjudicate_label_4w_sector_rank_8y_51c5e7b7",
+  "cv_metric": 10.033333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp500up_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 4.89, \"6\": 9.93, \"10\": 15.28}, \"scores\": {\"incumbent\": 8.72, \"label_4w_sector_rank_8y_51c5e7b7\": 10.03}, \"winner\": \"incumbent\", \"window\": [\"2016-01-01\", \"2019-12-31\"], \"weeks\": 208}"
  }
 ]

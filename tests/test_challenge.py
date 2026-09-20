@@ -92,6 +92,7 @@ def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch)
         return {n: {3: score[n], 6: score[n], 10: score[n]} for n in walks}, H, len(weeks)
     monkeypatch.setattr(ch, "metrics_on_common", fake_metrics)
     monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0, 2.0, 3.0, 4.0])
+    monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
     monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.24)
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx_: {"VERDICT": "PASS", "worst_retention": 0.9})
     monkeypatch.setattr(ch, "leak_line", lambda la: "PASS")
@@ -134,6 +135,7 @@ def test_leak_audit_failure_removes_a_candidate_from_the_argmax(tmp_path, monkey
                          {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks},
                          len(weeks)))
     monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [9.0])
+    monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
     monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 1.0)
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx: {"VERDICT": "FAIL", "worst_retention": 0.4})
     monkeypatch.setattr(ch, "leak_line", lambda la: "FAIL")
@@ -238,13 +240,15 @@ def test_run_walks_and_scores_a_store_candidate_on_its_own_world(tmp_path, monke
     monkeypatch.setattr(ch, "walk", fake_walk)
     seen_ctx = {}
     def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None):
-        seen_ctx[k] = {n: (ctxs or {}).get(n, ctx_).name for n in walks}
+        key = k if isinstance(k, int) else max(k.values())            # stage 2 passes {name: copies}
+        seen_ctx[key] = {n: (ctxs or {}).get(n, ctx_).name for n in walks}
         H = {n: pd.DataFrame({"week": weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}) for n in walks}
         sc = {"incumbent": 6.0}
         return {n: {3: sc.get(n, 9.0), 6: sc.get(n, 9.0), 10: sc.get(n, 9.0)} for n in walks}, H, len(weeks)
     monkeypatch.setattr(ch, "metrics_on_common", fake_metrics)
     copied = []
     monkeypatch.setattr(ch, "copy_metrics", lambda sel, ctx_, *a, **k: (copied.append(ctx_.name), [1.0])[1])
+    monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
     monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.5)
     audited = []
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx_: (audited.append((store, ctx_.name)),
@@ -275,6 +279,7 @@ def test_run_cuts_stage_1_from_a_complete_select_walk(tmp_path, monkeypatch):
         {n: {3: 1.0, 6: 1.0, 10: 1.0} for n in walks},
         {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks}, len(weeks)))
     monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0])
+    monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
     monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 0.0)
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx_: {"VERDICT": "PASS"})
     monkeypatch.setattr(ch, "leak_line", lambda la: "PASS")
@@ -301,6 +306,7 @@ def test_adjudicate_walks_the_twin_and_the_candidate_on_the_window_and_decides(t
         H = {n: pd.DataFrame({"week": adj_weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}) for n in walks}
         return {n: {3: sc.get(n, 12.0), 6: sc.get(n, 12.0), 10: sc.get(n, 12.0)} for n in walks}, H, len(adj_weeks)
     monkeypatch.setattr(ch, "metrics_on_common", fake_metrics)
+    monkeypatch.setattr(ch, "seed_band", lambda *a, **k: {"half_mean": 0.0, "half_sd": 1.0, "sd16": 0.7, "draws": 40, "copies": 16})
     monkeypatch.setattr(ch, "paired_t_books", lambda a, b: 1.5)
     monkeypatch.setattr(ch, "window_table", lambda *a, **k: {"rows": {}, "md": ["| table |"], "settings": {}})
     led = []
@@ -312,15 +318,16 @@ def test_adjudicate_walks_the_twin_and_the_candidate_on_the_window_and_decides(t
     res = ch.adjudicate(name, cand, inc, tmp_path / "ch", worlds, log=lambda m: None)
     assert walked == [("s", "2016-01-01", "2019-12-31", 16, "twin_adjudicate", list(range(17, 33))),
                       ("data/w2", "2016-01-01", "2019-12-31", 16, "adjudicate", None)]
-    assert res["scores"] == {"incumbent": 8.0, "incumbent (twin seeds)": 9.0, name: 12.0}
-    assert res["winner"] == name and res["bar"] == 9.0 and res["weeks"] == 10
+    assert res["scores"] == {"incumbent": 8.0, name: 12.0} and res["verdict"] == "candidate"   # one 32-copy incumbent
+    assert res["winner"] == name and abs(res["threshold"] - 2 * (0.7 ** 2 * 2) ** 0.5) < 0.01 and res["weeks"] == 10
     assert led[0]["name"].startswith("challenge_ch_adjudicate_") and json.loads(led[0]["notes"])["winner"] == name
-    # below the luckier seed set: the incumbent stands
+    # inside the seed band: a tie, the incumbent keeps its place
     monkeypatch.setattr(ch, "metrics_on_common", lambda *a, **k: (
-        {n: {3: v, 6: v, 10: v} for n, v in (("incumbent", 8.0), ("incumbent (twin seeds)", 9.0), (name, 8.5))},
-        {n: pd.DataFrame({"week": adj_weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in ("incumbent", "incumbent (twin seeds)", name)},
+        {n: {3: v, 6: v, 10: v} for n, v in (("incumbent", 8.0), (name, 8.5))},
+        {n: pd.DataFrame({"week": adj_weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in ("incumbent", name)},
         10))
-    assert ch.adjudicate(name, cand, inc, tmp_path / "ch", worlds, log=lambda m: None)["winner"] == "incumbent"
+    r2 = ch.adjudicate(name, cand, inc, tmp_path / "ch", worlds, log=lambda m: None)
+    assert r2["winner"] == "incumbent" and r2["verdict"] == "tie"
 
 
 def test_window_table_scores_each_model_at_its_own_settings_with_the_sp500_row(tmp_path, monkeypatch):
@@ -375,3 +382,12 @@ def test_refuse_leaky_features_judges_a_sector_relative_column_by_its_parent(mon
     assert set(seen["feats"]) >= {"x_sr_f_a", "f_a", "x_new"}
     with pytest.raises(SystemExit, match="x_sr_f_b"):
         ch.refuse_leaky_features(ctx, [{"features": ["x_sr_f_b"]}], "2006-01-01", "2015-12-31", log=lambda m: None)   # 0.40 vs parent 0.10
+
+
+def test_merged_copies_continues_the_numbering(tmp_path):
+    weeks = list(pd.date_range("2006-01-06", periods=3, freq="W-FRI"))
+    a = pd.read_parquet(_walk(tmp_path / "a" / "preds.parquet", weeks, 2))                 # c1, c2
+    b = pd.read_parquet(_walk(tmp_path / "b" / "preds.parquet", weeks, 2, scale=2.0))      # c1, c2 (a twin cut to c1..c2)
+    m = ch.merged_copies(a, b)
+    assert [c for c in m.columns if c.startswith("c")] == ["c1", "c2", "c3", "c4"] and len(m) == len(a)
+    assert (m["c3"] == 2 * m["c1"]).all()

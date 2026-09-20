@@ -288,12 +288,14 @@ def books_mean(h: pd.DataFrame) -> pd.Series:
     return sum(h[f"top{b}"] for b in SCORE_BOOKS) / len(SCORE_BOOKS)
 
 
-def metrics_on_common(sel, ctx, walks: dict, k: int, lo=SELECT[0], hi=SELECT[1], ctxs: dict | None = None):
+def metrics_on_common(sel, ctx, walks: dict, k, lo=SELECT[0], hi=SELECT[1], ctxs: dict | None = None):
     """The selection metric per book for every walk on the rank weeks they
-    all share (same weeks, same copies: the same-bar rule); `ctxs` names
-    another world's context for a walk made there. Returns
+    all share (same weeks; the same-bar rule); `ctxs` names another world's
+    context for a walk made there; `k` is the copies per walk (an int, or
+    {name: int} — the incumbent carries both seed sets, 32). Returns
     ({name: {book: %/yr}}, {name: holdings on the common weeks}, n_common)."""
-    H = {n: holdings(sel, (ctxs or {}).get(n, ctx), p, range(1, k + 1)) for n, p in walks.items()}
+    k_of = k if isinstance(k, dict) else {n: k for n in walks}
+    H = {n: holdings(sel, (ctxs or {}).get(n, ctx), p, range(1, k_of[n] + 1)) for n, p in walks.items()}
     common = None
     for h in H.values():
         w = set(h.week[(h.week >= lo) & (h.week <= hi)])
@@ -324,6 +326,56 @@ def paired_t_books(ha: pd.DataFrame, hb: pd.DataFrame) -> float:
 def rank_by_metric(M: dict, names) -> list:
     """Names sorted by the model score, highest first."""
     return sorted(names, key=lambda n: -model_score(M[n]))
+
+
+BAND_DRAWS = 40           # random half-ensembles scored per walk for its seed band
+BAND_Z = 2.0              # a gap is decided when it exceeds BAND_Z x the two walks' combined seed sd
+
+
+def seed_band(sel, ctx, preds: pd.DataFrame, copies, common, lo=SELECT[0], hi=SELECT[1], draws: int = BAND_DRAWS) -> dict:
+    """How much a walk's model score moves on seed luck alone: the scores
+    of `draws` random half-ensembles of its copies (the 2026-09-19 sanity
+    check: two walks of the SAME recipe scored +12.4 and +7.3 at K=16 while
+    their half-ensembles spread 3 points each). `sd16` scales the half-
+    ensemble spread to the full ensemble (var halves with twice the
+    copies); the verdict reads gaps against it."""
+    copies = list(copies)
+    rng = np.random.default_rng(0)
+    scores = []
+    for _ in range(draws):
+        sub = sorted(rng.choice(copies, max(2, len(copies) // 2), replace=False))
+        h = holdings(sel, ctx, preds, sub)
+        h = h[h.week.isin(common)]
+        scores.append(model_score(selection_metric(sel, h, lo, hi)))
+    scores = np.array(scores)
+    return {"half_mean": round(float(scores.mean()), 2), "half_sd": round(float(scores.std(ddof=1)), 2),
+            "sd16": round(float(scores.std(ddof=1) / np.sqrt(2)), 2), "draws": draws, "copies": len(copies)}
+
+
+def decide(score_c: float, score_i: float, band_c: dict, band_i: dict) -> tuple[str, float, float]:
+    """The symmetric verdict: the candidate wins when its score beats the
+    incumbent's by more than BAND_Z x the combined seed sd of the two
+    walks; the incumbent stands when it leads by that much; else a tie
+    (the incumbent keeps its place, nothing is claimed). Returns (verdict,
+    gap, threshold)."""
+    gap = score_c - score_i
+    thr = BAND_Z * float(np.sqrt(band_c["sd16"] ** 2 + band_i["sd16"] ** 2))
+    if gap > thr:
+        return "candidate", gap, thr
+    if gap < -thr:
+        return "incumbent", gap, thr
+    return "tie", gap, thr
+
+
+def merged_copies(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
+    """One walk with both seed sets' copies (c1..c16 + c17..c32) on the
+    common (week, ticker) rows: the incumbent as a 32-copy ensemble instead
+    of a race between its two sets (the owner's bias finding, 2026-09-19:
+    "beat both" lets the incumbent stand two times in three on a tie)."""
+    ca = [c for c in a.columns if c.startswith("c") and c[1:].isdigit()]
+    cb = [c for c in b.columns if c.startswith("c") and c[1:].isdigit()]
+    b = b.rename(columns={c: f"c{len(ca) + i}" for i, c in enumerate(cb, 1)})     # c1..c16 + c17..c32
+    return a[["week", "ticker", *ca]].merge(b[["week", "ticker", *b.columns[2:]]], on=["week", "ticker"], how="inner")
 
 
 def twin_dir(incumbent: Path) -> Path:
@@ -538,29 +590,35 @@ def adjudicate(name: str, cand: dict, incumbent: Path, out: Path, worlds: "World
                 incumbent.parent.parent / "twin_adjudicate", log=log, features=inc_rec.get("features", ()),
                 params=inc_rec.get("params"), workers=workers, copies=twin_copies(), drop=inc_rec.get("drop", ()), train_top=inc_rec.get("train_top"),
                 refit_every=refit_every)
-    walks["incumbent (twin seeds)"] = cut_walk(twin, weeks, FINAL_K, copies=twin_copies())
+    walks["incumbent"] = merged_copies(walks["incumbent"], cut_walk(twin, weeks, FINAL_K, copies=twin_copies()))   # 32 copies
     p = walk(worlds.store_of(cand), lo, hi, cand["label"], cand["train_years"], FINAL_K, out / name / "adjudicate",
              log=log, features=cand.get("features", ()), params=cand.get("params"), drop=cand.get("drop", ()), train_top=cand.get("train_top"),
              workers=workers, refit_every=refit_every)
     walks[name] = load_preds([p])
     ctx_c = worlds.ctx_of(cand)
-    M, H, n = metrics_on_common(sel, ctx, walks, FINAL_K, lo, hi, ctxs={name: ctx_c})
+    k_of = {"incumbent": 2 * FINAL_K, name: FINAL_K}
+    M, H, n = metrics_on_common(sel, ctx, walks, k_of, lo, hi, ctxs={name: ctx_c})
+    common = set(H["incumbent"].week)
     scores = {k: round(model_score(M[k]), 2) for k in walks}
-    bar = max(scores["incumbent"], scores["incumbent (twin seeds)"])
-    winner = name if scores[name] > bar else "incumbent"
+    bands = {"incumbent": seed_band(sel, ctx, walks["incumbent"], range(1, 2 * FINAL_K + 1), common, lo, hi),
+             name: seed_band(sel, ctx_c, walks[name], range(1, FINAL_K + 1), common, lo, hi)}
+    verdict, gap, thr = decide(scores[name], scores["incumbent"], bands[name], bands["incumbent"])
+    winner = name if verdict == "candidate" else "incumbent"
     tab = window_table(sel, ctx, ctx_c, name, incumbent, out / name / "select" / "preds.parquet", H, lo, hi)
-    md = ["| model | top-3 | top-6 | top-10 | score (mean of the three) | paired t vs incumbent |", "|---|---|---|---|---|---|"]
+    md = ["| model | top-3 | top-6 | top-10 | score (mean of the three) | seed band (sd of the score at K) | paired t vs incumbent |", "|---|---|---|---|---|---|---|"]
     for k in walks:
-        md.append(f"| {'**' + k + '**' if k == winner or (winner == 'incumbent' and k == 'incumbent') else k} | "
+        md.append(f"| {'**' + k + '**' if k == winner else k} | "
                   + " | ".join(f"{M[k].get(b, float('nan')):+.2f}" for b in SCORE_BOOKS)
-                  + f" | **{scores[k]:+.2f}** | {'—' if k == 'incumbent' else f'{paired_t_books(H[k], H['incumbent']):+.2f}'} |")
-    log(f"adjudication ({n} common weeks): the incumbent's seed sets score {scores['incumbent']:+.2f} and "
-        f"{scores['incumbent (twin seeds)']:+.2f}; {name} {scores[name]:+.2f} -> "
-        + (f"{name} wins (above both seed sets)" if winner == name else "the incumbent stands"))
+                  + f" | **{scores[k]:+.2f}** | ±{bands[k]['sd16']:.2f} (K={k_of[k]}; half-ensembles {bands[k]['half_mean']:+.2f} ± {bands[k]['half_sd']:.2f})"
+                  + f" | {'—' if k == 'incumbent' else f'{paired_t_books(H[k], H['incumbent']):+.2f}'} |")
+    log(f"adjudication ({n} common weeks): the incumbent (both seed sets, K={2 * FINAL_K}) {scores['incumbent']:+.2f} ± {bands['incumbent']['sd16']:.2f}; "
+        f"{name} {scores[name]:+.2f} ± {bands[name]['sd16']:.2f}; gap {gap:+.2f}, decided beyond ±{thr:.2f} -> "
+        + (f"{name} wins" if verdict == "candidate" else "the incumbent stands" if verdict == "incumbent" else "a TIE (inside seed luck)"))
     log("\n".join(md))
     log("strategy on the window, each at its own settings:\n" + "\n".join(tab["md"]))
-    res = {"window": [str(lo.date()), str(hi.date())], "weeks": n, "metric": M, "scores": scores,
-           "bar": bar, "winner": winner, "md": md, "strategy": tab, "twin": str(twin), "walk": str(p)}
+    res = {"window": [str(lo.date()), str(hi.date())], "weeks": n, "metric": M, "scores": scores, "bands": bands,
+           "verdict": verdict, "gap": round(gap, 2), "threshold": round(thr, 2),
+           "winner": winner, "md": md, "strategy": tab, "twin": str(twin), "walk": str(p)}
     _ledger(out, "adjudicate", name, cand, {"metric": M[name], "scores": scores, "winner": winner,
                                              "window": res["window"], "weeks": n})
     return res
@@ -655,13 +713,18 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
                  log=log, features=c.get("features", ()), params=c.get("params"), drop=c.get("drop", ()), train_top=c.get("train_top"), workers=workers,
                  refit_every=refit_every)
         walks[n] = load_preds([p])
-    M2, H2, n2 = metrics_on_common(sel, ctx, walks, FULL_K, lo, hi, ctxs=ctxs)
-    incumbents = [n for n in walks if n.startswith("incumbent")]
+    if "incumbent (twin seeds)" in walks:            # one 32-copy incumbent, not a race between two seed sets
+        walks["incumbent"] = merged_copies(walks["incumbent"], walks.pop("incumbent (twin seeds)"))
+    k_of = {n: (2 * FULL_K if n == "incumbent" and walks[n].shape[1] > FULL_K + 2 else FULL_K) for n in walks}
+    M2, H2, n2 = metrics_on_common(sel, ctx, walks, k_of, lo, hi, ctxs=ctxs)
+    common2 = set(H2["incumbent"].week)
+    incumbents = ["incumbent"]
     detail = {}
     for n in [*incumbents, *advance]:
         preds = walks[n]
-        detail[n] = {"metric": M2[n],
-                     "copies": copy_metrics(sel, ctxs.get(n, ctx), preds, FULL_K, set(H2[n].week), lo, hi),
+        detail[n] = {"metric": M2[n], "k": k_of[n],
+                     "copies": copy_metrics(sel, ctxs.get(n, ctx), preds, k_of[n], set(H2[n].week), lo, hi),
+                     "band": seed_band(sel, ctxs.get(n, ctx), preds, range(1, k_of[n] + 1), common2, lo, hi),
                      "paired_t_vs_incumbent": (None if n == "incumbent"
                                                else round(paired_t_books(H2[n], H2["incumbent"]), 2))}
         if n not in incumbents:
@@ -669,27 +732,27 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
             detail[n]["leak_audit"] = {"verdict": la["VERDICT"], "line": leak_line(la)}
     eligible = incumbents + [n for n in advance if detail[n]["leak_audit"]["verdict"] == "PASS"]
     order2 = rank_by_metric(M2, eligible)
-    winner = order2[0]
-    if winner in incumbents:
-        winner = "incumbent"
-    if len(incumbents) > 1:
-        log(f"seed luck: the incumbent's two seed sets score {model_score(M2['incumbent']):+.2f} and "
-            f"{model_score(M2['incumbent (twin seeds)']):+.2f} on the full walk — a candidate gap inside "
-            f"{abs(model_score(M2['incumbent (twin seeds)']) - model_score(M2['incumbent'])):.2f} is seed noise; "
-            f"the argmax must beat both")
-    res["stage2"] = {"weeks": n2, "detail": detail, "order": order2, "winner": winner}
-    md = [f"| model | top-3 | top-6 | top-10 | score (mean of the three) | copies 1-{FULL_K} | paired t vs incumbent | leak audit |",
-          "|---|---|---|---|---|---|---|---|"]
+    best = next((n for n in order2 if n not in incumbents), None)
+    verdict, gap, thr = ("incumbent", 0.0, 0.0) if best is None else decide(
+        model_score(M2[best]), model_score(M2["incumbent"]), detail[best]["band"], detail["incumbent"]["band"])
+    winner = best if verdict == "candidate" else "incumbent"
+    res["stage2"] = {"weeks": n2, "detail": detail, "order": order2, "winner": winner, "verdict": verdict,
+                     "gap": round(gap, 2), "threshold": round(thr, 2), "best_candidate": best}
+    md = [f"| model | top-3 | top-6 | top-10 | score (mean of the three) | seed band (sd of the score at K) | copies | paired t vs incumbent | leak audit |",
+          "|---|---|---|---|---|---|---|---|---|"]
     for n in [*incumbents, *advance]:
         d = detail[n]
         md.append(f"| {'**' + n + '**' if n == winner else n} | " +
                   " | ".join(f"{d['metric'].get(b, float('nan')):+.2f}" for b in SCORE_BOOKS) +
-                  f" | **{model_score(d['metric']):+.2f}** | " + ", ".join(f"{v:+.2f}" for v in d["copies"]) +
+                  f" | **{model_score(d['metric']):+.2f}** | ±{d['band']['sd16']:.2f} (half-ensembles {d['band']['half_mean']:+.2f} ± {d['band']['half_sd']:.2f}) | "
+                  f"K={d['k']}: " + ", ".join(f"{v:+.1f}" for v in d["copies"]) +
                   f" | {'—' if d['paired_t_vs_incumbent'] is None else f'{d['paired_t_vs_incumbent']:+.2f}'}"
                   f" | {d.get('leak_audit', {}).get('verdict', '—')} |")
     res["stage2"]["md"] = md
-    log(f"stage 2 ({n2} common weeks, every week, K={FULL_K}): the argmax of the model score "
-        f"(mean over top-3/6/10) is {winner}" + (" — the incumbent stands" if winner == "incumbent" else ""))
+    log(f"stage 2 ({n2} common weeks, every week): "
+        + (f"{best} vs the incumbent: gap {gap:+.2f}, decided beyond ±{thr:.2f} ({BAND_Z} x the combined seed sd) -> "
+           f"{'the candidate wins' if verdict == 'candidate' else 'the incumbent stands' if verdict == 'incumbent' else 'a TIE (inside seed luck; the incumbent keeps its place, nothing is claimed)'}"
+           if best else "no eligible candidate"))
     log("\n".join(md))
     for n in advance:
         _ledger(out, "stage2", n, names[n], {**detail[n], "weeks": n2, "winner": n == winner})

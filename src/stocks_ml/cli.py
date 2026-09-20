@@ -158,7 +158,7 @@ def cmd_app(args, cfg):
 def cmd_challenger2(args, cfg):
     from stocks_ml.challenger2 import run
     run(args.candidate, name=args.name, store=args.store, seed=args.seed, min_iters=args.min_iters,
-        max_iters=args.max_iters, se_tol=args.se_tol, workers=args.workers)
+        max_iters=args.max_iters, se_tol=args.se_tol, workers=args.workers, copies=args.copies)
 
 
 def cmd_audit_live(args, cfg):
@@ -394,6 +394,7 @@ def main():
     p.add_argument("--max-iters", type=int, default=500)
     p.add_argument("--se-tol", type=float, default=0.35, help="stop when the paired difference's SE is at or below this (pp per hold)")
     p.add_argument("--workers", type=int, default=4, help="paired fits in parallel processes; STOCKS_ML_CORES=N caps the cores")
+    p.add_argument("--copies", type=int, default=1, help="seeded copies per model per iteration, averaged (16 = the deployed ensemble)")
 
     p = sub.add_parser("audit-live", help="compare the rows the live job scored (its archive) with the same rows "
                        "in a later panel build: a feature whose history is rewritten by later data is a leak")
