@@ -99,7 +99,7 @@ def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch)
     led = []
     monkeypatch.setattr(ch, "record_trials", lambda rows: led.extend(rows))
     cands = [ch.parse_candidate(f"label=label_4w_sector_{s}", BASE) for s in ("log", "clip", "rank")]
-    res = ch.run(cands, inc, tmp_path / "ch", store="s", log=lambda m: None)
+    res = ch.run(cands, inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
     # stage 1: three sample walks (every 4th week, K=4), the top two advance
     assert [w for w in walked if w[3] == ch.SAMPLE_EVERY] == \
         [(f"label_4w_sector_{s}", 8, ch.SAMPLE_K, ch.SAMPLE_EVERY, "sample", (), None) for s in ("log", "clip", "rank")]
@@ -121,7 +121,7 @@ def test_run_refuses_the_incumbents_own_recipe(tmp_path, monkeypatch):
     weeks = list(pd.date_range("2006-01-06", periods=4, freq="W-FRI"))
     inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, 4)
     with pytest.raises(SystemExit):
-        ch.run([dict(BASE)], inc, tmp_path / "ch", store="s", log=lambda m: None)
+        ch.run([dict(BASE)], inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
 
 
 def test_leak_audit_failure_removes_a_candidate_from_the_argmax(tmp_path, monkeypatch):
@@ -141,7 +141,7 @@ def test_leak_audit_failure_removes_a_candidate_from_the_argmax(tmp_path, monkey
     monkeypatch.setattr(ch, "leak_line", lambda la: "FAIL")
     monkeypatch.setattr(ch, "record_trials", lambda rows: None)
     res = ch.run([ch.parse_candidate("label=label_4w_sector_rank", BASE)], inc, tmp_path / "ch",
-                 store="s", log=lambda m: None)
+                 store="s", log=lambda m: None, incumbent_recipe_ok=True)
     assert res["stage2"]["winner"] == "incumbent"                         # a leaky winner cannot win
 
 
@@ -192,7 +192,7 @@ def test_run_fast_walks_the_sample_flags_by_the_null_and_prints_the_promotion(tm
     led, lines = [], []
     monkeypatch.setattr(ch, "record_trials", lambda rows: led.extend(rows))
     cands = [ch.parse_candidate(f"label=label_4w_sector_{s}", BASE) for s in ("log", "clip", "rank")]
-    res = ch.run_fast(cands, inc, tmp_path / "fast", store="s", per_year=2, seed=3, log=lines.append)
+    res = ch.run_fast(cands, inc, tmp_path / "fast", store="s", per_year=2, seed=3, log=lines.append, incumbent_recipe_ok=True)
     assert [w[:3] for w in walked] == [("label_4w_sector_log", ch.FAST_K, "fast_2x_s3"),
                                        ("label_4w_sector_clip", ch.FAST_K, "fast_2x_s3"),
                                        ("label_4w_sector_rank", ch.FAST_K, "fast_2x_s3")]
@@ -257,7 +257,7 @@ def test_run_walks_and_scores_a_store_candidate_on_its_own_world(tmp_path, monke
     monkeypatch.setattr(ch, "record_trials", lambda rows: None)
     cand = ch.parse_candidate("store=data/w2", BASE)
     name = ch.candidate_name(cand)
-    res = ch.run([cand], inc, tmp_path / "ch", store="s", log=lambda m: None)
+    res = ch.run([cand], inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
     assert walked == [("data/w2", ch.SAMPLE_K, ch.SAMPLE_EVERY, "sample"), ("data/w2", ch.FULL_K, 1, "select")]
     assert loaded == ["s", "data/w2"]                                  # the second world loaded once, lazily
     assert seen_ctx[ch.FULL_K] == {"incumbent": "a", name: "b"}         # each walk scored on its own world
@@ -284,7 +284,7 @@ def test_run_cuts_stage_1_from_a_complete_select_walk(tmp_path, monkeypatch):
     monkeypatch.setattr(ch, "audit_segments", lambda store, paths, ctx_: {"VERDICT": "PASS"})
     monkeypatch.setattr(ch, "leak_line", lambda la: "PASS")
     monkeypatch.setattr(ch, "record_trials", lambda rows: None)
-    ch.run([cand], inc, tmp_path / "ch", store="s", log=lambda m: None)
+    ch.run([cand], inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
     assert walked == ["select"]                     # no sample walk; stage 2 resumes the complete one
 
 
@@ -401,3 +401,18 @@ def test_decide_needs_the_seed_band_and_the_weeks_to_agree():
     assert ch.decide(5.0, 10.0, band, band, paired_t=-2.5)[0] == "incumbent"
     assert ch.decide(6.0, 5.0, band, band, paired_t=3.0)[0] == "tie"           # inside the seed band
     assert ch.decide(10.0, 5.0, band, band)[0] == "candidate"                  # no t given: the band alone
+
+
+def test_incumbent_recipe_refuses_a_stale_yardstick(tmp_path):
+    spec = {"horizon": {"label": "label_4w_sector_rank"}, "training_window_years": 8, "features": ["x_dollar_vol"],
+            "drop_features": ["f_dollar_vol"], "model": {"params": {}}}
+    sp = tmp_path / "spec.json"; sp.write_text(json.dumps(spec))
+    w = tmp_path / "old" / "select"; w.mkdir(parents=True); (w / "preds.parquet").write_bytes(b"x")
+    (w / "spec.json").write_text(json.dumps({"recipe": {"label": "label_4w_sector_rank", "train_years": 8}}))   # the leaky recipe
+    with pytest.raises(SystemExit, match="stale yardstick"):
+        ch.incumbent_recipe(w / "preds.parquet", spec_path=sp)
+    assert ch.incumbent_recipe(w / "preds.parquet", spec_path=sp, allow_other=True)["train_years"] == 8
+    w2 = tmp_path / "clean" / "select"; w2.mkdir(parents=True); (w2 / "preds.parquet").write_bytes(b"x")
+    (w2 / "spec.json").write_text(json.dumps({"recipe": {"label": "label_4w_sector_rank", "train_years": 8,
+                                                         "features": ["x_dollar_vol"], "drop": ["f_dollar_vol"]}}))
+    assert ch.incumbent_recipe(w2 / "preds.parquet", spec_path=sp)["features"] == ["x_dollar_vol"]

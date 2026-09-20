@@ -171,7 +171,7 @@ comes from the keychain through `git credential fill`; never print it).
    own procedure-decided settings; owner's rule 2026-09-18, for final
    head-to-heads only; 2020 -> the holdout stays untouched; `--refit-every 4`
    runs every walk of a challenge at the screening cadence — the incumbent's
-   own walk must be at the same cadence, e.g. data/experiments/cadence/sp500_r4).
+   own walk must be at the same cadence, data/experiments/champion_r4, the CLEAN recipe; the pre-fix walks are retired as cadence/sp500_r4_LEAKY_old_recipe).
    **The verdict (2026-09-19, the owner's sanity check):** every walk carries
    a seed band — the sd of its model score across 40 random half-ensembles of
    its own copies, scaled to the full ensemble (`challenge.seed_band`; a K=16

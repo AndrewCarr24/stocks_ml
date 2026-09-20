@@ -214,12 +214,31 @@ def refuse_leaky_features_by_world(worlds: Worlds, candidates: list, lo, hi, log
             refuse_leaky_features(worlds.ctx_of(cs[0]), cs, lo, hi, log)
 
 
-def incumbent_recipe(preds_path: Path) -> dict:
+def incumbent_recipe(preds_path: Path, spec_path: Path | None = None, allow_other: bool = False) -> dict:
+    """The incumbent walk's recipe — refused unless it is the champion's
+    (the spec's) recipe, since 2026-09-20: for two days the screens graded
+    clean candidates against the champion's OLD walks, fitted before the
+    dollar-volume fix, whose leak is worth 4-5 points on 2006-2015 (the
+    "leaky yardstick"). `allow_other` is for a deliberate comparison
+    against another recipe."""
+    from stocks_ml.procedure import SPEC_PATH
     rec = json.loads((Path(preds_path).parent / "spec.json").read_text())
     if not rec.get("recipe"):
         raise SystemExit(f"{preds_path} has no recipe in its record; the challenge needs the "
                          "incumbent's label and window")
-    return rec["recipe"]
+    r = rec["recipe"]
+    if not allow_other:
+        spec = json.loads(Path(spec_path or SPEC_PATH).read_text())
+        want = {"label": spec["horizon"]["label"], "train_years": int(spec["training_window_years"]),
+                "features": list(spec.get("features") or []), "drop": list(spec.get("drop_features") or []),
+                "params": {}, "train_top": spec.get("train_top")}
+        have = {"label": r["label"], "train_years": int(r["train_years"]), "features": list(r.get("features") or []),
+                "drop": list(r.get("drop") or []), "params": dict(r.get("params") or {}), "train_top": r.get("train_top")}
+        if have != want:
+            raise SystemExit(f"the incumbent {preds_path} was walked with {have}, not the champion's recipe {want} "
+                             f"(models/champion_spec.json): a stale yardstick. Pass --incumbent-recipe-ok to compare "
+                             f"against another recipe on purpose.")
+    return r
 
 
 def sample_weeks(ctx, lo, hi, every: int) -> list:
@@ -458,13 +477,13 @@ def mean_excess(h: pd.DataFrame) -> float:
 
 def run_fast(candidates: list, incumbent: Path, out: Path, store: str = STORE,
              per_year: int = FAST_PER_YEAR, seed: int = FAST_SEED, lo=SELECT[0], hi=SELECT[1],
-             log=print, workers: int = 1, refit_every: int = 1, k: int = FAST_K) -> dict:
+             log=print, workers: int = 1, refit_every: int = 1, k: int = FAST_K, incumbent_recipe_ok: bool = False) -> dict:
     """`stocks-ml challenge-fast`: the candidates on a stratified random
     sample of the selection window at K=FAST_K against the incumbent on
     the same weeks; ranked by the model score; nothing decided."""
     lo, hi, out, incumbent = pd.Timestamp(lo), pd.Timestamp(hi), Path(out), Path(incumbent)
     out.mkdir(parents=True, exist_ok=True)
-    inc_rec = incumbent_recipe(incumbent)
+    inc_rec = incumbent_recipe(incumbent, allow_other=incumbent_recipe_ok)
     names = {candidate_name(c): c for c in candidates}
     if len(names) != len(candidates):
         raise SystemExit("two candidates have the same recipe")
@@ -583,7 +602,7 @@ def adjudicate(name: str, cand: dict, incumbent: Path, out: Path, worlds: "World
     the window, the candidate walked on the window; the model score on the
     common weeks decides — the candidate must beat both seed sets."""
     sel, ctx, store = worlds.sel, worlds.base, worlds.store
-    inc_rec = incumbent_recipe(incumbent)
+    inc_rec = incumbent_recipe(incumbent, allow_other=True)      # run() checked it
     ext = incumbent.parent.parent / "extend" / "preds.parquet"
     if not ext.exists():
         raise SystemExit(f"the incumbent has no extend walk at {ext}: the adjudication window needs it")
@@ -659,10 +678,10 @@ def _ledger(out: Path, stage: str, name: str, rec: dict, note: dict) -> None:
 
 def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: bool = False,
         lo=SELECT[0], hi=SELECT[1], log=print, workers: int = 1, adjudicate_window: bool = False,
-        refit_every: int = 1) -> dict:
+        refit_every: int = 1, incumbent_recipe_ok: bool = False) -> dict:
     lo, hi, out, incumbent = pd.Timestamp(lo), pd.Timestamp(hi), Path(out), Path(incumbent)
     out.mkdir(parents=True, exist_ok=True)
-    inc_rec = incumbent_recipe(incumbent)
+    inc_rec = incumbent_recipe(incumbent, allow_other=incumbent_recipe_ok)
     names = {candidate_name(c): c for c in candidates}
     if len(names) != len(candidates):
         raise SystemExit("two candidates have the same recipe")

@@ -89,19 +89,20 @@ def cmd_train(args, cfg):
 
 def cmd_challenge(args, cfg):
     from stocks_ml.challenge import incumbent_recipe, parse_candidate, run
-    base = incumbent_recipe(args.incumbent)
+    base = incumbent_recipe(args.incumbent, allow_other=args.incumbent_recipe_ok)
     cands = [parse_candidate(c, base) for c in args.candidate]
     run(cands, args.incumbent, args.out, store=args.store, k16=args.k16, lo=args.sel_start,
-        hi=args.sel_end, workers=args.workers, adjudicate_window=args.adjudicate, refit_every=args.refit_every)
+        hi=args.sel_end, workers=args.workers, adjudicate_window=args.adjudicate, refit_every=args.refit_every,
+        incumbent_recipe_ok=args.incumbent_recipe_ok)
 
 
 def cmd_challenge_fast(args, cfg):
     from stocks_ml.challenge import incumbent_recipe, parse_candidate, run_fast
-    base = incumbent_recipe(args.incumbent)
+    base = incumbent_recipe(args.incumbent, allow_other=args.incumbent_recipe_ok)
     cands = [parse_candidate(c, base) for c in args.candidate]
     run_fast(cands, args.incumbent, args.out, store=args.store, per_year=args.per_year,
              seed=args.seed, lo=args.sel_start, hi=args.sel_end, workers=args.workers,
-             refit_every=args.refit_every, k=args.k)
+             refit_every=args.refit_every, k=args.k, incumbent_recipe_ok=args.incumbent_recipe_ok)
 
 
 def cmd_backtest(args, cfg):
@@ -288,6 +289,9 @@ def main():
 
     p = sub.add_parser("challenge", help="the challenger protocol: candidate recipes vs the incumbent "
                        "(sample, every-week comparison, leak audit; --k16 adds the one look)")
+    p.add_argument("--incumbent-recipe-ok", action="store_true",
+                   help="accept an incumbent walked with a recipe other than the spec's (refused otherwise: the 2026-09-20 "
+                        "leaky-yardstick guard)")
     p.add_argument("--out", required=True, help="directory for the candidates' walks and challenge.json")
     p.add_argument("--candidate", action="append", required=True, metavar="RECIPE",
                    help="label=..,train_years=..,features=a+b,params=name:value+..; unspecified "
@@ -309,6 +313,9 @@ def main():
 
     p = sub.add_parser("challenge-fast", help="the prototype: candidate recipes vs the incumbent on a "
                        "stratified random sample of the selection window at K=16; ranks only")
+    p.add_argument("--incumbent-recipe-ok", action="store_true",
+                   help="accept an incumbent walked with a recipe other than the spec's (refused otherwise: the 2026-09-20 "
+                        "leaky-yardstick guard)")
     p.add_argument("--out", required=True, help="directory for the candidates' sample walks and fast_s<seed>.json")
     p.add_argument("--candidate", action="append", required=True, metavar="RECIPE",
                    help="as for challenge (repeatable)")

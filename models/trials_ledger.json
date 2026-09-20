@@ -26287,5 +26287,41 @@
    "store": "data/sharadar_sp500up_nominal_dl"
   },
   "notes": "{\"metric\": {\"3\": 4.89, \"6\": 9.93, \"10\": 15.28}, \"scores\": {\"incumbent\": 8.72, \"label_4w_sector_rank_8y_51c5e7b7\": 10.03}, \"winner\": \"incumbent\", \"window\": [\"2016-01-01\", \"2019-12-31\"], \"weeks\": 208}"
+ },
+ {
+  "date": "2026-09-20",
+  "kind": "challenge",
+  "name": "challenge_swap_test_stage1_label_4w_sector_rank_8y_0db4931c",
+  "cv_metric": 7.573333333333333,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp500ctrl_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 4.93, \"6\": 8.2, \"10\": 9.59}, \"weeks\": 131, \"advanced\": true, \"note\": \"sample; ranks only\"}"
+ },
+ {
+  "date": "2026-09-20",
+  "kind": "challenge",
+  "name": "challenge_swap_test_stage2_label_4w_sector_rank_8y_0db4931c",
+  "cv_metric": 12.4,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "store": "data/sharadar_sp500ctrl_nominal_dl"
+  },
+  "notes": "{\"metric\": {\"3\": 15.38, \"6\": 10.79, \"10\": 11.03}, \"k\": 16, \"copies\": [3.606666666666667, 22.323333333333334, 3.1233333333333335, 14.423333333333332, 6.88, 8.303333333333333, 18.353333333333335, 13.636666666666665, 3.8833333333333333, 14.826666666666668, 4.1866666666666665, 15.566666666666668, -13.479999999999999, 1.1733333333333336, 13.336666666666666, 8.47], \"band\": {\"half_mean\": 9.38, \"half_sd\": 3.04, \"sd16\": 2.15, \"draws\": 40, \"copies\": 16}, \"paired_t_vs_incumbent\": 1.59, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor +0.023 (t +3.2), IC +0.0031 (t +0.4), retention 1.467; feature scan: 6 of 64 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.21, f_book_to_market +0.17, f_sf_roe -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15).\"}, \"weeks\": 522, \"winner\": false}"
  }
 ]
