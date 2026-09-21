@@ -26351,5 +26351,40 @@
    "train_top": null
   },
   "notes": "{\"trial\": 14, \"params\": {\"max_depth\": 3, \"learning_rate\": 0.007781950250848015, \"min_child_weight\": 10, \"subsample\": 0.8490028791080081, \"colsample_bytree\": 0.6702530984562707, \"reg_lambda\": 0.3342202528351064, \"reg_alpha\": 0.5892803081934321, \"gamma\": 0.03728789972243256}, \"diff\": 0.515, \"se\": 0.4, \"ci90\": [-0.144, 1.174], \"weeks\": 131, \"objective\": \"paired three-book excess vs the champion, pp/hold, one 4-week phase, common weeks and seeds\"}"
+ },
+ {
+  "date": "2026-09-21",
+  "kind": "eval",
+  "name": "eval_clean_weekly_clean_weekly_k16",
+  "pre_holdout_sharpe": 0.576,
+  "notes": "{\"walk\": \"data/experiments/clean_weekly\", \"settings\": {\"book\": 3, \"floor\": \"halfgate\", \"stop\": null, \"cap\": 2, \"vol_cut\": null}, \"2016_2024\": {\"terminal_100\": 219.2, \"cagr_pct\": 9.58, \"sharpe\": 0.429, \"max_dd\": 0.489, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 1290.0, \"cagr_pct\": 14.76, \"sharpe\": 0.576, \"max_dd\": 0.541, \"n_weeks\": 966}, \"falsification_t\": null, \"verdict\": null, \"leak\": \"PASS\"}"
+ },
+ {
+  "date": "2026-09-21",
+  "kind": "procedure",
+  "name": "procedure_2006-01-01_2015-12-31_clean_weekly_select",
+  "pre_holdout_sharpe": 0.711,
+  "notes": "{\"decision\": {\"book_size\": 3, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": 2, \"vol_cut\": null}, \"evidence\": {\"book\": {\"3\": 14.41, \"6\": 10.19, \"10\": 11.06}, \"vol_cut\": {\"None\": 0.597}, \"floor\": {\"none\": 0.597, \"halfgate\": 0.693, \"80/20\": 0.62, \"70/30\": 0.631, \"60/40\": 0.647}, \"stop\": {\"None\": 0.693, \"-0.25\": 0.669}, \"cap\": {\"None\": 0.693, \"2\": 0.711}}, \"preds_sha256\": \"9b7056ac58eb\", \"changed\": {\"floor\": [\"60/40\", \"halfgate\"], \"sector_cap\": [null, 2], \"features\": [[\"x_dollar_vol\"], [\"x_dollar_vol\", \"x_short_dtc\", \"x_evt_filed_5d\", \"x_days_since_filing\", \"x_pead\", \"x_evt_8k_7d\", \"x_evt_earnings_8k_7d\", \"x_days_since_earnings_8k\"]], \"drop_features\": [[\"f_dollar_vol\"], [\"f_dollar_vol\", \"f_short_dtc\", \"f_asset_growth\", \"f_book_to_market\", \"f_cf_to_price\", \"f_earnings_yield\", \"f_gross_profitability\", \"f_leverage\", \"f_log_mktcap\", \"f_ocf_to_assets\", \"f_roe\", \"f_sales_to_price\", \"f_evt_filed_5d\", \"f_days_since_filing\", \"f_pead\", \"f_evt_8k_7d\", \"f_evt_earnings_8k_7d\", \"f_days_since_earnings_8k\", \"f_short_ratio\", \"f_insider_net_13w\", \"f_insider_buyers_13w\", \"f_evt_insider_buy_2w\"]]}}"
+ },
+ {
+  "date": "2026-09-21",
+  "kind": "app",
+  "name": "app_champion_clean_weekly_k16",
+  "config": {
+   "horizon": "4w",
+   "book": 3,
+   "floor": "halfgate",
+   "stop": null,
+   "cap": 2,
+   "vol_cut": null,
+   "train_years": 8,
+   "fills": "next open"
+  },
+  "terminal_100": 219.2,
+  "cagr_pct": 9.58,
+  "sharpe": 0.429,
+  "max_dd": 0.489,
+  "n_weeks": 446,
+  "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/clean_weekly replayed by selection.simulate at K=16 for reports/champion_explorer.html: $219 (+9.6%/yr, SR 0.43, DD 49%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
  }
 ]

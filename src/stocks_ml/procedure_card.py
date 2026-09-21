@@ -75,6 +75,15 @@ def features_summary(s: dict) -> str:
     panel columns the spec names (`features`; none since 2026-09-11)."""
     feats = s.get("features") or []
     dropped = s.get("drop_features") or []
+    sec = {"x_evt_filed_5d", "x_days_since_filing", "x_pead", "x_evt_8k_7d", "x_evt_earnings_8k_7d", "x_days_since_earnings_8k"}
+    if "x_short_dtc" in feats and sec <= set(feats) and "f_log_mktcap" in dropped and "f_insider_net_13w" in dropped:
+        return ("the panel's f_ columns with the survivor-keyed ones withheld (the 2026-09-21 correction: the S&P "
+                "store's EDGAR facts, 8-K metadata and Form 4 filings had been pulled for today's members only, so "
+                f"a blank meant \"gone by 2026\" — {len(dropped)} columns dropped: the EDGAR ratios, filing timing, "
+                "PEAD, 8-K events, short ratio, SEC Form 4 insider flow, plus the two mixed-basis columns), "
+                "Sharadar fundamentals and insiders (f_sf_*/f_sfi_*) kept, and in their place the corrected "
+                f"columns {', '.join(feats)}: dollar volume and days-to-cover on one basis, the filing/PEAD and "
+                "8-K features recomputed from SEC tables that cover every name ever in the index; no screened bundle")
     if feats == ["x_dollar_vol"] and dropped == ["f_dollar_vol"]:
         return ("the panel's f_ columns (features/panel.py, Sharadar f_sf_*/f_sfi_*) with the dollar-volume "
                 "column on the split-consistent basis (x_dollar_vol in place of f_dollar_vol: the 2026-09-19 "

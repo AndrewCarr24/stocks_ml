@@ -1,5 +1,5 @@
 {
- "name": "r5 monthly system — 60/40 trend-ballast",
+ "name": "r5 monthly system — halfgate trend-ballast",
  "selected": "2026-09-01 (declared); 2026-09-05 (screened bundle added); 2026-09-06 (generated bundle replaced it); 2026-09-11 (the clean nominal line replaces the split-leak bundle: features [], price_basis nominal, delist_labels last_print); 2026-09-12 (Stage E of the clean program: the sector-centred 4-week label on an 8-year window, book 10 / halfgate / no stop / no cap — reports/clean_improvement.md)",
  "provenance": "Adopted 2026-09-14: the rank-label challenger (ledger label_test_2006_2015_k4_rank, eval_champion_rank_k16_k16). Model: the clean line's features and fit, trained on label_4w_sector_rank (the stock's 4-week return minus its sector's same-week median, replaced by its within-week rank as a normal score) over a trailing 8-year window. Chosen by the registered challenger flow on 2006-2015 alone: three tempered labels (log ratio, clipped at +/-20%, rank) sampled every 4th week at K=4, the top two (rank, log) walked on every week at K=4, the argmax of the selection metric against the incumbent's copies 1-4 on the same 513 weeks: rank top-6 +11.01 (three-book mean +9.78) vs the incumbent +6.75 (+8.74) vs log +6.11; paired t of the top-6 books +0.24 reported, not gated; leak audit PASS. Strategy: the procedure's own decision on the K=16 walk of 2006-2015 (the `procedure` block: book 3 by %/yr 15.92 vs 13.13 / 10.82; halfgate by Sharpe .693 vs 60/40 .675, 70/30 .655, 80/20 .639, none .613; no stop .693 vs .635; cap 2 .733 vs .693). Record (stocks-ml eval 2026-09-14, K=16, each model at its own settings, $100 at the span start): 2006-2015 $585 (+19.3%/yr, SR 0.73, DD 49%) | 2016-2024 $844 (+28.2%/yr, SR 0.92, DD 38%) | 2006-2024 $4,940 (+23.4%/yr, SR 0.82, DD 49%) vs the previous champion (ls_w8, top-10 / halfgate / no cap) $302 / $660 / $1,994 and SPY $197 / $316 / $621. 2016-2024 read once: falsification test (paired weekly excess over the incumbent, 446 weeks) t +0.76, not rejected; edge over the incumbent +3.6%/yr on 2016-2024; paired weekly t vs SPY +2.53 (2006-2024) / +1.71 (2016-2024). 95% CI on the excess CAGR vs SPY (seed / history / nested): 2016-2024 point +12.2%/yr, +7.4..+16.7 / -4.3..+32.4 / -4.8..+33.1, P(excess>0) 0.92; 2006-2024 +11.9, +6.8..+13.2 / +0.6..+24.8 / -1.4..+22.8, 0.95. Leak audit PASS on both segments (identity PASS; retention 0.912 / 1.015). 2024-07-19+ holdout deliberately unspent. Previous champion (2026-09-12 -> 2026-09-14): Stage E package of the clean-improvement program (reports/clean_improvement_registration.md, reports/clean_improvement.md; ledger stage_e_ls_w8_k16), adopted 2026-09-12. Model: the clean line's features and fit, trained on label_4w_sector (the stock's 4-week return minus its sector's same-week median) over a trailing 8-year window — the argmax of stage C (K=4, every week of 2006-2015, top-6 cost-adjusted compounded %/yr: ls_w8 +7.57 vs the incumbent +5.44, paired t +0.95 reported not gated; stage B's sampled sweep only ranked the candidates). Strategy: the procedure's own decision on the K=16 walk of 2006-2015 (the `procedure` block: book 10 by %/yr 8.11 vs 7.86 / 2.14; halfgate by Sharpe .532 vs 60/40 .514, 70/30 .496, 80/20 .48, none .455; no stop .532 vs .482; no cap .532 vs .523). Record, K=16, selection.simulate on the live ledger rules (fills at the next open, 5 bp a side), the delisting-honest world, every window ending 2024-07-19 exclusive, $100 at the span start: 2006-2015 $302 (+11.7%/yr, SR 0.53, DD 63%) | 2016-2024 $660 (+24.6%/yr, SR 0.88, DD 33%) | pre-holdout 2006-2024 $1,994 (+17.5%/yr, SR 0.70, DD 63%) vs the clean line it replaced (6 / 60-40 / cap 2) $229 / $420 / $963 and SPY $203 / $316 / $640 (+7.3 / +14.3 / +10.5%/yr; SR 0.47 / 0.87 / 0.65; DD 55 / 32 / 55%). At the clean line's own settings the package reads $306 / $555 / $1,700 — the model carries the edge, the layers add ~1%/yr. 2016-2024 was read once, as registered: falsification test (the package's paired weekly excess over the incumbent, 446 weeks) t +1.32, not rejected; paired weekly t vs SPY +1.90 (2006-2024) / +1.52 (2016-2024). 95% CI on the excess CAGR vs SPY (seed / history bootstrap / nested): 2016-2024 point +9.0%/yr, +7.3..+10.5 / -3.9..+24.8 / -3.9..+24.2, P(excess>0) 0.91; 2006-2024 +6.5, +5.2..+7.6 / -2.1..+16.7 / -2.5..+16.2, 0.91; 2006-2015 +4.4, 0.76. Leak audit (ops/leak_audit.py): identity check PASS on both segments — the only gate since the owner's ruling of 2026-09-12 (a model may legitimately favour names that later split; the factor statistics are reported: select spearman -0.017, extend IC 0.035 t 4.0). Character: the picks' excess over the median member tracks the years high-volatility names win (2009 +4.6, 2020 +4.1 pp/4w) and gives it back in 2007-2008 (-2.8, -2.2); a 10-name uncapped book with no fixed ballast drew down 63% in 2008-2009. 2024-07-19+ holdout deliberately unspent. History (the clean line, champion 2026-09-11 -> 2026-09-12): Owner-declared champion after the 4-week rebuild campaign (AGENTS.md 9h and ledger r4w_*/r5pkg_* entries); supersedes ext-t20 weekly champion. Rebuilt 2026-09-09..11 after the split-leak audit (reports/nominal_basis_registration.md, reports/delisting_honest_verdict.md): the closeadj-basis level features and the split-restated SF1 per-share fields carried future splits, and the 2026-09-06 generated bundle was built on them (the leaky champion failed ops/leak_audit.py at retention 0.49). The champion is now the clean line — the panel's f_ columns on the nominal basis, no bundle. Strategy settings are the procedure's (strategy.settings_note; 60/40 since 2026-09-11 — at 60/40 on the same K=16 walk: 2006-2015 $229, SR 0.49, DD 52% | 2016-2024 $420, +18.2%/yr, SR 0.83, DD 38% | pre-holdout $963, +13.0%/yr, SR 0.65, DD 52%). Record at the 70/30 settings the line was switched under, K=16, selection.simulate on the live ledger rules (fills at the next open, 5 bp a side), every window ending 2024-07-19 exclusive: on the delisting-honest world (data/sharadar_world2000_nominal_dl, the live rules: last-print labels, traded-within-7-days universe; ledger nominal_clean_dl_k16) 2006-2015 $229 (+8.6%/yr, SR 0.46, DD 59%) | 2016-2024 $449 (+19.1%/yr, SR 0.80, DD 42%) | pre-holdout 2006-2024 $1,028 (+13.4%/yr, SR 0.62, DD 59%) vs SPY $197 / $316 / $621 (+7.0 / +14.3 / +10.3%/yr; SR 0.46 / 0.87 / 0.64; DD 55 / 32 / 55%); on the standing nominal world (labels dropped at a delisting; ledger nominal_clean_k16) $262 / $560 / $1,468. The two worlds' ensembles agree at Spearman 0.915 (seed-halves of one walk: 0.72); the difference is path noise: disjoint K=4 draws on 2016-2024 read $484-$676 (honest) and $481-$706 (standing), all above SPY, and 2006-2015 draws straddle SPY in both worlds — a 6-name book's terminal wealth carries a ~+/-30% band. Leak audit (ops/leak_audit.py, shifted-feature retention per segment) PASS on both segments. 95% CI (reports/clean_line_confidence.md; ledger nominal_clean_dl_ci95): excess CAGR vs SPY 2016-2024 point +4.2%/yr, seed-only +3.4..+8.5, history bootstrap -5.1..+14.2, nested -3.5..+16.3; pre-holdout point +2.8%/yr, nested -2.4..+10.6; paired weekly t 0.8 / 0.8; ~90% of resampled histories beat SPY. Contaminated-basis history for scale only (git history of this file, ledger champion_r5_7030_cap2_* and openfe_arm_v3_*): the old champion read $4,256 / $900 / $473 on the same spans — roughly half of its 2016-2024 SPY-relative edge was the split leak, the rest is the clean line above. 2024-07-19+ holdout deliberately unspent. Files this history cites that are no longer in the tree (ops/*.py, reports/*.md other than the clean-improvement pair and champion_eval.md) are at tag pre-simplify (the 2026-09-13 simplification, docs/simplification_log.md).",
  "model": {
@@ -47,20 +47,27 @@
   "weight": "equal, re-leveled weekly (drift-threshold in live trading)",
   "stop_loss": null,
   "stop_action": "none — audited 2026-09-01: stop measured mildly negative on dollars in the final configuration (as deployed, 2026-09-03: off $1,553 vs -25% $1,499, SR 0.72 vs 0.73, DD 62% vs 60%; close basis, fixed join: $1,644 vs $1,533, identical DD; before the rank-date fix, without the cap, $1,383 vs $1,296); removed for simplicity",
-  "sector_cap": null,
+  "sector_cap": 2,
   "sector_cap_note": "Cap 2 since 2026-09-14 (the rank-label champion): on its K=16 walk of 2006-2015 the cap raised the Sharpe (.733 vs .693 without), so the procedure adopted it; blocked slots go to the next-ranked name from another sector. History: No cap since 2026-09-12: on the stage E walk the cap lowered the Sharpe (.523 vs .532 without), so the procedure left it off; the live job's sleeves therefore hold whatever sectors rank. History of the 2-of-6 cap (2026-09-01 -> 2026-09-12): max 2 of 6 per sector; blocked slots go to next-ranked name from another sector (adopted 2026-09-01: +0.9%/yr and better SR in every window on the champion, no DD effect; re-graded on the fixed join +0.3 to +1.9%/yr per window, +1.2%/yr and SR 0.67 -> 0.72 over 2006-2024; as deployed (2026-09-03) +1.1%/yr and SR 0.67 -> 0.72 over 2006-2024, per window +2.1 / +0.5 / -0.1%/yr for 2006-12 / 2013-24 / 2021-24 with SR up or level in each)",
   "settings_note": "2026-09-17: a fifth layer, the volatility cut (ledger.vol_cut_pool: the most volatile third of the model's top-30 dropped before the sleeve picks, optionally also names far above their sector's volatility), was added to the procedure and won the selection window outright (Sharpe .94 vs .61 at the neutral floor; 1.21 vs .73 at the final settings; drawdown 32% vs 49%) — and removed the 2016-2024 return on the same walk ($286 vs $844, +13.0 vs +28.2%/yr, below the S&P's $316): the rebounds of 2016 and 2020-21 were in the names it drops. Rejected at the one look; the menu is `none` only (selection.VOL_CUT_MENU) and the spec returned to this decision. 2026-09-14: run on the rank-label walk (data/experiments/labels/rank_k16/select), which wrote book 3 / halfgate / no stop / cap 2 and label_4w_sector_rank / 8 years (changed from 10 / halfgate / none / none and label_4w_sector). book_size, stop_loss, sector_cap, ballast.mix and the model fields (horizon.label, training_window_years) are written by `stocks-ml procedure` (stocks_ml.procedure: selection.decide_strategy on the K=16 walk of the selection window, the model from the walk's own record, see the `procedure` block) and never typed; tests/test_procedure.py fails on a hand edit of either the spec or the live job. 2026-09-12: run on the stage E walk (clean_program/stage_e/ls_w8/select), which wrote book 10 / halfgate / no stop / no cap and label_4w_sector / 8 years (changed from 6 / 60-40 / cap 2 and label_4w / 5 years). History: at the 2026-09-11 switch to the clean line the 70/30 floor was kept by hand while the cascade on the clean line's own 2006-2015 record (delisting-honest world) read 60/40 — a discretionary override against the mechanical rule, corrected the same day by running the procedure (book 6 / 60/40 / no stop / cap 2; floor Sharpe 60/40 0.438 vs 70/30 0.410). The stop_action and sector_cap_note figures are contaminated-basis history, kept for the reasoning.",
   "vol_cut": null
  },
  "ballast": {
-  "mix": "60% book / 40% ballast",
+  "mix": "halfgate: book 100/83/67/50% of NAV by SPY trend gates down (30/40/52w), rest IEF",
   "ballast_asset": "IEF for the part of NAV the halfgate takes out of the book (no SPY ballast under halfgate; a fixed floor parks its ballast in SPY and shifts it to IEF per trend state)",
   "trend_rule": "three SPY trailing-MA gates (30/40/52 weeks), evaluated weekly, point-in-time; halfgate: book fraction 1 - g/6 for g gates breached (100/83/67/50%), the rest in IEF (ledger.floor_split, the one rule the backtest and the live job share). A fixed floor (60/40 etc.) instead keeps the book fraction and moves one third of the ballast SPY -> IEF per breached gate"
  },
  "costs_assumed_bps_oneway": 5,
  "panel": "data/sharadar_world2000_nominal_dl/panel_sf.parquet (nominal basis, delisting-honest labels; price/volume + Sharadar fundamentals f_sf_* + insiders f_sfi_*; the screen's x_ candidates and any g_ columns ride along unused). Live: build_world_panel under config.yaml.",
  "features": [
-  "x_dollar_vol"
+  "x_dollar_vol",
+  "x_short_dtc",
+  "x_evt_filed_5d",
+  "x_days_since_filing",
+  "x_pead",
+  "x_evt_8k_7d",
+  "x_evt_earnings_8k_7d",
+  "x_days_since_earnings_8k"
  ],
  "features_note": "No bundle. The model's matrix is feature_cols (the panel's f_ columns: features/panel.py plus features/sharadar_fundamentals.py), research and live alike (walk.extra_features = []; r5.SPEC['features'] = this file's `features` = []). History: the screened ideas bundle (adopted 2026-09-05, asterisk: ideas written from the whole 2006-2024 record) and the generated bundle of 40 (adopted 2026-09-06, selected on 2006-2015 alone) were both built on split-leaky raw inputs and retired 2026-09-11; their nominal-basis replacement, screened under the same rule on 2006-2015 (the nominal screen, ledger nominal_program_verdict), failed admission against the clean line at the cascade's own book (5.93 vs 8.14 %/yr, ledger nominal_program_verdict) and 2016-2024 read $522 vs the clean $560. A feature set re-enters only as a challenger model — panel columns named in `features`, walked and admitted by the selection metric on 2006-2015 — and on the owner's go; the bundle/screen plumbing was removed in the 2026-09-13 simplification (tag pre-simplify).",
  "retune_policy": {
@@ -137,63 +144,91 @@
    "label": "label_4w_sector_rank",
    "train_years": 8,
    "features": [
-    "x_dollar_vol"
+    "x_dollar_vol",
+    "x_short_dtc",
+    "x_evt_filed_5d",
+    "x_days_since_filing",
+    "x_pead",
+    "x_evt_8k_7d",
+    "x_evt_earnings_8k_7d",
+    "x_days_since_earnings_8k"
    ],
    "params": {},
    "drop": [
-    "f_dollar_vol"
+    "f_dollar_vol",
+    "f_short_dtc",
+    "f_asset_growth",
+    "f_book_to_market",
+    "f_cf_to_price",
+    "f_earnings_yield",
+    "f_gross_profitability",
+    "f_leverage",
+    "f_log_mktcap",
+    "f_ocf_to_assets",
+    "f_roe",
+    "f_sales_to_price",
+    "f_evt_filed_5d",
+    "f_days_since_filing",
+    "f_pead",
+    "f_evt_8k_7d",
+    "f_evt_earnings_8k_7d",
+    "f_days_since_earnings_8k",
+    "f_short_ratio",
+    "f_insider_net_13w",
+    "f_insider_buyers_13w",
+    "f_evt_insider_buy_2w"
    ],
    "train_top": null,
-   "record": "data/experiments/dv_fix_weekly/select/spec.json"
+   "record": "data/experiments/clean_weekly/select/spec.json"
   },
   "k_copies": 16,
   "preds": {
-   "path": "data/experiments/dv_fix_weekly/select/preds.parquet",
-   "sha256": "4e3dee7e9304ad09cead44c191149a5cbc78efd276faff43ca87a9e913bddeef",
+   "path": "data/experiments/clean_weekly/select/preds.parquet",
+   "sha256": "9b7056ac58ebf1b9777e381166e056f3e1a36a7eede5839f93cc76bf14e5ecf1",
    "rank_weeks": 522,
    "first": "2006-01-06",
    "last": "2015-12-31",
    "ranked_weeks": 522
   },
-  "decided_at": "2026-09-19 12:10:31",
+  "decided_at": "2026-09-21 12:51:22",
   "decision": {
    "book_size": 3,
-   "floor": "60/40",
+   "floor": "halfgate",
    "stop_loss": null,
-   "sector_cap": null,
+   "sector_cap": 2,
    "vol_cut": null
   },
   "evidence": {
    "book": {
-    "3": 12.58,
-    "6": 10.67,
-    "10": 9.23
+    "3": 14.41,
+    "6": 10.19,
+    "10": 11.06
    },
    "vol_cut": {
-    "None": 0.547
+    "None": 0.597
    },
    "floor": {
-    "none": 0.547,
-    "halfgate": 0.579,
-    "80/20": 0.572,
-    "70/30": 0.587,
-    "60/40": 0.608
+    "none": 0.597,
+    "halfgate": 0.693,
+    "80/20": 0.62,
+    "70/30": 0.631,
+    "60/40": 0.647
    },
    "stop": {
-    "None": 0.608,
-    "-0.25": 0.552
+    "None": 0.693,
+    "-0.25": 0.669
    },
    "cap": {
-    "None": 0.608,
-    "2": 0.566
+    "None": 0.693,
+    "2": 0.711
    }
   },
   "selection_window_record": {
    "config": {
-    "terminal_100": 420.1,
-    "cagr_pct": 15.43,
-    "sharpe": 0.608,
-    "max_dd": 0.549,
+    "terminal_100": 588.4,
+    "cagr_pct": 19.39,
+    "sharpe": 0.711,
+    "max_dd": 0.541,
     "n_weeks": 520
    },
    "sp500": {
@@ -207,7 +242,28 @@
  },
  "character": "The rank label tempers the target, so the model buys less volatile, less beaten-down names than its predecessor (volatility rank 0.48 vs 0.60 among its picks on 2006-2015, 12-month momentum -0.16 vs -0.36) and its book swings less month to month. It still trails the index in the same years the predecessor did (2011, 2014, 2015; 2010-2015 as a whole $158 vs the S&P's $207, with a shallower worst drop, 24% vs 33%), so the edge remains concentrated in rebound years.",
  "drop_features": [
-  "f_dollar_vol"
+  "f_dollar_vol",
+  "f_short_dtc",
+  "f_asset_growth",
+  "f_book_to_market",
+  "f_cf_to_price",
+  "f_earnings_yield",
+  "f_gross_profitability",
+  "f_leverage",
+  "f_log_mktcap",
+  "f_ocf_to_assets",
+  "f_roe",
+  "f_sales_to_price",
+  "f_evt_filed_5d",
+  "f_days_since_filing",
+  "f_pead",
+  "f_evt_8k_7d",
+  "f_evt_earnings_8k_7d",
+  "f_days_since_earnings_8k",
+  "f_short_ratio",
+  "f_insider_net_13w",
+  "f_insider_buyers_13w",
+  "f_evt_insider_buy_2w"
  ],
  "train_top": null
 }

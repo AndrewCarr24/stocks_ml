@@ -32,9 +32,10 @@ def test_render_tracks_spec_changes():
 def test_render_names_the_features():
     spec = json.loads(Path(SPEC_PATH).read_text())
     card = render(spec)
-    # since 2026-09-19 the champion's one extra column is the split-consistent dollar volume (a correction, not a bundle)
-    assert spec["features"] == ["x_dollar_vol"] and spec["drop_features"] == ["f_dollar_vol"]
-    assert "| Features |" in card and "no screened bundle" in card and "split-consistent" in card
+    # since 2026-09-21 the champion's extra columns are corrections (one-basis dollar volume and days-to-cover, the
+    # every-name filing/PEAD and 8-K features), not a bundle; the survivor-keyed columns are withheld
+    assert spec["features"][:2] == ["x_dollar_vol", "x_short_dtc"] and "f_log_mktcap" in spec["drop_features"]
+    assert "| Features |" in card and "no screened bundle" in card and "survivor-keyed" in card and "every name ever" in card
     assert "level features on the nominal basis" in card and "final print (last_print)" in card
     spec["features"] = ["x_cash_runway", "f_vol_chg_12w"]      # extra columns carry the asterisk
     assert "extra columns x_cash_runway, f_vol_chg_12w" in render(spec) and "asterisk" in render(spec)

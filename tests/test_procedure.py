@@ -72,7 +72,7 @@ def test_live_spec_is_read_from_the_procedure():
     assert r5.SPEC["train_years"] == SPEC["training_window_years"] == SPEC["procedure"]["model"]["train_years"]
     assert r5.SPEC["horizon"] == "4w"
     assert r5.SPEC["label"] == SPEC["horizon"]["label"] == SPEC["procedure"]["model"]["label"]
-    assert list(r5.SPEC["features"]) == list(SPEC["features"]) == ["x_dollar_vol"]
+    assert list(r5.SPEC["features"]) == list(SPEC["features"]) and SPEC["features"][:2] == ["x_dollar_vol", "x_short_dtc"]
     assert r5.load_spec(r5.spec_path()) == r5.SPEC
 
 
