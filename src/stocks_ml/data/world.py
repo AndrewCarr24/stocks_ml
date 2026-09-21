@@ -187,6 +187,36 @@ def membership_topped_up(base: pd.DataFrame, snapshots: pd.DataFrame, eligible: 
     return out.sort_values(["ticker", "start_date"]).reset_index(drop=True)
 
 
+def membership_sized(base: pd.DataFrame, snapshots: pd.DataFrame, eligible: set, sectors: dict, n: int) -> pd.DataFrame:
+    """A universe of n names around an index (the tuner's dial, 2026-09-20):
+    at each snapshot the index's members as of that date ranked by market
+    cap — the largest n of them when the index is bigger than n, topped up
+    with the largest eligible non-members when it is smaller. Quarterly
+    stints for everyone (membership_from_top's rule), so every n is built
+    the same way; n = the index's size is the index at quarterly resolution."""
+    from stocks_ml.data.membership import members_asof
+    s = snapshots.dropna(subset=["marketcap"]).copy()
+    s["date"] = pd.to_datetime(s["date"])
+    s = s[s["ticker"].isin(eligible)]
+    rows, open_since = [], {}
+    for d in sorted(s["date"].unique()):
+        g = s[s["date"] == d].sort_values("marketcap", ascending=False).drop_duplicates("ticker")
+        inside = set(members_asof(base, d))
+        members = list(g[g["ticker"].isin(inside)]["ticker"])[:n]
+        if len(members) < n:
+            members += list(g[~g["ticker"].isin(inside)]["ticker"].head(n - len(members)))
+        top = set(members)
+        for t in list(open_since):
+            if t not in top:
+                rows.append((t, open_since.pop(t), d))
+        for t in top:
+            open_since.setdefault(t, d)
+    rows += [(t, d0, pd.NaT) for t, d0 in open_since.items()]
+    mem = pd.DataFrame(rows, columns=["ticker", "start_date", "end_date"])
+    mem["sector"] = mem["ticker"].map(sectors)
+    return mem.sort_values(["ticker", "start_date"]).reset_index(drop=True)
+
+
 def fetch_snapshots(key, fetch_fn, dates, log=_log) -> pd.DataFrame:
     """DAILY market caps at each date (the last session on or before it)."""
     frames = []
@@ -707,7 +737,7 @@ DERIVED_TABLES = ("sharadar_tickers", "daily_snapshots", "sharadar_prices", "pri
 
 
 def derive_research_store(root, parent, cfg, n: int, log=_log, panel: bool = True,
-                          membership_from=None, top_up: bool = False) -> dict:
+                          membership_from=None, top_up: bool = False, sized: bool = False) -> dict:
     """A top-n world carved from a built top-m world (n <= m): every pulled
     table is shared by symlink, the membership is the parent's snapshots cut
     at n (the same point-in-time rule), and the panel is rebuilt so every
@@ -737,21 +767,26 @@ def derive_research_store(root, parent, cfg, n: int, log=_log, panel: bool = Tru
         missing = sorted(set(mem["ticker"]) - have)
         mem = mem[mem["ticker"].isin(have)].reset_index(drop=True)
         log(f"membership from {membership_from}: {len(mem)} stints; {len(missing)} names without prices here dropped: {missing[:8]}")
-        if top_up:
+        if sized:
+            mem = membership_sized(mem, snaps, universe_equities(tk), sectors, n)
+            log(f"sized to {n} names per snapshot (the index's largest {n}, or the index topped up): {len(mem)} stints")
+        elif top_up:
             mem = membership_topped_up(mem, snaps, universe_equities(tk), sectors, n)
             log(f"topped up to {n} names per snapshot with the largest non-members by market cap: {len(mem)} stints")
     else:
         mem = membership_from_top(snaps, universe_equities(tk), sectors, n)
     store.write("membership", mem)
     universe = sorted(set(mem["ticker"]))
-    report = {"universe": f"top{n}" if not membership_from else f"membership of {membership_from}" + (f" topped up to {n}" if top_up else ""), "n": n,
+    report = {"universe": f"top{n}" if not membership_from else f"membership of {membership_from}" + (f" sized to {n}" if sized else f" topped up to {n}" if top_up else ""), "n": n,
               "derived_from": str(parent),
               "membership": {"snapshots": int(snaps["date"].nunique()), "stints": int(len(mem)),
                              "names": len(universe), "current": int(mem["end_date"].isna().sum())}}
     for k in ("sharadar", "edgar", "sec8k", "shortint", "fred"):
         if k in src.manifest:
             store.set_manifest(k, src.manifest[k])
-    rule = (f"the membership of {membership_from} topped up to {n} names at each quarter end with the largest "
+    rule = (f"{n} names at each quarter end: the members of {membership_from} ranked by market cap — the largest {n}, "
+            f"or all of them topped up with the largest non-members — on {parent}'s tables and build" if membership_from and sized else
+            f"the membership of {membership_from} topped up to {n} names at each quarter end with the largest "
             f"non-members by market cap, on {parent}'s tables and build" if membership_from and top_up else
             f"the membership of {membership_from} (a control: the same names on {parent}'s tables and build)"
             if membership_from else f"top{n} by market cap at each calendar quarter end, derived from "

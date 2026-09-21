@@ -33,7 +33,7 @@ def cmd_world(args, cfg):
             raise SystemExit("--top builds a NEW research world: give it its own --dir")
         if args.derive_from:
             derive_research_store(args.dir, args.derive_from, cfg, n=args.top, membership_from=args.membership_from,
-                                  top_up=args.top_up)
+                                  top_up=args.top_up, sized=args.sized)
             return
         from stocks_ml.data.sharadar import api_key
         build_research_store(args.dir, api_key(), cfg, n=args.top, sec=not args.no_sec)
@@ -165,7 +165,7 @@ def cmd_challenger2(args, cfg):
 def cmd_tune(args, cfg):
     from stocks_ml.tune import run
     run(args.name, trials=args.trials, copies=args.copies, batch=args.batch, workers=args.workers, seed=args.seed,
-        phase=args.phase, store=args.store)
+        phase=args.phase, store=args.store, universe=args.universe, cfg=cfg)
 
 
 def cmd_audit_live(args, cfg):
@@ -260,6 +260,9 @@ def main():
     p.add_argument("--append-sf", action="store_true",
                    help="append the Sharadar feature columns a frozen panel lacks, after verifying every "
                         "existing one recomputes exactly (append-only; never rebuilds)")
+    p.add_argument("--sized", action="store_true",
+                   help="with --membership-from and --top N: N names each quarter end — the index's largest N members, "
+                        "or the index topped up with the largest non-members (the tuner's universe dial)")
     p.add_argument("--top-up", action="store_true",
                    help="with --membership-from and --top N: add the largest non-members by market cap at each quarter "
                         "end until the universe holds N names (the index plus the next names by size)")
@@ -419,6 +422,9 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--store", default=STORE)
     p.add_argument("--workers", type=int, default=6)
+    p.add_argument("--universe", action="store_true",
+                   help="also search the universe (universe_n names around the index, carved on demand), the training "
+                        "window and the label family; the champion stays the deployed model on its own data")
 
     p = sub.add_parser("audit-live", help="compare the rows the live job scored (its archive) with the same rows "
                        "in a later panel build: a feature whose history is rewritten by later data is a leak")

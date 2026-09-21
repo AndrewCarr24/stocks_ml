@@ -620,3 +620,19 @@ def test_membership_topped_up_adds_the_largest_non_members_each_quarter():
     assert members_asof(mem, "2010-04-01") == ["A", "B", "C"]         # the index (A, B) + the largest non-member
     assert members_asof(mem, "2010-07-01") == ["A", "B", "C"]         # B left the index on d2 but is still the 2nd largest name: it stays as a top-up
     assert (mem.ticker == "B").sum() == 2 and mem[mem.ticker == "C"]["sector"].iloc[0] == "T" and len(mem) == 4
+
+
+def test_membership_sized_trims_or_tops_up_the_index_each_quarter():
+    d1, d2 = pd.Timestamp("2010-03-31"), pd.Timestamp("2010-06-30")
+    base = pd.DataFrame({"ticker": ["A", "B", "C"], "start_date": [pd.Timestamp("2000-01-01")] * 3,
+                         "end_date": [pd.NaT, pd.NaT, d2], "sector": ["S"] * 3})            # C leaves the index on d2
+    snaps = pd.DataFrame([(d, t, mc) for d in (d1, d2) for t, mc in (("A", 100), ("B", 90), ("C", 80), ("D", 70), ("E", 60))],
+                         columns=["date", "ticker", "marketcap"])
+    from stocks_ml.data.membership import members_asof
+    small = world.membership_sized(base, snaps, {"A", "B", "C", "D", "E"}, {}, n=2)
+    assert members_asof(small, "2010-04-01") == ["A", "B"]                     # the index's largest 2
+    big = world.membership_sized(base, snaps, {"A", "B", "C", "D", "E"}, {}, n=4)
+    assert members_asof(big, "2010-04-01") == ["A", "B", "C", "D"]            # the index (3) topped up with the largest non-member
+    assert members_asof(big, "2010-07-01") == ["A", "B", "C", "D"]            # C left the index but is still 3rd by cap: a top-up
+    exact = world.membership_sized(base, snaps, {"A", "B", "C", "D", "E"}, {}, n=3)
+    assert members_asof(exact, "2010-04-01") == ["A", "B", "C"]
