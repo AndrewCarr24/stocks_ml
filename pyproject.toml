@@ -22,6 +22,8 @@ stocks-ml = "stocks_ml.cli:main"
 dev = ["pytest>=8.0"]
 # charts for `stocks-ml eval` (uv sync --group eval); the live job never needs them
 eval = ["matplotlib>=3.8"]
+# hyperparameter search inside challenger2 (`stocks-ml tune`; uv sync --group tune); research only
+tune = ["optuna>=3.6", "matplotlib>=3.8"]
 
 [build-system]
 requires = ["hatchling"]

@@ -162,6 +162,12 @@ def cmd_challenger2(args, cfg):
         max_iters=args.max_iters, se_tol=args.se_tol, workers=args.workers, copies=args.copies)
 
 
+def cmd_tune(args, cfg):
+    from stocks_ml.tune import run
+    run(args.name, trials=args.trials, copies=args.copies, batch=args.batch, workers=args.workers, seed=args.seed,
+        phase=args.phase, store=args.store)
+
+
 def cmd_audit_live(args, cfg):
     """Archived live rows vs the same rows in a later panel build (the leak detector)."""
     from stocks_ml.leak_audit import live_vs_rebuilt
@@ -403,6 +409,17 @@ def main():
     p.add_argument("--workers", type=int, default=4, help="paired fits in parallel processes; STOCKS_ML_CORES=N caps the cores")
     p.add_argument("--copies", type=int, default=1, help="seeded copies per model per iteration, averaged (16 = the deployed ensemble)")
 
+    p = sub.add_parser("tune", help="hyperparameter search inside challenger2: trials vs the champion on common weeks and "
+                       "seeds, pruned; challenger2_convergence/tune_<name>.png, data/tune/<name>.db (resumable)")
+    p.add_argument("--name", required=True)
+    p.add_argument("--trials", type=int, default=40)
+    p.add_argument("--copies", type=int, default=4, help="seeded copies per model per week")
+    p.add_argument("--batch", type=int, default=26, help="weeks per batch between prune checks")
+    p.add_argument("--phase", type=int, default=0, help="which of the four 4-week phases supplies the weeks (non-overlapping holds)")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--store", default=STORE)
+    p.add_argument("--workers", type=int, default=6)
+
     p = sub.add_parser("audit-live", help="compare the rows the live job scored (its archive) with the same rows "
                        "in a later panel build: a feature whose history is rewritten by later data is a leak")
     p.add_argument("--live-dir", default="data/r5_live")
@@ -434,7 +451,7 @@ def main():
         args.incumbent = json.loads(SPEC_PATH.read_text())["procedure"]["preds"]["path"]
     cfg = load_config(args.config)
     {"world": cmd_world, "train": cmd_train, "backtest": cmd_backtest, "audit-live": cmd_audit_live,
-     "challenger2": cmd_challenger2,
+     "challenger2": cmd_challenger2, "tune": cmd_tune,
      "procedure": cmd_procedure, "procedure-card": cmd_procedure_card,
      "eval": cmd_eval, "app": cmd_app, "challenge": cmd_challenge,
      "challenge-fast": cmd_challenge_fast, "explain": cmd_explain,
