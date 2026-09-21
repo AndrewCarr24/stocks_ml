@@ -26325,7 +26325,7 @@
   "notes": "{\"metric\": {\"3\": 15.38, \"6\": 10.79, \"10\": 11.03}, \"k\": 16, \"copies\": [3.606666666666667, 22.323333333333334, 3.1233333333333335, 14.423333333333332, 6.88, 8.303333333333333, 18.353333333333335, 13.636666666666665, 3.8833333333333333, 14.826666666666668, 4.1866666666666665, 15.566666666666668, -13.479999999999999, 1.1733333333333336, 13.336666666666666, 8.47], \"band\": {\"half_mean\": 9.38, \"half_sd\": 3.04, \"sd16\": 2.15, \"draws\": 40, \"copies\": 16}, \"paired_t_vs_incumbent\": 1.59, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor +0.023 (t +3.2), IC +0.0031 (t +0.4), retention 1.467; feature scan: 6 of 64 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.21, f_book_to_market +0.17, f_sf_roe -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15).\"}, \"weeks\": 522, \"winner\": false}"
  },
  {
-  "date": "2026-09-20",
+  "date": "2026-09-21",
   "kind": "tune",
   "name": "tune_xgb_best",
   "cv_metric": 0.515,
