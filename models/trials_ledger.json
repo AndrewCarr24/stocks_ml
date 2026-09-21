@@ -26323,5 +26323,33 @@
    "store": "data/sharadar_sp500ctrl_nominal_dl"
   },
   "notes": "{\"metric\": {\"3\": 15.38, \"6\": 10.79, \"10\": 11.03}, \"k\": 16, \"copies\": [3.606666666666667, 22.323333333333334, 3.1233333333333335, 14.423333333333332, 6.88, 8.303333333333333, 18.353333333333335, 13.636666666666665, 3.8833333333333333, 14.826666666666668, 4.1866666666666665, 15.566666666666668, -13.479999999999999, 1.1733333333333336, 13.336666666666666, 8.47], \"band\": {\"half_mean\": 9.38, \"half_sd\": 3.04, \"sd16\": 2.15, \"draws\": 40, \"copies\": 16}, \"paired_t_vs_incumbent\": 1.59, \"leak_audit\": {\"verdict\": \"PASS\", \"line\": \"PASS \\u2014 select: identity PASS, score-vs-split-factor +0.023 (t +3.2), IC +0.0031 (t +0.4), retention 1.467; feature scan: 6 of 64 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.21, f_book_to_market +0.17, f_sf_roe -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15).\"}, \"weeks\": 522, \"winner\": false}"
+ },
+ {
+  "date": "2026-09-20",
+  "kind": "tune",
+  "name": "tune_xgb_best",
+  "cv_metric": 0.515,
+  "config": {
+   "label": "label_4w_sector_rank",
+   "train_years": 8,
+   "features": [
+    "x_dollar_vol"
+   ],
+   "drop": [
+    "f_dollar_vol"
+   ],
+   "params": {
+    "max_depth": 3,
+    "learning_rate": 0.007781950250848015,
+    "min_child_weight": 10,
+    "subsample": 0.8490028791080081,
+    "colsample_bytree": 0.6702530984562707,
+    "reg_lambda": 0.3342202528351064,
+    "reg_alpha": 0.5892803081934321,
+    "gamma": 0.03728789972243256
+   },
+   "train_top": null
+  },
+  "notes": "{\"trial\": 14, \"params\": {\"max_depth\": 3, \"learning_rate\": 0.007781950250848015, \"min_child_weight\": 10, \"subsample\": 0.8490028791080081, \"colsample_bytree\": 0.6702530984562707, \"reg_lambda\": 0.3342202528351064, \"reg_alpha\": 0.5892803081934321, \"gamma\": 0.03728789972243256}, \"diff\": 0.515, \"se\": 0.4, \"ci90\": [-0.144, 1.174], \"weeks\": 131, \"objective\": \"paired three-book excess vs the champion, pp/hold, one 4-week phase, common weeks and seeds\"}"
  }
 ]
