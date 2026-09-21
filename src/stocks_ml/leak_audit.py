@@ -245,6 +245,32 @@ def feature_factor_check(ctx, features, lo="2006-01-01", hi="2015-12-31") -> dic
     return out
 
 
+def scan_windows():
+    """The selection window and the pre-holdout extension: a source that
+    begins late (FINRA short interest, 2017-12) is invisible on 2006-2015 —
+    f_short_dtc sat at +0.35 on 2016-2024 unseen until 2026-09-21."""
+    import stocks_ml.selection as sel
+    return (("2006-01-01", "2015-12-31"), ("2016-01-01", str(sel.label_end(sel.HOLDOUT_START).date())))
+
+
+def feature_factor_worst(ctx, features) -> dict:
+    """feature_factor_check on every scan window; per feature the
+    correlation of largest magnitude and the window it came from."""
+    out = {}
+    for lo, hi in scan_windows():
+        res = feature_factor_check(ctx, list(features), lo, hi)
+        for f in features:
+            if f not in res:
+                continue
+            c = res[f]["corr_with_future_split_factor"]
+            if c != c:
+                continue
+            if f not in out or abs(c) > abs(out[f]["corr_with_future_split_factor"]):
+                out[f] = {"corr_with_future_split_factor": c, "window": f"{lo[:4]}-{hi[:4]}", "weeks": res[f].get("weeks"),
+                          "verdict": "PASS" if abs(c) <= FEATURE_FACTOR_LIMIT else "FAIL"}
+    return out
+
+
 def fundamentals_file(store) -> Path:
     """The fundamentals table a frozen panel was built from: the newest
     `fundamentals.frozen_<date>.parquet` beside it when one exists, else the
@@ -266,24 +292,130 @@ def model_features(preds_path, ctx) -> list[str]:
     return fc + [c for c in (rec.get("features") or []) if c not in fc and c in ctx.pan.columns]
 
 
-def feature_scan(ctx, features, lo="2006-01-01", hi="2015-12-31") -> dict:
+def feature_scan(ctx, features) -> dict:
     """The split-factor check on the MODEL'S OWN features (owner's rule
     2026-09-19: standing, every audit — until then it was only ever run on
-    proposed extras, and f_dollar_vol sat at -0.42 unnoticed). Report-only:
-    the identity gate decides; features beyond FEATURE_FACTOR_LIMIT are
-    listed for a mechanism check (value/quality names split less, so a
-    price-free ratio can sit at 0.15-0.21 for economic reasons)."""
-    res = feature_factor_check(ctx, list(features), lo, hi)
+    proposed extras, and f_dollar_vol sat at -0.42 unnoticed), on every scan
+    window (scan_windows), the worst reported. Report-only: the identity
+    gate decides; features beyond FEATURE_FACTOR_LIMIT are listed for a
+    mechanism check (value/quality names split less, so a price-free ratio
+    can sit at 0.15-0.21 for economic reasons)."""
+    res = feature_factor_worst(ctx, list(features))
     beyond = {f: res[f]["corr_with_future_split_factor"] for f in features
               if f in res and abs(res[f]["corr_with_future_split_factor"]) > FEATURE_FACTOR_LIMIT}
-    return {"limit": FEATURE_FACTOR_LIMIT, "n_features": len(features),
+    return {"limit": FEATURE_FACTOR_LIMIT, "n_features": len(features), "windows": [f"{lo[:4]}-{hi[:4]}" for lo, hi in scan_windows()],
             "beyond_limit": dict(sorted(beyond.items(), key=lambda kv: -abs(kv[1]))),
             "all": {f: res[f]["corr_with_future_split_factor"] for f in features if f in res}}
 
 
+MISSING_T_LIMIT = 3.0        # |NW t| of the blank-minus-filled weekly return gap above this = the blanks predict
+MISSING_SURVIVOR_GAP = 0.10  # blank share among names that later left minus names still here (within weeks): flagged above this
+MISSING_SURVIVOR_GAP_ALONE = 0.25   # ...and the audit FAILS above this on its own (or above MISSING_SURVIVOR_GAP with |t| beyond MISSING_T_LIMIT)
+
+
+def missingness_scan(ctx, features, lo="2006-01-01", hi=None) -> dict:
+    """Does a feature's ABSENCE carry information? The 2026-09-21 leak: the
+    EDGAR tables held only today's index members, so a neutral-filled
+    fundamental in 2016 meant "gone by 2026" — every value was point in
+    time, the blank was not. Per feature, on member rows of the window: the
+    blank share (the week's modal value: the neutral fill, or a no-activity
+    zero that ranking turns into a tie group), the blank
+    share among names gone by the panel's last week vs names still members
+    — compared WITHIN each week and averaged, so a source that begins late
+    (short interest, 2017-12) is not mistaken for one keyed to survival —
+    and the weekly mean 4-week return of blank rows minus filled rows with
+    its Newey-West t. Report-only; a feature beyond either limit
+    is listed for a mechanism check. Indicators (three or fewer distinct
+    values) are skipped: their zero is a value."""
+    import stocks_ml.selection as sel
+    lo = pd.Timestamp(lo)
+    hi = pd.Timestamp(hi) if hi is not None else sel.label_end(sel.HOLDOUT_START)
+    pan = ctx.pan[(ctx.pan.date >= lo) & (ctx.pan.date <= hi)]
+    pan = pan[pan.set_index(["date", "ticker"]).index.isin(
+        [(d, t) for d in ctx.weeks if lo <= d <= hi for t in ctx.members[d]])]
+    stayers = set(ctx.members[ctx.weeks[-1]])
+    left = ~pan["ticker"].isin(stayers)
+    out = {}
+    for c in features:
+        if c not in pan.columns:
+            continue
+        # "blank": the week's modal value — the neutral fill (0.0 after ranking) or a no-activity zero,
+        # which ranking turns into a tie group at a week-specific value (f_insider_net_13w: 70% of
+        # the names that later left sat in it vs 27% of those that stayed; SEC Form 4 pulled by the
+        # current-ticker map, 2026-09-21)
+        mode = pan.groupby("date")[c].transform(lambda v: v.mode().iloc[0] if len(v) else np.nan)
+        blank = pan[c] == mode
+        share = float(blank.mean())
+        if share < 0.01 or pan[c].nunique() <= 3:            # no tie group to speak of, or an indicator whose zero is a value
+            out[c] = {"blank_share": round(share, 4), "skipped": True}
+            continue
+        wk = pan.assign(_b=blank).groupby(["date", "_b"])["fwd_ret_4w"].mean().unstack()
+        gap = (wk.get(True) - wk.get(False)).dropna() if True in wk.columns and False in wk.columns else pd.Series(dtype=float)
+        by_week = (pd.DataFrame({"date": pan["date"], "left": left, "blank": blank.astype(float)})
+                     .groupby(["date", "left"])["blank"].mean().unstack())
+        both = by_week.dropna() if {True, False} <= set(by_week.columns) else pd.DataFrame()
+        out[c] = {"blank_share": round(share, 4),
+                  "blank_share_left": round(float(both[True].mean()), 4) if len(both) else None,
+                  "blank_share_stayed": round(float(both[False].mean()), 4) if len(both) else None,
+                  "return_gap_pp": round(100 * float(gap.mean()), 3) if len(gap) else None,
+                  "t": round(nw_t(gap), 2) if len(gap) > 8 else None}
+    def beyond(v):
+        return (not v.get("skipped")) and ((v["t"] is not None and abs(v["t"]) > MISSING_T_LIMIT) or
+                (v["blank_share_left"] is not None and v["blank_share_stayed"] is not None and
+                 v["blank_share_left"] - v["blank_share_stayed"] > MISSING_SURVIVOR_GAP))
+    flagged = {c: v for c, v in out.items() if beyond(v)}
+    def keyed(v):     # the blanks mark the names that leave: a wide gap alone, or a gap with a return difference
+        g = (v["blank_share_left"] - v["blank_share_stayed"]) if v["blank_share_left"] is not None and v["blank_share_stayed"] is not None else 0.0
+        return g > MISSING_SURVIVOR_GAP_ALONE or (g > MISSING_SURVIVOR_GAP and v["t"] is not None and abs(v["t"]) > MISSING_T_LIMIT)
+    survival_keyed = sorted(c for c, v in flagged.items() if keyed(v))
+    return {"t_limit": MISSING_T_LIMIT, "survivor_gap_limit": MISSING_SURVIVOR_GAP, "window": [str(lo.date()), str(hi.date())],
+            "n_features": len(out), "beyond_limit": flagged, "survival_keyed": survival_keyed,
+            "VERDICT": "FAIL" if survival_keyed else "PASS", "all": out}
+
+
+COVERAGE_TABLES = {"fundamentals": "date", "insiders": "date", "form4": "filed", "shortint": "publication_date",
+                   "edgar": "filed", "sec8k": "filed", "holdings": "date", "prices_hl": "date"}
+COVERAGE_GAP = 0.10          # leavers' coverage below stayers' by more than this in a year = the table was pulled by survival
+
+
+def coverage_by_survival(store: str, years=(2008, 2012, 2016, 2019, 2023), tables=None) -> dict:
+    """Per raw table and year: the share of that year's members with a row
+    in the trailing 12 months, names gone by the membership's last date vs
+    names still members. A table pulled for today's members only (the SEC
+    tables of the S&P store before 2026-09-21: edgar 0% vs 0% in 2008, then
+    leavers far below stayers; Form 4 25-68% vs 90-94%) shows a gap that no
+    economics produces. Report-only; tables beyond COVERAGE_GAP in any year
+    are listed."""
+    from stocks_ml.data.membership import members_asof
+    root = Path(store)
+    mem = pd.read_parquet(root / "membership.parquet")
+    cur = set(mem[mem["end_date"].isna()]["ticker"])
+    out, beyond = {}, {}
+    for tbl, dc in (tables or COVERAGE_TABLES).items():
+        path = root / f"{tbl}.parquet"
+        if not path.exists():
+            continue
+        df = pd.read_parquet(path, columns=["ticker", dc])
+        df[dc] = pd.to_datetime(df[dc], errors="coerce")
+        rows = {}
+        for y in years:
+            d = pd.Timestamp(f"{y}-06-30")
+            m = members_asof(mem, d)
+            has = set(df.loc[(df[dc] <= d) & (df[dc] > d - pd.Timedelta(days=365)), "ticker"])
+            left = [t for t in m if t not in cur]
+            stay = [t for t in m if t in cur]
+            rows[y] = {"left": round(sum(t in has for t in left) / max(len(left), 1), 3),
+                       "stayed": round(sum(t in has for t in stay) / max(len(stay), 1), 3)}
+        out[tbl] = rows
+        worst = max((r["stayed"] - r["left"]) for r in rows.values())
+        if worst > COVERAGE_GAP:
+            beyond[tbl] = round(worst, 3)
+    return {"limit": COVERAGE_GAP, "tables": out, "beyond_limit": beyond}
+
+
 def audit_segments(store: str, preds_paths, ctx=None) -> dict:
     """One audit PER segment; the verdict is the identity check on every
-    segment. The factor numbers are reported per segment, never pooled:
+    segment and the missingness scan's (no survival-keyed blanks). The factor numbers are reported per segment, never pooled:
     the leaky 2026-09 champion showed retention 0.49 on its selection
     window yet ~1 with 2016-2024 pooled in. Every audit also scans the
     model's own features against the future split factor (feature_scan)."""
@@ -294,11 +426,15 @@ def audit_segments(store: str, preds_paths, ctx=None) -> dict:
     segs = {Path(p).parent.name: audit(store, p, ctx) for p in preds_paths}
     for s in segs.values():
         s["fundamentals_file"] = str(fundamentals_file(store))
-    scan = feature_scan(ctx, model_features(preds_paths[0], ctx))
+    feats = model_features(preds_paths[0], ctx)
+    scan = feature_scan(ctx, feats)
+    missing = missingness_scan(ctx, feats)
     finite = [s["ic_retention"] for s in segs.values() if np.isfinite(s["ic_retention"])]
+    # the verdict: the identity gate on every segment, and no feature whose blanks are keyed to
+    # survival (missingness_scan: both limits) — the 2026-09-21 EDGAR leak passed the identity gate
     return {"segments": segs, "worst_retention": round(float(min(finite)), 3) if finite else None,
-            "feature_scan": scan,
-            "VERDICT": "PASS" if all(s["VERDICT"] == "PASS" for s in segs.values()) else "FAIL"}
+            "feature_scan": scan, "missingness_scan": missing,
+            "VERDICT": "PASS" if all(s["VERDICT"] == "PASS" for s in segs.values()) and missing["VERDICT"] == "PASS" else "FAIL"}
 
 
 def leak_line(la: dict) -> str:
@@ -312,6 +448,13 @@ def leak_line(la: dict) -> str:
         b = scan["beyond_limit"]
         parts.append(f"feature scan: {len(b)} of {scan['n_features']} beyond {scan['limit']}"
                      + (" (" + ", ".join(f"{f} {v:+.2f}" for f, v in b.items()) + ")" if b else ""))
+    miss = la.get("missingness_scan")
+    if miss:
+        b = miss["beyond_limit"]
+        parts.append(f"missingness scan: {len(b)} of {miss['n_features']} whose blanks predict"
+                     + (" (" + ", ".join(f"{f} blank {v['blank_share']:.0%}, left {v['blank_share_left']:.0%} vs stayed "
+                                          f"{v['blank_share_stayed']:.0%}, gap {v['return_gap_pp']:+.2f} pp t {v['t']:+.1f}"
+                                          for f, v in b.items()) + ")" if b else ""))
     return f"{la['VERDICT']} — " + "; ".join(parts) + "." if parts else f"{la['VERDICT']}."
 
 
@@ -319,6 +462,10 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--store", default="data/sharadar_world2000_nominal_dl")
-    ap.add_argument("--preds", nargs="+", required=True)
+    ap.add_argument("--preds", nargs="*", default=[])
+    ap.add_argument("--coverage", action="store_true", help="the raw tables' coverage by survival (coverage_by_survival)")
     a = ap.parse_args()
-    print(json.dumps(audit_segments(a.store, a.preds), indent=1))
+    if a.coverage:
+        print(json.dumps(coverage_by_survival(a.store), indent=1))
+    if a.preds:
+        print(json.dumps(audit_segments(a.store, a.preds), indent=1))

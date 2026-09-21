@@ -716,6 +716,16 @@ def comovement_peer_features(prices: pd.DataFrame, rows: pd.DataFrame, npeer: in
     return base.merge(feats, on=["date", "ticker"], how="left")[PEER_COLS]
 
 
+def raw_volume(prices: pd.DataFrame, volume_wide: pd.DataFrame) -> pd.DataFrame:
+    """Daily share volume on the raw (as-traded) basis: SEP's split-adjusted
+    volume times close_split / closeunadj, the vendor's own split factor.
+    A prices table without the nominal columns is returned as is."""
+    if not {"close_split", "closeunadj"} <= set(prices.columns):
+        return volume_wide
+    f = (_wide(prices, "close_split") / _wide(prices, "closeunadj")).reindex(index=volume_wide.index, columns=volume_wide.columns)
+    return volume_wide * f
+
+
 def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.data.fred import load_fred_lagged
     from stocks_ml.data.membership import members_asof
@@ -727,9 +737,9 @@ def build_panel(store, cfg) -> pd.DataFrame:
     from stocks_ml.features.ranking import RANK_EXEMPT_PREFIXES, rank_normalize
 
     prices = store.read("prices")
-    prices, corrupt = drop_corrupt_series(prices)
+    prices, corrupt = drop_corrupt_series(prices)          # {ticker: cut date}: rows from there on are gone
     if corrupt:
-        store.set_manifest("corrupt_tickers", corrupt)
+        store.set_manifest("corrupt_tickers", {t: str(pd.Timestamp(d).date()) for t, d in corrupt.items()})
     membership = store.read("membership")
     edgar = store.read("edgar")
     form4 = (store.read("form4") if store.exists("form4") else
@@ -756,8 +766,9 @@ def build_panel(store, cfg) -> pd.DataFrame:
         for ticker in members_asof(membership, t):
             base_rows.append((t, ticker))
     base = pd.DataFrame(base_rows, columns=["date", "ticker"])
-    if corrupt:
-        base = base[~base["ticker"].isin(corrupt)]
+    if corrupt:                                        # a name leaves the panel from its cut date, not from its birth
+        cut_from = base["ticker"].map(corrupt)
+        base = base[cut_from.isna() | (base["date"] < cut_from)]
 
     nominal = getattr(cfg, "price_basis", "closeadj") == "nominal"
     if nominal and not {"closeunadj", "close_split"} <= set(prices.columns):
@@ -785,13 +796,21 @@ def build_panel(store, cfg) -> pd.DataFrame:
     # reindexed to `dates`: insider_features needs the full trading calendar
     # (via this wide frame's index) to size its trading-day event window.
     volume_wide = _wide(prices, "volume")
-    dollar_wide = (_wide(prices, level_field) * volume_wide).rolling(20).mean()
+    # dollar volume on ONE basis: SEP volume is split-adjusted, so the split-adjusted close goes with
+    # it (the x_dollar_vol finding of 2026-09-19); the nominal close x adjusted volume read the future
+    # split factor, and the insider flow it scales inherited that (+0.09; found 2026-09-21).
+    dv_field = "close_split" if "close_split" in prices.columns else level_field
+    dollar_wide = (_wide(prices, dv_field) * volume_wide).rolling(20).mean()
     panel = panel.merge(insider_features(form4, dates, dollar_wide), on=["date", "ticker"], how="left")
     # Short-interest features (FINRA data begins 2017-12): absence before the
     # source exists is structural (measured in feature_coverage), neutral-filled
     # after ranking, and must not alter folds.
     shares_out = shares_outstanding_asof(edgar, panel)
-    panel = panel.merge(short_features(shortint, shares_out, volume_wide), on=["date", "ticker"], how="left")
+    # FINRA short interest is a raw share count; SEP volume is split-adjusted. Days-to-cover on the
+    # split-adjusted volume read the future split factor (+0.35 on 2016-2024, found 2026-09-21), so
+    # the volume is put back on the raw basis first (the same factor the level features use).
+    panel = panel.merge(short_features(shortint, shares_out, raw_volume(prices, volume_wide)),
+                        on=["date", "ticker"], how="left")
 
     panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
     panel = panel.merge(calendar_features(dates), on="date", how="left")

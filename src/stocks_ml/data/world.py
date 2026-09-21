@@ -28,6 +28,7 @@ rank_normalize — reproduced bit-for-bit against the research panel_sf on
 """
 from __future__ import annotations
 
+import os
 import shutil
 import time
 import warnings
@@ -115,7 +116,6 @@ def _concat(frames, columns) -> pd.DataFrame:
 SNAPSHOT_START = "1998-01-01"        # quarter-end market-cap snapshots from here
 SNAPSHOT_FALLBACK_DAYS = 6           # a quarter end on a weekend/holiday: the last session before it
 EQUITY_CATEGORIES = ("Domestic Common Stock", "Domestic Common Stock Primary Class")
-EXCLUDED_EXCHANGES = ("OTC",)
 
 
 def quarter_ends(start, end) -> list[pd.Timestamp]:
@@ -127,11 +127,13 @@ def quarter_ends(start, end) -> list[pd.Timestamp]:
 
 def universe_equities(tk: pd.DataFrame) -> set[str]:
     """The tickers a top-N universe may hold: domestic common stock (one class
-    per company: primary, never a secondary class), not OTC."""
+    per company: primary, never a secondary class). The venue is NOT a
+    criterion: the tickers table carries today's exchange, and excluding
+    today's OTC names removed Fannie Mae and Freddie Mac from 2006-2008 —
+    a whole-history exclusion decided by where a name trades in 2026
+    (2026-09-21). The market-cap snapshots decide who is in at each date."""
     cat = tk["category"].fillna("")
-    ex = tk["exchange"].fillna("") if "exchange" in tk.columns else pd.Series("", index=tk.index)
-    ok = cat.isin(EQUITY_CATEGORIES) & ~ex.isin(EXCLUDED_EXCHANGES)
-    return set(tk.loc[ok, "ticker"].dropna())
+    return set(tk.loc[cat.isin(EQUITY_CATEGORIES), "ticker"].dropna())
 
 
 def membership_from_top(snapshots: pd.DataFrame, eligible: set, sectors: dict, n: int) -> pd.DataFrame:
@@ -664,15 +666,43 @@ def refresh_extras(store: DataStore, key: str, fetch_fn=None, log=_log,
     return report
 
 
-def sharadar_cik_map(tickers, user_agent, related=None, cik_map=None) -> dict:
-    """SEC CIK lookup keyed by Sharadar tickers (BRK.B), via the normalized
-    form the SEC map uses (BRK-B); falls back to a ticker's previous symbols
+def cik_from_tickers(tk: pd.DataFrame) -> dict[str, int]:
+    """ticker -> SEC CIK from Sharadar's tickers table (`secfilings` is the
+    EDGAR browse URL, CIK=NNNNNNNNNN), delisted names included: the SEC's own
+    ticker list names only today's registrants, so a map built from it makes
+    "has EDGAR data" mean "still listed in 2026" — the survivorship look-ahead
+    of 2026-09-21."""
+    if tk is None or "secfilings" not in tk.columns:
+        return {}
+    cik = tk["secfilings"].fillna("").astype(str).str.extract(r"CIK=(\d+)")[0]
+    rows = tk.assign(_cik=cik).dropna(subset=["_cik"])
+    if "isdelisted" in rows.columns:                       # a reused symbol: the listed holder wins
+        rows = rows.sort_values("isdelisted", key=lambda c: c.astype(str).str.upper().eq("Y"))
+    rows = rows.drop_duplicates("ticker", keep="first")
+    out = {t: int(c) for t, c in zip(rows["ticker"], rows["_cik"])}
+    # a renamed company lists its old symbols in relatedtickers (VMRK -> EQR): the old symbol,
+    # which a frozen membership still uses, takes the row's CIK unless it has a row of its own
+    if "relatedtickers" in rows.columns:
+        for t, c in zip(rows["relatedtickers"], rows["_cik"]):
+            for old in str(t or "").replace(",", " ").split():
+                out.setdefault(old, int(c))
+    return out
+
+
+def sharadar_cik_map(tickers, user_agent, related=None, cik_map=None, tickers_table=None) -> dict:
+    """SEC CIK lookup keyed by Sharadar tickers (BRK.B): Sharadar's own CIK
+    first (cik_from_tickers, every name ever priced), then the SEC map via
+    the normalized form it uses (BRK-B), then a ticker's previous symbols
     (`related`) while the SEC map lags a rename."""
     from stocks_ml.data.edgar import load_cik_map
     from stocks_ml.data.membership import normalize_symbol
-    ciks = cik_map if cik_map is not None else load_cik_map(user_agent)
-    out = {}
-    for t in tickers:
+    own = cik_from_tickers(tickers_table)
+    out = {t: own[t] for t in tickers if t in own}
+    rest = [t for t in tickers if t not in out]
+    if not rest:
+        return out
+    ciks = cik_map if cik_map is not None else load_cik_map(user_agent)     # only fetched when needed
+    for t in rest:
         for cand in [t] + list((related or {}).get(t, [])):
             if normalize_symbol(cand) in ciks:
                 out[t] = ciks[normalize_symbol(cand)]
@@ -688,8 +718,9 @@ def refresh_sec(store: DataStore, cfg, current: list[str], log=_log) -> dict:
     from stocks_ml.data.sec8k import ingest_sec8k
     from stocks_ml.data.shortint import ingest_shortint
     report = {}
-    related = related_symbols(store.read("sharadar_tickers")) if store.exists("sharadar_tickers") else {}
-    ciks = sharadar_cik_map(current, cfg.user_agent, related=related)
+    tk = store.read("sharadar_tickers") if store.exists("sharadar_tickers") else None
+    ciks = sharadar_cik_map(current, cfg.user_agent, related=related_symbols(tk) if tk is not None else {},
+                            tickers_table=tk)
     missing = sorted(set(current) - set(ciks))
     if missing:
         log(f"no SEC CIK for {missing}")
@@ -708,6 +739,167 @@ def refresh_sec(store: DataStore, cfg, current: list[str], log=_log) -> dict:
     log(f"shortint: {report['shortint']}")
     report["fred"] = ingest_fred(store, cfg.fred_series, cfg.user_agent)
     log(f"fred: {report['fred']}")
+    return report
+
+
+def refetch_sec_universe(root, cfg, log=_log, fetch_facts_fn=None, fetch_submissions_fn=None,
+                         fetch_file_fn=None, cik_map=None, data_dir="data") -> dict:
+    """EDGAR companyfacts and 8-K metadata for EVERY name that was ever a
+    member of the world at `root`, by Sharadar's CIK (cik_from_tickers), so a
+    departed name has the same SEC history as a current one. The store's
+    survivor-only tables are kept beside the new ones as
+    edgar.survivors_<date>.parquet / sec8k.survivors_<date>.parquet; the
+    panel is untouched (append_sec_columns adds the corrected features)."""
+    from stocks_ml.data.edgar import ingest_edgar
+    from stocks_ml.data.sec8k import ingest_sec8k
+    root = Path(root)
+    store = DataStore(root)
+    mem = store.read("membership")
+    names = sorted(mem["ticker"].dropna().unique())
+    # the store's tickers rows plus the project's full pull (every Sharadar name, renames included:
+    # a symbol the frozen membership still uses may only survive as another row's relatedtickers)
+    tks = [store.read("sharadar_tickers")] if store.exists("sharadar_tickers") else []
+    if (Path(data_dir) / "sharadar_tickers.parquet").exists():
+        tks.append(pd.read_parquet(Path(data_dir) / "sharadar_tickers.parquet"))
+    tk = pd.concat(tks, ignore_index=True) if tks else None
+    ciks = sharadar_cik_map(names, cfg.user_agent, related=related_symbols(tk) if tk is not None else {},
+                            tickers_table=tk, cik_map=cik_map)
+    missing = sorted(set(names) - set(ciks))
+    before = {}
+    stamp = pd.Timestamp.today().date().isoformat()
+    for name in ("edgar", "sec8k"):
+        if store.exists(name):
+            before[name] = int(store.read(name)["ticker"].nunique())
+            backup = root / f"{name}.survivors_{stamp}.parquet"
+            if not backup.exists():
+                shutil.copy2(root / f"{name}.parquet", backup)
+    log(f"refetch: {len(names)} names ever in the membership, {len(ciks)} with a CIK"
+        + (f", none for {missing}" if missing else ""))
+    report = {"names": len(names), "with_cik": len(ciks), "no_cik": missing, "before": before}
+    if store.exists("edgar"):                            # start clean: refetched rows REPLACE a name's rows
+        store.write("edgar", store.read("edgar").iloc[0:0])
+    s = ingest_edgar(store, names, cfg.edgar_concepts, cfg.user_agent, fetch_facts_fn=fetch_facts_fn,
+                     cik_map=ciks, refresh_days=0)
+    report["edgar"] = s
+    log(f"edgar: {s['n_ok']} names with facts (was {before.get('edgar', 0)}), {len(s['failed_tickers'])} without")
+    if store.exists("sec8k"):
+        store.write("sec8k", store.read("sec8k").iloc[0:0])
+    s = ingest_sec8k(store, names, cfg.user_agent, fetch_submissions_fn=fetch_submissions_fn,
+                     fetch_file_fn=fetch_file_fn, cik_map=ciks)
+    report["sec8k"] = s
+    log(f"sec8k: {s['n_tickers']} names, {s['n_filings']} filings (was {before.get('sec8k', 0)} names)")
+    store.set_manifest("sec_universe", {"at": stamp, "names": len(names), "with_cik": len(ciks),
+                                        "edgar_names": report["edgar"]["n_ok"], "sec8k_names": report["sec8k"]["n_tickers"]})
+    return report
+
+
+SEC_COLS = ["x_evt_filed_5d", "x_days_since_filing", "x_pead",
+            "x_evt_8k_7d", "x_evt_earnings_8k_7d", "x_days_since_earnings_8k"]
+
+
+def sec_columns(store, panel: pd.DataFrame) -> pd.DataFrame:
+    """The filing-window / PEAD and 8-K features (features.events) recomputed
+    from the store's edgar and sec8k tables on the panel's rows, under their
+    x_ names, unranked."""
+    from stocks_ml.features.events import filing_features, sec8k_features
+    prices = store.read("prices")
+    prices = prices[prices["ticker"].isin(set(panel["ticker"]))]
+    dates = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    edgar = store.read("edgar")
+    sec8k = store.read("sec8k")
+    ff = filing_features(edgar, prices, dates)
+    e8 = sec8k_features(sec8k, sorted(prices["ticker"].unique()), dates)
+    both = ff.merge(e8, on=["date", "ticker"], how="outer")
+    both = both.rename(columns={c: "x_" + c[2:] for c in both.columns if c.startswith("f_")})
+    key = pd.MultiIndex.from_frame(panel[["date", "ticker"]])
+    out = both.set_index(["date", "ticker"]).reindex(key)[SEC_COLS]
+    return pd.DataFrame(out.to_numpy(), columns=SEC_COLS, index=panel.index)
+
+
+def append_sec_columns(root, log=_log) -> list[str]:
+    """Append the filing-window / PEAD and 8-K features recomputed from the
+    store's (refetched, every-name) edgar and sec8k tables to a frozen panel
+    as x_ columns, ranked within the week and neutral-filled like the f_
+    originals: the survivorship-free versions, opt-in by recipe
+    (features=x_pead,...; drop=f_pead,...). Existing columns untouched."""
+    from stocks_ml.features.ranking import rank_normalize
+    root = Path(root)
+    path = root / "panel_sf.parquet"
+    panel = pd.read_parquet(path)
+    have = [c for c in SEC_COLS if c in panel.columns]
+    if have:
+        log(f"{path}: {have} present; nothing to append")
+        return []
+    panel["date"] = pd.to_datetime(panel["date"])
+    x = sec_columns(_PanelStore(root), panel)
+    ranked = rank_normalize(pd.concat([panel[["date", "ticker"]], x], axis=1), SEC_COLS)
+    for c in SEC_COLS:
+        panel[c] = ranked[c].to_numpy()
+    tmp = path.with_suffix(".tmp.parquet")          # atomic: a walk reading the panel sees the old file or the new
+    panel.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+    log(f"{path}: appended {SEC_COLS} (filing/PEAD and 8-K features from the every-name SEC tables)")
+    return SEC_COLS
+
+
+def append_short_dtc(root, log=_log, col: str = "x_short_dtc") -> list[str]:
+    """Append days-to-cover on the RAW volume basis (features/panel.raw_volume)
+    to a frozen panel as `col`, ranked within the week and neutral-filled like
+    f_short_dtc, whose split-adjusted volume read the future split factor
+    (+0.35 on 2016-2024; found 2026-09-21). Opt-in by recipe
+    (features=x_short_dtc, drop=f_short_dtc). Existing columns untouched."""
+    from stocks_ml.features.insiders import short_features
+    from stocks_ml.features.panel import _wide, raw_volume
+    from stocks_ml.features.ranking import rank_normalize
+    root = Path(root)
+    path = root / "panel_sf.parquet"
+    panel = pd.read_parquet(path)
+    if col in panel.columns:
+        log(f"{path}: {col} present; nothing to append")
+        return []
+    panel["date"] = pd.to_datetime(panel["date"])
+    store = _PanelStore(root)
+    prices = store.read("prices")
+    prices = prices[prices["ticker"].isin(set(panel["ticker"]))]
+    shortint = store.read("shortint") if store.exists("shortint") else pd.DataFrame(
+        columns=["ticker", "settlement_date", "publication_date", "short_interest"])
+    grid = panel[["date", "ticker"]].drop_duplicates().assign(shares=np.nan)
+    sf = short_features(shortint, grid, raw_volume(prices, _wide(prices, "volume")))
+    raw = sf.set_index(["date", "ticker"])["f_short_dtc"].reindex(pd.MultiIndex.from_frame(panel[["date", "ticker"]]))
+    ranked = rank_normalize(pd.DataFrame({"date": panel["date"], "ticker": panel["ticker"], col: raw.to_numpy()}), [col])[col]
+    panel[col] = ranked.to_numpy()
+    tmp = path.with_suffix(".tmp.parquet")
+    panel.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+    log(f"{path}: appended {col} (days-to-cover on raw volume)")
+    return [col]
+
+
+def refetch_form4_from_sf2(root, key, fetch_fn=None, log=_log) -> dict:
+    """Replace a store's SEC Form 4 table with one derived from Sharadar SF2
+    for EVERY name ever in its membership (form4_from_sf2, the research
+    builder's own rule). The S&P store's Form 4 table was pulled through the
+    SEC's current-ticker map and covered 25-68% of the names that later left
+    the index against 90-94% of those that stayed (leak_audit.coverage_by_survival,
+    2026-09-21). The old table is kept as form4.survivors_<date>.parquet;
+    the frozen panel is untouched."""
+    root = Path(root)
+    store = DataStore(root)
+    names = sorted(store.read("membership")["ticker"].dropna().unique())
+    stamp = pd.Timestamp.today().date().isoformat()
+    before = int(store.read("form4")["ticker"].nunique()) if store.exists("form4") else 0
+    if store.exists("form4") and not (root / f"form4.survivors_{stamp}.parquet").exists():
+        shutil.copy2(root / "form4.parquet", root / f"form4.survivors_{stamp}.parquet")
+    frames = [_fetch("insiders", key, fetch_fn, ticker=",".join(b), **{"from": UNIVERSE_START}) for b in _chunks(names, 30)]
+    raw = pd.concat([f for f in frames if not f.empty], ignore_index=True) if any(not f.empty for f in frames) \
+        else pd.DataFrame(columns=INSIDER_COLS + ["securityadcode", "transactionpricepershare"])
+    form4 = form4_from_sf2(raw, set(names))
+    store.write("form4", form4)
+    if store.exists("form4_sec"):
+        store.write("form4_sec", form4)
+    report = {"names": len(names), "before": before, "after": int(form4["ticker"].nunique()), "rows": int(len(form4))}
+    log(f"form4 from SF2: {report['after']} names, {report['rows']:,} rows (was {before} names)")
+    store.set_manifest("form4_universe", {"at": stamp, **report})
     return report
 
 
@@ -1118,6 +1310,13 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     # carries the clean column appended as x_dollar_vol (append_clean_dollar_volume), so the recipe
     # `features=x_dollar_vol,drop=f_dollar_vol` is the same 64-column matrix everywhere.
     panel_sf["x_dollar_vol"] = panel_sf["f_dollar_vol"]
+    # x_pead & co: the filing/PEAD and 8-K features under their research names. A store whose SEC tables
+    # cover every name ever (refetch_sec_universe; a research world built since 2026-09-21) has them as
+    # the f_ columns; the frozen S&P panel keeps its survivor-only f_ columns and carries the corrected
+    # ones appended as x_ (append_sec_columns).
+    for c in SEC_COLS:
+        panel_sf[c] = panel_sf["f_" + c[2:]]
+    panel_sf["x_short_dtc"] = panel_sf["f_short_dtc"]      # raw-volume days-to-cover since 2026-09-21 (append_short_dtc)
     panel_sf.to_parquet(Path(live_dir) / "panel_sf.parquet", index=False)
     log(f"panel_sf: {panel_sf.shape[0]:,} x {panel_sf.shape[1]} ({time.time() - t0:.0f}s)")
     return panel_sf

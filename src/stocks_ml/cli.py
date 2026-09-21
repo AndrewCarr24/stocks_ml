@@ -50,6 +50,23 @@ def cmd_world(args, cfg):
         from stocks_ml.data.world import append_clean_dollar_volume
         append_clean_dollar_volume(args.dir)
         return
+    if args.refetch_sec:
+        from stocks_ml.data.world import refetch_sec_universe
+        refetch_sec_universe(args.dir, cfg)
+        return
+    if args.refetch_form4:
+        from stocks_ml.data.sharadar import api_key
+        from stocks_ml.data.world import refetch_form4_from_sf2
+        refetch_form4_from_sf2(args.dir, api_key())
+        return
+    if args.append_sec:
+        from stocks_ml.data.world import append_sec_columns
+        append_sec_columns(args.dir)
+        return
+    if args.append_short:
+        from stocks_ml.data.world import append_short_dtc
+        append_short_dtc(args.dir)
+        return
     if args.extras:
         from stocks_ml.data.sharadar import api_key
         from stocks_ml.data.store import DataStore
@@ -254,6 +271,18 @@ def main():
                         "by market cap at each quarter end), from scratch; refuses an existing world")
     p.add_argument("--append-dv", action="store_true",
                    help="append the split-consistent dollar volume (x_dollar_vol) to the panel (append-only)")
+    p.add_argument("--refetch-sec", action="store_true",
+                   help="refetch EDGAR facts and 8-K metadata for EVERY name ever in the store's membership, by "
+                        "Sharadar's CIK (the survivor-only tables are kept as *.survivors_<date>.parquet); the "
+                        "panel is untouched")
+    p.add_argument("--append-short", action="store_true",
+                   help="append days-to-cover on raw volume (x_short_dtc) to the panel (append-only)")
+    p.add_argument("--refetch-form4", action="store_true",
+                   help="replace the store's SEC Form 4 table with one derived from Sharadar SF2 for every name ever in "
+                        "its membership (the old table is kept as form4.survivors_<date>.parquet)")
+    p.add_argument("--append-sec", action="store_true",
+                   help="append the filing/PEAD and 8-K features recomputed from the refetched SEC tables to the "
+                        "panel as x_ columns (append-only)")
     p.add_argument("--append-sr", action="store_true",
                    help="append sector-relative ranks of the admitted features (x_sr_*) to the panel, derived from "
                         "its own ranked columns (append-only)")

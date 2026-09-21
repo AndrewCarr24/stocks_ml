@@ -479,7 +479,7 @@ def test_quarter_ends_and_eligible_equities():
                                     "Domestic Common Stock Secondary Class", "ADR Common Stock",
                                     "Domestic Common Stock", None],
                        "exchange": ["NYSE", "NASDAQ", "NYSE", "NYSE", "OTC", "NYSE"]})
-    assert world.universe_equities(tk) == {"A", "B"}
+    assert world.universe_equities(tk) == {"A", "B", "E"}      # today's venue is not a criterion (FNMA/FMCC, 2026-09-21)
 
 
 def test_membership_from_top_is_point_in_time_stints():

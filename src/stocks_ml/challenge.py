@@ -149,9 +149,10 @@ def candidate_name(rec: dict) -> str:
 
 def refuse_leaky_features(ctx, candidates: list, lo, hi, log=print) -> None:
     """Every feature a candidate names is checked against the future split
-    factor on the selection window (leak_audit.feature_factor_check) before
+    factor on every scan window (leak_audit.feature_factor_worst: the
+    selection window and the pre-holdout extension, since 2026-09-21) before
     a single copy is fit; a failing feature ends the run."""
-    from stocks_ml.leak_audit import FEATURE_FACTOR_LIMIT, feature_factor_check
+    from stocks_ml.leak_audit import FEATURE_FACTOR_LIMIT, feature_factor_worst
     feats = sorted({f for c in candidates for f in (c.get("features") or [])})
     if not feats:
         return
@@ -160,24 +161,24 @@ def refuse_leaky_features(ctx, candidates: list, lo, hi, log=print) -> None:
         raise SystemExit(f"the panel lacks the recipe's feature columns {missing}")
     from stocks_ml.features.panel import SR_PREFIX
     parents = {f: f[len(SR_PREFIX):] for f in feats if f.startswith(SR_PREFIX) and f[len(SR_PREFIX):] in ctx.pan.columns}
-    res = feature_factor_check(ctx, sorted(set(feats) | set(parents.values())), lo, hi)
+    res = feature_factor_worst(ctx, sorted(set(feats) | set(parents.values())))
     failed = []
     for f in feats:
-        r = res[f]
+        r = res.get(f, {"corr_with_future_split_factor": float("nan"), "verdict": "PASS"})
         verdict = r["verdict"]
         if f in parents:
             # a within-sector re-ranking of a panel column cannot add split information: it is
             # judged against its parent (2026-09-19: several admitted columns sit at 0.15-0.21
             # for economic reasons — value and quality names split less)
-            p = res[parents[f]]["corr_with_future_split_factor"]
+            p = res.get(parents[f], {}).get("corr_with_future_split_factor", float("nan"))
             if p != p:      # a parent constant within the week (macro, market, flags): no split information to inherit
                 p = 0.0
             verdict = "PASS" if abs(r["corr_with_future_split_factor"]) <= max(FEATURE_FACTOR_LIMIT, abs(p) + 0.05) else "FAIL"
             log(f"feature leak check: {f} corr with the future split factor {r['corr_with_future_split_factor']:+.3f} "
-                f"(parent {parents[f]} {p:+.3f}; {r['weeks']} weeks) -> {verdict}")
+                f"(parent {parents[f]} {p:+.3f}; {r.get('window', '-')}) -> {verdict}")
         else:
             log(f"feature leak check: {f} corr with the future split factor {r['corr_with_future_split_factor']:+.3f} "
-                f"({r['weeks']} weeks) -> {verdict}")
+                f"({r.get('window', '-')}) -> {verdict}")
         if verdict == "FAIL":
             failed.append(f)
     if failed:

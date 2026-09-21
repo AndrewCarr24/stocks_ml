@@ -140,3 +140,44 @@ def test_live_archive_and_comparison(tmp_path):
     assert got.loc["f_a", "rank_agreement"] > 0.999 and got.loc["f_b", "rank_agreement"] < -0.99
     assert got.loc["f_a", "share_moved_0.1"] == 0.0 and got.loc["f_b", "share_moved_0.1"] > 0.9
     assert la.live_vs_rebuilt(tmp_path / "empty", later).empty
+
+
+def test_missingness_scan_flags_a_feature_whose_blanks_mark_the_names_that_later_leave():
+    """The 2026-09-21 EDGAR leak in miniature: `survivor` is blank for names that are
+    gone by the panel's last week, and those names earn less; `random` is blank at
+    random; `ind` is a 0/1 indicator and is skipped."""
+    rng = np.random.default_rng(0)
+    weeks = pd.date_range("2016-01-08", periods=120, freq="7D")
+    names = [f"T{i:02d}" for i in range(40)]
+    leavers = set(names[:20])                                   # gone by the last week
+    rows = []
+    for w in weeks:
+        for t in names:
+            ret = rng.normal(-0.01 if t in leavers else 0.01, 0.02)
+            rows.append((w, t, 0.0 if t in leavers else rng.uniform(-1, 1), 0.0 if rng.random() < 0.2 else rng.uniform(-1, 1),
+                         float(rng.random() < 0.1), ret))
+    pan = pd.DataFrame(rows, columns=["date", "ticker", "survivor", "random", "ind", "fwd_ret_4w"])
+    members = {w: names for w in weeks[:-1]}
+    members[weeks[-1]] = [t for t in names if t not in leavers]
+    ctx = SimpleNamespace(pan=pan, weeks=list(weeks), members=members)
+    out = la.missingness_scan(ctx, ["survivor", "random", "ind"], lo=weeks[0], hi=weeks[-1])
+    assert set(out["beyond_limit"]) == {"survivor"}
+    assert out["survival_keyed"] == ["survivor"] and out["VERDICT"] == "FAIL"
+    s = out["all"]["survivor"]
+    assert s["blank_share_left"] == 1.0 and s["blank_share_stayed"] == 0.0 and s["t"] < -la.MISSING_T_LIMIT and s["return_gap_pp"] < 0
+    assert out["all"]["ind"]["skipped"] and not out["all"]["random"].get("skipped")
+    line = la.leak_line({"VERDICT": "PASS", "segments": {}, "missingness_scan": out})
+    assert "missingness scan: 1 of 3" in line and "survivor blank 50%" in line and "left 100% vs stayed 0%" in line
+
+
+def test_coverage_by_survival_flags_a_table_pulled_for_todays_members(tmp_path):
+    D = pd.Timestamp
+    mem = pd.DataFrame([("STAY", D("2000-01-01"), pd.NaT, "s"), ("GONE", D("2000-01-01"), D("2020-01-01"), "s")],
+                       columns=["ticker", "start_date", "end_date", "sector"])
+    mem.to_parquet(tmp_path / "membership.parquet", index=False)
+    days = pd.date_range("2015-01-01", "2019-12-31", freq="30D")
+    pd.DataFrame({"ticker": "STAY", "filed": days}).to_parquet(tmp_path / "edgar.parquet", index=False)      # survivors only
+    pd.DataFrame({"ticker": ["STAY", "GONE"] * len(days), "date": list(days) * 2}).to_parquet(tmp_path / "fundamentals.parquet", index=False)
+    out = la.coverage_by_survival(tmp_path, years=(2016, 2019))
+    assert out["tables"]["edgar"][2016] == {"left": 0.0, "stayed": 1.0} and out["tables"]["fundamentals"][2019] == {"left": 1.0, "stayed": 1.0}
+    assert list(out["beyond_limit"]) == ["edgar"]

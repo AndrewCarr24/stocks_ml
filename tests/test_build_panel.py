@@ -256,17 +256,21 @@ def test_build_panel_drops_corrupt_tickers(synthetic_store, tiny_cfg):
     prices = synthetic_store.read("prices")
     bad = prices[prices.ticker == "AAA"].copy()
     bad["ticker"] = "BADCO"
-    doubles = bad.index[::100]
+    doubles = bad.index[len(bad) // 2::100]
     for col in ("open", "high", "low", "close"):
-        bad.loc[doubles, col] = bad.loc[doubles, col] * 4  # repeated 4x spikes
+        bad.loc[doubles, col] = bad.loc[doubles, col] * 4  # repeated 4x spikes, from mid-series
     synthetic_store.write("prices", pd.concat([prices, bad], ignore_index=True))
     mem = synthetic_store.read("membership")
     mem = pd.concat([mem, pd.DataFrame({"ticker": ["BADCO"], "start_date": [pd.Timestamp("2015-01-01")],
                                         "end_date": [pd.NaT], "sector": ["Tech"]})], ignore_index=True)
     synthetic_store.write("membership", mem)
     panel = build_panel(synthetic_store, tiny_cfg)
-    assert "BADCO" not in panel.ticker.values
-    assert "BADCO" in synthetic_store.manifest["corrupt_tickers"]
+    cut = pd.Timestamp(synthetic_store.manifest["corrupt_tickers"]["BADCO"])
+    ratio = bad.sort_values("date")["close"].pct_change().add(1.0)
+    jumps = bad.sort_values("date").loc[(ratio > 1.9) | (ratio < 1 / 1.9), "date"]
+    assert cut == jumps.iloc[1]                                 # no raw reference here: cut at the second jump
+    rows = panel[panel.ticker == "BADCO"]
+    assert len(rows) > 0 and (rows.date < cut).all()           # the history before the cut stays; nothing from it on
 
 
 def test_pending_ablation_features_generated_but_not_admitted(synthetic_store, tiny_cfg):
