@@ -7,15 +7,15 @@ each is a recipe, walked and judged the same way. The rules are the
 registered ones (reports/clean_improvement_registration.md: rules 2, 5, 7,
 8) and every constant lives at the top of this file:
 
-  (no screen) Until 2026-09-24 a stage 1 ranked every candidate on every
-           4th week at K=4 and sent the top two on. The owner dropped it: the
-           same model's four seed sets spread +4.4 .. +16.6 on it, more than the
-           band stage 2 decides by, so it ranked mostly luck — its leader that
-           day (+23.6, ten points clear) tied the incumbent in stage 2, and a
-           candidate it placed 24th had tied the incumbent in a full test. At
-           the screening cadence a full walk costs ~4 screens, so every
-           candidate now walks the full comparison: keep menus small.
-  stage 2  every candidate, every week of the selection window at K=FULL_K (16, the deployed
+  stage 1  every SAMPLE_EVERY-th week of the selection window at K=SAMPLE_K
+           for each candidate; the incumbent's own walk cut to the same
+           weeks and copies. A sample ranks only: the top ADVANCE candidates
+           go on, nothing is decided. ADVANCE is 3 since 2026-09-24 (2
+           before): the same model's four seed sets spread +4.4 .. +16.6 on
+           this screen (sd 5.2), so the second and third places are routinely
+           inside seed luck of each other — the owner dropped the screen that
+           day and restored it with a wider door.
+  stage 2  the advancing candidates, every week of the selection window at K=FULL_K (16, the deployed
            ensemble size; at K=4 models K=16 separates are coin flips); the MODEL SCORE —
            the mean over the top-3, top-6 and top-10 books of the selection
            metric (backtest.selection_metric: cost-adjusted compounded %/yr,
@@ -77,8 +77,11 @@ from stocks_ml.models.trials import record_trials
 from stocks_ml.train import STORE, context, recipe, walk
 
 SELECT = (pd.Timestamp("2006-01-01"), pd.Timestamp("2015-12-31"))
+SAMPLE_EVERY = 4          # stage 1: every 4th rank week
+SAMPLE_K = 4              # stage 1: copies
 FULL_K = 16               # stage 2: copies, every week — the deployed ensemble size (K=4 could not
                           # separate models that K=16 does: the 2026-09-14 resampling; set 2026-09-15)
+ADVANCE = 3               # candidates that go from stage 1 to stage 2 (2 until 2026-09-24)
 SCORE_BOOKS = (3, 6, 10)  # the model score: the mean of the selection metric over these books
 FINAL_K = 16              # stage 3: the deployed ensemble size
 FAST_PER_YEAR = 26        # challenge-fast: weeks drawn from each year of the window (26: a
@@ -241,6 +244,11 @@ def incumbent_recipe(preds_path: Path, spec_path: Path | None = None, allow_othe
                              f"(models/champion_spec.json): a stale yardstick. Pass --incumbent-recipe-ok to compare "
                              f"against another recipe on purpose.")
     return r
+
+
+def sample_weeks(ctx, lo, hi, every: int) -> list:
+    """Exactly the weeks `train --every` walks."""
+    return [t for t in ctx.weeks if lo <= t <= hi][::every]
 
 
 def stratified_weeks(ctx, lo, hi, per_year: int = FAST_PER_YEAR, seed: int = FAST_SEED) -> list:
@@ -690,8 +698,8 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
     worlds = Worlds(sel, ctx, store)
     refuse_leaky_features_by_world(worlds, list(names.values()), lo, hi, log)
     res = {"out": str(out), "store": store, "selection_window": [str(lo.date()), str(hi.date())],
-           "rules": {"screen": None, "full_k": FULL_K, "score_books": SCORE_BOOKS, "final_k": FINAL_K,
-                     "refit_every": int(refit_every)},
+           "rules": {"sample_every": SAMPLE_EVERY, "sample_k": SAMPLE_K, "advance": ADVANCE, "full_k": FULL_K,
+                     "score_books": SCORE_BOOKS, "final_k": FINAL_K, "refit_every": int(refit_every)},
            "incumbent": {"preds": str(incumbent), "recipe": inc_rec}, "candidates": names}
     log(f"challenge: {len(names)} candidates vs the incumbent {incumbent} ({inc_rec}); "
         f"selection window {lo.date()} -> {hi.date()}; rules {res['rules']}")
@@ -705,13 +713,38 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
                          f"walked at the candidates' cadence")
     ctxs = {n: worlds.ctx_of(c) for n, c in names.items()}
 
+    # ---- stage 1: the sample ranks
+    weeks = sample_weeks(ctx, lo, hi, SAMPLE_EVERY)
+    walks = {"incumbent": cut_walk(incumbent, weeks, SAMPLE_K)}
+    for n, c in names.items():
+        done = out / n / "select" / "preds.parquet"
+        if done.exists() and set(weeks) <= set(pd.to_datetime(load_preds([done])["week"].unique())):
+            log(f"stage 1: {n} — cut from its complete select walk (same weeks, copies 1-{SAMPLE_K})")
+            walks[n] = cut_walk(done, weeks, SAMPLE_K)
+            continue
+        log(f"stage 1: {n} — every {SAMPLE_EVERY}th week at K={SAMPLE_K}" + (f" on {c['store']}" if c.get("store") else ""))
+        p = walk(worlds.store_of(c), lo, hi, c["label"], c["train_years"], SAMPLE_K, out / n / "sample",
+                 every=SAMPLE_EVERY, log=log, features=c.get("features", ()), params=c.get("params"), drop=c.get("drop", ()), train_top=c.get("train_top"),
+                 workers=workers)
+        walks[n] = load_preds([p])
+    M1, _, n1 = metrics_on_common(sel, ctx, walks, SAMPLE_K, lo, hi, ctxs=ctxs)
+    order1 = rank_by_metric(M1, names)
+    advance = order1[:ADVANCE]
+    res["stage1"] = {"weeks": n1, "metric": M1, "order": order1, "advance": advance}
+    log(f"stage 1 ({n1} sample weeks, ranking only), model score: " +
+        "; ".join(f"{n} {model_score(M1[n]):+.2f}" for n in ["incumbent", *order1])
+        + f" — advancing {advance}")
+    for n in names:
+        _ledger(out, "stage1", n, names[n], {"metric": M1[n], "weeks": n1, "advanced": n in advance,
+                                              "note": "sample; ranks only"})
+
     # ---- stage 2: every week, the frozen comparison
     walks = {"incumbent": cut_walk(incumbent, [t for t in ctx.weeks if lo <= t <= hi], FULL_K)}
     if FULL_K == FINAL_K:     # the incumbent is a recipe, not one seed set: both count (walked if missing —
         twin = ensure_twin(incumbent, inc_rec, store, lo, hi, workers=workers, log=log, refit_every=refit_every)
         walks["incumbent (twin seeds)"] = cut_walk(twin, [t for t in ctx.weeks if lo <= t <= hi], FULL_K,
                                                    copies=twin_copies())    # until 2026-09-24 only if present)
-    for n in names:
+    for n in advance:
         c = names[n]
         log(f"stage 2: {n} — every week at K={FULL_K}" + (f" on {c['store']}" if c.get("store") else ""))
         p = walk(worlds.store_of(c), lo, hi, c["label"], c["train_years"], FULL_K, out / n / "select",
@@ -725,7 +758,7 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
     common2 = set(H2["incumbent"].week)
     incumbents = ["incumbent"]
     detail = {}
-    for n in [*incumbents, *names]:
+    for n in [*incumbents, *advance]:
         preds = walks[n]
         detail[n] = {"metric": M2[n], "k": k_of[n],
                      "copies": copy_metrics(sel, ctxs.get(n, ctx), preds, k_of[n], set(H2[n].week), lo, hi),
@@ -735,7 +768,7 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
         if n not in incumbents:
             la = audit_segments(worlds.store_of(names[n]), [str(out / n / "select" / "preds.parquet")], ctxs[n])
             detail[n]["leak_audit"] = {"verdict": la["VERDICT"], "line": leak_line(la)}
-    eligible = incumbents + [n for n in names if detail[n]["leak_audit"]["verdict"] == "PASS"]
+    eligible = incumbents + [n for n in advance if detail[n]["leak_audit"]["verdict"] == "PASS"]
     order2 = rank_by_metric(M2, eligible)
     best = next((n for n in order2 if n not in incumbents), None)
     verdict, gap, thr = ("incumbent", 0.0, 0.0) if best is None else decide(
@@ -746,7 +779,7 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
                      "gap": round(gap, 2), "threshold": round(thr, 2), "best_candidate": best}
     md = [f"| model | top-3 | top-6 | top-10 | score (mean of the three) | seed band (sd of the score at K) | copies | paired t vs incumbent | leak audit |",
           "|---|---|---|---|---|---|---|---|---|"]
-    for n in [*incumbents, *names]:
+    for n in [*incumbents, *advance]:
         d = detail[n]
         md.append(f"| {'**' + n + '**' if n == winner else n} | " +
                   " | ".join(f"{d['metric'].get(b, float('nan')):+.2f}" for b in SCORE_BOOKS) +
@@ -761,7 +794,7 @@ def run(candidates: list, incumbent: Path, out: Path, store: str = STORE, k16: b
            f"{'the candidate wins' if verdict == 'candidate' else 'the incumbent stands' if verdict == 'incumbent' else 'a TIE (inside seed luck; the incumbent keeps its place, nothing is claimed)'}"
            if best else "no eligible candidate"))
     log("\n".join(md))
-    for n in names:
+    for n in advance:
         _ledger(out, "stage2", n, names[n], {**detail[n], "weeks": n2, "winner": n == winner})
     (out / "challenge.json").write_text(json.dumps(res, indent=1, default=str))
 

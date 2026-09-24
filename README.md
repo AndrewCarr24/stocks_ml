@@ -109,36 +109,36 @@ stocks-ml challenge --out data/experiments/challenges/labels \
     --candidate train_years=5 --candidate "params=learning_rate:0.01" --k16
 ```
 
-1. **Every candidate, every week** of 2006–2015 at K=16, the deployed
-   ensemble size, against the incumbent's walk and its seed twin (32 copies:
-   the incumbent is a recipe, not one seed set; the twin is walked if
-   missing). There is no sample screen: until 2026-09-24 a first stage ranked
-   candidates on every 4th week at K=4 and sent two on, but the same model's
-   seed sets alone spread 12 points there, more than the band the decision
-   uses, so it ranked mostly luck. At the 4-week screening cadence a full
-   walk costs about four screens — keep menus small instead. The **model
-   score** is the mean over the top-3, top-6 and top-10 books of the
-   cost-adjusted compounded %/yr (`selection.decide_book`), on the weeks all
-   walks share: one book would miss a recipe that shines at another size.
-   The leak audit must pass.
-2. **The verdict.** A challenger wins only if its score beats the
+1. **Screen** (every 4th week of 2006–2015, 4 model copies) for each
+   candidate, and the incumbent's own walk cut to the same weeks and copies.
+   It ranks only; the **top three** go on (two until 2026-09-24). It is
+   noisy — the same model's seed sets alone spread 12 points on it — so a
+   screen leader proves nothing; the full test decides.
+2. **Every week** of 2006–2015 at K=16, the deployed ensemble size, for the
+   three finalists, against the incumbent's walk and its seed twin (32
+   copies: the incumbent is a recipe, not one seed set; the twin is walked
+   if missing). The **model score** is the mean over the top-3, top-6 and
+   top-10 books of the cost-adjusted compounded %/yr
+   (`selection.decide_book`), on the weeks all walks share: one book would
+   miss a recipe that shines at another size. The leak audit must pass.
+3. **The verdict.** A challenger wins only if its score beats the
    incumbent's by more than twice their combined seed noise *and* its paired
    weekly t is at least 2 in the same direction; the incumbent wins the
    mirror case; anything else is a **tie**, and a tie keeps the incumbent.
    With `--adjudicate` the best candidate then meets the incumbent on
    2016–2019 under the same rule, and that head-to-head decides.
-3. **The one look** (`--k16`): the winner's 2016–2024 segment at K=16 (its
+4. **The one look** (`--k16`): the winner's 2016–2024 segment at K=16 (its
    2006–2015 walk is the stage-2 one), then
    `stocks-ml eval --incumbent`: the table, the intervals, the
    falsification test (a challenger is rejected only if it is significantly
    *worse* than the incumbent on 2016–2024, paired weekly t < −2) and the
    leak audit.
-4. **Adopt** with `stocks-ml procedure --preds <winner>/select/preds.parquet`,
+5. **Adopt** with `stocks-ml procedure --preds <winner>/select/preds.parquet`,
    on the owner's go. The procedure writes the recipe — label, window,
    features, params — into the spec, and the weekly job trains on it.
 
-The constants (copies, the comparison books, the verdict's bands) sit at
-the top of `challenge.py`; changing a rule is one visible
+The constants (sample spacing, copies, how many advance, the comparison
+books, the verdict's bands) sit at the top of `challenge.py`; changing a rule is one visible
 edit, made before a test, never after seeing who wins. Every stage writes
 a ledger row and `<out>/challenge.json`.
 

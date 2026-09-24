@@ -160,7 +160,7 @@ comes from the keychain through `git credential fill`; never print it).
    forward returns, book against book on the common weeks — and `train_top=N`,
    fit on the largest N names by market cap while every member is scored):
    prototyped by `stocks-ml challenge-fast`
-   (stratified sample, 26/yr, K=16, gap vs the luckier of the incumbent's two seed sets, flagged above the 90th percentile of the centred seed-twin null; ranks only), then `stocks-ml challenge` (every candidate, every week, K=16 — no sample screen since 2026-09-24: it ranked seed luck): the
+   (stratified sample, 26/yr, K=16, gap vs the luckier of the incumbent's two seed sets, flagged above the 90th percentile of the centred seed-twin null; ranks only), then `stocks-ml challenge` (a sample screen at K=4 advancing the top THREE — two until 2026-09-24, when the screen was shown to rank much seed luck — then the finalists every week, K=16, against the incumbent's two seed sets): the
    argmax of the model score (the mean over the top-3/6/10 books of the
    cost-adjusted compounded %/yr; owner's rule 2026-09-14) on 2006-2015
    alone, incumbent included (the incumbent is the argmax of a long search
