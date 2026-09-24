@@ -63,6 +63,10 @@ def cmd_world(args, cfg):
         from stocks_ml.data.world import append_sec_columns
         append_sec_columns(args.dir)
         return
+    if args.append_mkt:
+        from stocks_ml.data.world import append_market_dispersion
+        append_market_dispersion(args.dir)
+        return
     if args.append_short:
         from stocks_ml.data.world import append_short_dtc
         append_short_dtc(args.dir)
@@ -275,6 +279,8 @@ def main():
                    help="refetch EDGAR facts and 8-K metadata for EVERY name ever in the store's membership, by "
                         "Sharadar's CIK (the survivor-only tables are kept as *.survivors_<date>.parquet); the "
                         "panel is untouched")
+    p.add_argument("--append-mkt", action="store_true",
+                   help="append the return dispersion computed over the date's index members (x_mkt_dispersion) (append-only)")
     p.add_argument("--append-short", action="store_true",
                    help="append days-to-cover on raw volume (x_short_dtc) to the panel (append-only)")
     p.add_argument("--refetch-form4", action="store_true",

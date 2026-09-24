@@ -321,12 +321,29 @@ def price_features(prices: pd.DataFrame, dates: pd.DatetimeIndex,
 
 
 def market_macro_features(prices: pd.DataFrame, fred_lagged: pd.DataFrame,
-                          dates: pd.DatetimeIndex) -> pd.DataFrame:
+                          dates: pd.DatetimeIndex, membership: pd.DataFrame | None = None) -> pd.DataFrame:
     spy = _wide(prices[prices.ticker == "SPY"], "close")["SPY"]
     ret = spy.pct_change()
-    # Cross-sectional dispersion: std across tickers of the 5-trading-day
-    # return ending at t (close_{t-5} -> close_t). Backward-looking only.
-    dispersion = _wide(prices, "close").pct_change(5, fill_method=None).std(axis=1, ddof=1)
+    # Cross-sectional dispersion: std of the 5-trading-day return ending at t
+    # (close_{t-5} -> close_t) across THAT DATE'S INDEX MEMBERS. Backward-looking
+    # in time, and point in time in its cross-section: the price file holds every
+    # name ever in the index, so a std over all of its columns mixed in names that
+    # only join later — 31% of the 2006 cross-section (2026-09-23). Without a
+    # membership table the old ever-member behaviour stands.
+    r5 = _wide(prices, "close").pct_change(5, fill_method=None)
+    if membership is not None and len(membership):
+        inside = pd.DataFrame(False, index=r5.index, columns=r5.columns)
+        for st in membership.itertuples():       # one pass per stint: a name that left and rejoined has two
+            if st.ticker not in inside.columns or pd.isna(st.start_date):
+                continue
+            m = r5.index >= pd.Timestamp(st.start_date)
+            if pd.notna(st.end_date):
+                m &= r5.index <= pd.Timestamp(st.end_date)
+            inside.loc[m, st.ticker] = True
+        dispersion = r5.where(inside).std(axis=1, ddof=1)
+    else:
+        dispersion = r5.std(axis=1, ddof=1)
+
     mkt = pd.DataFrame({
         "f_mkt_mom_4w": spy.pct_change(20),
         "f_mkt_mom_26w": spy.pct_change(130),
@@ -812,7 +829,7 @@ def build_panel(store, cfg) -> pd.DataFrame:
     panel = panel.merge(short_features(shortint, shares_out, raw_volume(prices, volume_wide)),
                         on=["date", "ticker"], how="left")
 
-    panel = panel.merge(market_macro_features(prices, fred_lagged, dates), on="date", how="left")
+    panel = panel.merge(market_macro_features(prices, fred_lagged, dates, membership), on="date", how="left")
     panel = panel.merge(calendar_features(dates), on="date", how="left")
     panel = panel.merge(make_labels(prices, dates, cfg.horizon_days,
                                 delist=getattr(cfg, "delist_labels", "drop")),

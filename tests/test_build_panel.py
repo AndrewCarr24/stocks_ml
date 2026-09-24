@@ -392,3 +392,24 @@ def test_comovement_peers_are_the_most_correlated_names_and_the_dip_is_own_minus
     # point in time: a later week's prices cannot move an earlier row
     rows_early = pd.DataFrame({"date": fridays[-10], "ticker": list(close.columns)})
     assert comovement_peer_features(p2, rows_early).equals(comovement_peer_features(prices, rows_early))
+
+
+def test_market_dispersion_uses_only_that_dates_index_members():
+    """The price file holds every name ever in the index, so a std across all of its
+    columns mixes in names that only join later (31% of the 2006 cross-section,
+    2026-09-23). The members-only cross-section is the point-in-time one."""
+    import numpy as np
+    from stocks_ml.features.panel import market_macro_features
+    days = pd.bdate_range("2024-01-01", periods=12)
+    def px(t, step):
+        return pd.DataFrame({"ticker": t, "date": days, "close": 100.0 * (1 + step) ** np.arange(len(days))})
+    # MEMBER moves gently; LATER is wild but does not join the index until the last day
+    prices = pd.concat([px("MEMBER", 0.001), px("LATER", 0.20), px("SPY", 0.001)], ignore_index=True)
+    mem = pd.DataFrame([("MEMBER", days[0], pd.NaT), ("LATER", days[-1], pd.NaT)],
+                       columns=["ticker", "start_date", "end_date"])
+    fred = pd.DataFrame(index=pd.DatetimeIndex([]))
+    mid = pd.DatetimeIndex([days[7]])
+    ever = market_macro_features(prices, fred, mid)["f_mkt_dispersion"].iloc[0]          # old behaviour
+    pit = market_macro_features(prices, fred, mid, membership=mem)["f_mkt_dispersion"].iloc[0]
+    assert ever > 0.1                       # LATER's 20%/day swamps the cross-section
+    assert pd.isna(pit) or pit < 0.01       # only MEMBER and SPY are in the index that day

@@ -181,3 +181,14 @@ def test_coverage_by_survival_flags_a_table_pulled_for_todays_members(tmp_path):
     out = la.coverage_by_survival(tmp_path, years=(2016, 2019))
     assert out["tables"]["edgar"][2016] == {"left": 0.0, "stayed": 1.0} and out["tables"]["fundamentals"][2019] == {"left": 1.0, "stayed": 1.0}
     assert list(out["beyond_limit"]) == ["edgar"]
+
+
+def test_classification_vintage_reports_a_single_vintage_sector_map(tmp_path):
+    D = pd.Timestamp
+    pd.DataFrame([("A", D("2000-01-01"), pd.NaT, "Manufacturing"), ("A", D("2010-01-01"), pd.NaT, "Manufacturing"),
+                  ("B", D("2000-01-01"), pd.NaT, "Services")],
+                 columns=["ticker", "start_date", "end_date", "sector"]).to_parquet(tmp_path / "membership.parquet", index=False)
+    v = la.classification_vintage(tmp_path)
+    assert v["point_in_time"] is False and v["sectors"] == 2 and "one vintage" in v["note"]
+    line = la.leak_line({"VERDICT": "PASS", "segments": {}, "classification_vintage": v})
+    assert "sector map: one vintage applied to all history" in line and "sector cap" in line

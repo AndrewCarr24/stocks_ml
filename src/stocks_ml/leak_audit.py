@@ -413,6 +413,24 @@ def coverage_by_survival(store: str, years=(2008, 2012, 2016, 2019, 2023), table
     return {"limit": COVERAGE_GAP, "tables": out, "beyond_limit": beyond}
 
 
+def classification_vintage(store: str) -> dict:
+    """Is the store's sector map point in time, or one vintage applied to all
+    history? Sharadar's tickers table carries today's SIC only, so every name
+    gets one sector for 1998-2026 (2026-09-23). What consumes it: the
+    sector-centred training label (label_4w_sector*, the champion's target)
+    and the book's sector cap. Neither can inflate the reported record — the
+    record is graded on raw forward returns — but both apply a 2026
+    classification to a 2010 decision. Report-only; no point-in-time SIC
+    source exists in the store, so this is a standing disclosure, not a gate."""
+    mem = pd.read_parquet(Path(store) / "membership.parquet")
+    per = mem.groupby("ticker")["sector"].nunique()
+    return {"sectors": int(mem["sector"].nunique()),
+            "max_sectors_per_ticker": int(per.max()) if len(per) else 0,
+            "point_in_time": bool(len(per) and per.max() > 1),
+            "consumers": ["label_4w_sector* (the training target)", "the book's sector cap"],
+            "note": "one vintage applied to all history" if not (len(per) and per.max() > 1) else "varies over time"}
+
+
 def audit_segments(store: str, preds_paths, ctx=None) -> dict:
     """One audit PER segment; the verdict is the identity check on every
     segment and the missingness scan's (no survival-keyed blanks). The factor numbers are reported per segment, never pooled:
@@ -429,11 +447,12 @@ def audit_segments(store: str, preds_paths, ctx=None) -> dict:
     feats = model_features(preds_paths[0], ctx)
     scan = feature_scan(ctx, feats)
     missing = missingness_scan(ctx, feats)
+    vintage = classification_vintage(store)
     finite = [s["ic_retention"] for s in segs.values() if np.isfinite(s["ic_retention"])]
     # the verdict: the identity gate on every segment, and no feature whose blanks are keyed to
     # survival (missingness_scan: both limits) — the 2026-09-21 EDGAR leak passed the identity gate
     return {"segments": segs, "worst_retention": round(float(min(finite)), 3) if finite else None,
-            "feature_scan": scan, "missingness_scan": missing,
+            "feature_scan": scan, "missingness_scan": missing, "classification_vintage": vintage,
             "VERDICT": "PASS" if all(s["VERDICT"] == "PASS" for s in segs.values()) and missing["VERDICT"] == "PASS" else "FAIL"}
 
 
@@ -455,6 +474,9 @@ def leak_line(la: dict) -> str:
                      + (" (" + ", ".join(f"{f} blank {v['blank_share']:.0%}, left {v['blank_share_left']:.0%} vs stayed "
                                           f"{v['blank_share_stayed']:.0%}, gap {v['return_gap_pp']:+.2f} pp t {v['t']:+.1f}"
                                           for f, v in b.items()) + ")" if b else ""))
+    v = la.get("classification_vintage")
+    if v and not v["point_in_time"]:
+        parts.append(f"sector map: {v['note']} ({v['sectors']} sectors), used by {' and '.join(v['consumers'])}")
     return f"{la['VERDICT']} — " + "; ".join(parts) + "." if parts else f"{la['VERDICT']}."
 
 

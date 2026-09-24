@@ -903,6 +903,42 @@ def refetch_form4_from_sf2(root, key, fetch_fn=None, log=_log) -> dict:
     return report
 
 
+def append_market_dispersion(root, log=_log, col: str = "x_mkt_dispersion") -> list[str]:
+    """Append the cross-sectional return dispersion computed over THAT DATE'S
+    INDEX MEMBERS to a frozen panel as `col`. The stored f_mkt_dispersion took
+    the std across every column of the price file — the ever-member set — so
+    31% of the 2006 cross-section were names that only joined the index later
+    (2026-09-23). Rank-exempt like its parent, so the raw level is kept.
+    Opt-in by recipe (features=x_mkt_dispersion, drop=f_mkt_dispersion)."""
+    from stocks_ml.features.panel import _wide
+    root = Path(root)
+    path = root / "panel_sf.parquet"
+    panel = pd.read_parquet(path)
+    if col in panel.columns:
+        log(f"{path}: {col} present; nothing to append")
+        return []
+    panel["date"] = pd.to_datetime(panel["date"])
+    store = _PanelStore(root)
+    prices = store.read("prices")
+    mem = store.read("membership")
+    r5 = _wide(prices, "close").pct_change(5, fill_method=None)
+    inside = pd.DataFrame(False, index=r5.index, columns=r5.columns)
+    for st in mem.itertuples():
+        if st.ticker not in inside.columns or pd.isna(st.start_date):
+            continue
+        m = r5.index >= pd.Timestamp(st.start_date)
+        if pd.notna(st.end_date):
+            m &= r5.index <= pd.Timestamp(st.end_date)
+        inside.loc[m, st.ticker] = True
+    disp = r5.where(inside).std(axis=1, ddof=1)
+    panel[col] = panel["date"].map(disp.reindex(pd.DatetimeIndex(sorted(panel["date"].unique()))).to_dict()).astype(float)
+    tmp = path.with_suffix(".tmp.parquet")
+    panel.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+    log(f"{path}: appended {col} (dispersion across the date's index members)")
+    return [col]
+
+
 def _stream_batches(path: Path, frames_iter) -> int:
     """Write DataFrames to one parquet file batch by batch (never all in
     memory: a top-2000 SEP history is ~25M rows). Returns the row count."""
@@ -1317,6 +1353,7 @@ def build_world_panel(live_dir, cfg, log=_log) -> pd.DataFrame:
     for c in SEC_COLS:
         panel_sf[c] = panel_sf["f_" + c[2:]]
     panel_sf["x_short_dtc"] = panel_sf["f_short_dtc"]      # raw-volume days-to-cover since 2026-09-21 (append_short_dtc)
+    panel_sf["x_mkt_dispersion"] = panel_sf["f_mkt_dispersion"]    # members-only cross-section since 2026-09-23
     panel_sf.to_parquet(Path(live_dir) / "panel_sf.parquet", index=False)
     log(f"panel_sf: {panel_sf.shape[0]:,} x {panel_sf.shape[1]} ({time.time() - t0:.0f}s)")
     return panel_sf
