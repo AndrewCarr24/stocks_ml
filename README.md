@@ -248,16 +248,38 @@ empty the run seeds itself from a draft release uploaded by
   filings, **FINRA** short interest, **FRED** macro series (only the
   ALFRED-audited `T10Y2Y` and `FEDFUNDS` families are features).
 
+A survivorship-clean *universe* is not enough: the data pulled **for** that
+universe has to be survivorship-clean too. Until 2026-09-21 the SEC tables
+were fetched through the SEC's current-ticker map, i.e. for today's index
+members, so a 2016 row carried fundamentals only if the company was still in
+the index in 2026 — a look-ahead worth most of the old champion's
+out-of-sample record. They are now fetched by Sharadar's CIK for every name
+that was ever a member (`world --refetch-sec`, `--refetch-form4`), and
+`leak_audit.coverage_by_survival` checks per table, per year, that names
+which later left are covered as well as names that stayed.
+
 Point-in-time rules: membership is effective-dated; filings become usable
 the next calendar day; FINRA and macro observations carry their publication
 lags; features are rank-normalized within each week; the label starts at
 the next open; training, early stopping and validation are separated by
-purge gaps sized to the label. Level features use the nominal close (what
+purge gaps sized to the label; a series whose price adjustment breaks is cut
+from that day forward, never from the start of its history. Level features use the nominal close (what
 the tape showed) so no future split adjustment reaches the model; a name
 that delists mid-hold is graded to its last print, as the ledger would
 exit it. [tests/test_no_lookahead.py](tests/test_no_lookahead.py) corrupts
 future inputs and requires past outputs to stay unchanged — if it fails,
-fix the implementation, not the test.
+fix the implementation, not the test. Three standing scans run inside every
+`stocks-ml eval` and `challenge`, each written after a leak got through:
+the **split-factor scan** (does a feature's value track the future split
+factor? — on both the selection window and 2016–2024, since a source that
+starts late is invisible on the first), the **missingness scan** (does a
+feature's *absence* mark the names that later leave the index, and do those
+names earn differently? — a survival-keyed feature fails the audit), and
+**coverage by survival** per raw table. Two known limits are reported rather
+than fixed: the sector map is a single 2026 vintage (used by the training
+label and the book's sector cap — no point-in-time SIC exists in the store),
+and the model's score correlates with the future split factor at ~+0.05,
+most likely because names that rise later split.
 
 ## Installation
 
@@ -278,7 +300,7 @@ uv run stocks-ml --help
 - [PROCEDURE.md](PROCEDURE.md) — the champion's procedure card (generated).
 - [reports/clean_improvement.md](reports/clean_improvement.md) — the
   program that chose the champion's label and window.
-- [reports/champion_eval.md](reports/champion_eval.md) — the current grade.
+- [reports/clean_weekly_eval.md](reports/clean_weekly_eval.md) — the current grade.
 - [docs/simplification_log.md](docs/simplification_log.md) — what was
   removed on 2026-09-13 and where it lives (tag `pre-simplify`).
 - The research history — every campaign, driver and report before the
