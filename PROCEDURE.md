@@ -1,6 +1,6 @@
 # Procedure card
 
-Blueprint of the production procedure (generated 2026-09-23 by
+Blueprint of the production procedure (generated 2026-09-24 by
 `stocks-ml procedure-card` from models/champion_spec.json — edit the spec,
 not this file). Rationale and history: AGENTS.md.
 
@@ -33,7 +33,7 @@ Mechanical cascade, run in this order on the selection window only; validated by
 
 | step | menu | decided by |
 |---|---|---|
-| model: label x training window x fit | candidate recipes (label, training window, features, params) walked on 2006-2015 by `stocks-ml challenge-fast` (stratified sample, ranks only) and `stocks-ml challenge` (every week, K=4; the winner at K=16); the clean program's stage C (2026-09-11) ranked 15 variants on a 131-week sample, then walked the four highest and their pairings on every week at K=4 | the model score: the mean over the top-3/6/10 books of the cost-adjusted compounded %/yr on the common ranked weeks (owner's rule 2026-09-14; the ls_w8 adoption of 2026-09-12 used the top-6 book alone: argmax ls_w8 +7.57 vs the incumbent +5.44, paired t +0.95 reported); the winner's strategy layers then decided by stocks-ml procedure on its K=16 walk |
+| model: label x training window x fit | candidate recipes (label, training window, features, params) walked on 2006-2015 by `stocks-ml challenge`: every candidate every week at K=16 against the incumbent's two seed sets, a win needing a gap beyond twice the combined seed noise and a paired weekly t of 2, else a tie that keeps the incumbent, then the head-to-head on 2016-2019 (`--adjudicate`); no sample screen since 2026-09-24 (a 4-copy screen on every 4th week ranked seed luck); `stocks-ml challenge-fast` prototypes only and never promotes. History: the clean program's stage C (2026-09-11) ranked 15 variants on a 131-week sample, then walked the four highest and their pairings on every week at K=4 | the model score: the mean over the top-3/6/10 books of the cost-adjusted compounded %/yr on the common ranked weeks (owner's rule 2026-09-14; the ls_w8 adoption of 2026-09-12 used the top-6 book alone: argmax ls_w8 +7.57 vs the incumbent +5.44, paired t +0.95 reported); the winner's strategy layers then decided by stocks-ml procedure on its K=16 walk |
 | features | the panel's f_ columns; any extra panel columns are named in `features` and walked as a challenger model (asterisk when the ideas were written from the whole record) | the model metric above, on 2006-2015 alone, with > without at the cascade's own book; every candidate passes the leak audit per segment. None admitted as of 2026-09-11 (nominal screen 5.93 vs clean 8.14 %/yr) |
 | book size | top-3 / top-6 / top-10 | cost-adjusted compounded return |
 | stagger | fixed on | mechanism (removes rotation-date luck); not searched |

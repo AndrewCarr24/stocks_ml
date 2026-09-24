@@ -1,5 +1,6 @@
-"""The challenger protocol: recipes parsed over the incumbent's, the sample
-ranks and advances, the every-week comparison is same-basis and the argmax
+"""The challenger protocol: recipes parsed over the incumbent's, every
+candidate walked every week (no sample screen since 2026-09-24) against the
+incumbent's two seed sets, the comparison is same-basis and the argmax
 decides, the leak audit gates, and the record is written."""
 import json
 from pathlib import Path
@@ -70,7 +71,7 @@ def test_rank_by_metric_is_highest_first():
     assert ch.model_score(M["b"]) == 2.0 and ch.model_score(M["d"]) == float("-inf")
 
 
-def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch):
+def test_run_walks_every_candidate_every_week_against_both_seed_sets(tmp_path, monkeypatch):
     weeks = list(pd.date_range("2006-01-06", periods=12, freq="W-FRI"))
     inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, 16)
     (tmp_path / "inc" / "extend").mkdir()
@@ -79,11 +80,11 @@ def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch)
     walked = []
 
     def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
-                  workers=1, drop=(), train_top=None, refit_every=1):
+                  workers=1, drop=(), train_top=None, refit_every=1, copies=None):
         walked.append((label, train_years, k, every, Path(out).name, tuple(features), params))
-        return _walk(Path(out) / "preds.parquet", weeks[::every], k)
+        return _walk(Path(out) / "preds.parquet", weeks[::every], k, first=copies.start if copies else 1)
     monkeypatch.setattr(ch, "walk", fake_walk)
-    # the metric is canned by candidate name: rank best, clip worst, incumbent in between at stage 2
+    # the metric is canned by candidate name: rank best, clip worst, the incumbent in between
     score = {"label_4w_sector_rank_8y": 11.0, "label_4w_sector_log_8y": 6.1,
              "label_4w_sector_clip_8y": 4.0, "incumbent": 6.75}
 
@@ -100,21 +101,21 @@ def test_run_samples_advances_compares_audits_and_records(tmp_path, monkeypatch)
     monkeypatch.setattr(ch, "record_trials", lambda rows: led.extend(rows))
     cands = [ch.parse_candidate(f"label=label_4w_sector_{s}", BASE) for s in ("log", "clip", "rank")]
     res = ch.run(cands, inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
-    # stage 1: three sample walks (every 4th week, K=4), the top two advance
-    assert [w for w in walked if w[3] == ch.SAMPLE_EVERY] == \
-        [(f"label_4w_sector_{s}", 8, ch.SAMPLE_K, ch.SAMPLE_EVERY, "sample", (), None) for s in ("log", "clip", "rank")]
-    assert res["stage1"]["advance"] == ["label_4w_sector_rank_8y", "label_4w_sector_log_8y"]
-    # stage 2: only the advanced two walk every week; the argmax is rank; the incumbent is in the table
-    assert [w[0] for w in walked if w[3] == 1] == ["label_4w_sector_rank", "label_4w_sector_log"]
+    # no screen: the incumbent's seed twin, then all three candidates, every week at K=FULL_K
+    assert walked == [("label_4w_sector", 8, ch.FINAL_K, 1, "twin", (), None)] + \
+        [(f"label_4w_sector_{s}", 8, ch.FULL_K, 1, "select", (), None) for s in ("log", "clip", "rank")]
+    assert "stage1" not in res and res["rules"]["screen"] is None
     assert res["stage2"]["winner"] == "label_4w_sector_rank_8y"
-    assert res["stage2"]["order"] == ["label_4w_sector_rank_8y", "incumbent", "label_4w_sector_log_8y"]
+    assert res["stage2"]["order"] == ["label_4w_sector_rank_8y", "incumbent", "label_4w_sector_log_8y",
+                                      "label_4w_sector_clip_8y"]
+    assert res["stage2"]["detail"]["incumbent"]["k"] == 2 * ch.FULL_K          # both seed sets count
     assert res["stage2"]["detail"]["label_4w_sector_rank_8y"]["leak_audit"]["verdict"] == "PASS"
     assert res["stage2"]["detail"]["incumbent"]["paired_t_vs_incumbent"] is None
     assert "stage3" not in res                                            # --k16 not asked
     assert (tmp_path / "ch" / "challenge.json").exists()
     kinds = [(r["name"].split("_")[2], r["config"]["label"]) for r in led]
-    assert ("stage1", "label_4w_sector_clip") in kinds and ("stage2", "label_4w_sector_rank") in kinds
-    assert ("stage2", "label_4w_sector_clip") not in kinds                # never walked every week
+    assert ("stage2", "label_4w_sector_rank") in kinds and ("stage2", "label_4w_sector_clip") in kinds
+    assert not any(k == "stage1" for k, _ in kinds)
 
 
 def test_run_refuses_the_incumbents_own_recipe(tmp_path, monkeypatch):
@@ -124,12 +125,22 @@ def test_run_refuses_the_incumbents_own_recipe(tmp_path, monkeypatch):
         ch.run([dict(BASE)], inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
 
 
+def test_run_refuses_an_incumbent_walked_at_another_cadence(tmp_path, monkeypatch):
+    weeks = list(pd.date_range("2006-01-06", periods=8, freq="W-FRI"))
+    inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, ch.FULL_K)        # a weekly incumbent
+    monkeypatch.setattr(ch, "context", lambda store: (None, SimpleNamespace(weeks=weeks), 64))
+    monkeypatch.setattr(ch, "walk", lambda *a, **k: pytest.fail("nothing is walked"))
+    with pytest.raises(SystemExit, match="refit every 1"):
+        ch.run([ch.parse_candidate("label=label_4w_sector_rank", BASE)], inc, tmp_path / "ch", store="s",
+               log=lambda m: None, incumbent_recipe_ok=True, refit_every=4)
+
+
 def test_leak_audit_failure_removes_a_candidate_from_the_argmax(tmp_path, monkeypatch):
     weeks = list(pd.date_range("2006-01-06", periods=8, freq="W-FRI"))
     inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, ch.FULL_K)
     monkeypatch.setattr(ch, "context", lambda store: (None, SimpleNamespace(weeks=weeks), 64))
-    monkeypatch.setattr(ch, "walk", lambda store, lo, hi, label, ty, k, out, every=1, log=None,
-                        features=(), params=None, workers=1, drop=(), train_top=None, refit_every=1: _walk(Path(out) / "preds.parquet", weeks[::every], k))
+    monkeypatch.setattr(ch, "walk", lambda store, lo, hi, label, ty, k, out, every=1, copies=None, **kw:
+                        _walk(Path(out) / "preds.parquet", weeks[::every], k, first=copies.start if copies else 1))
     monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None:
                         ({n: {b: (9.0 if n != "incumbent" else 5.0) for b in (3, 6, 10)} for n in walks},
                          {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks},
@@ -234,9 +245,9 @@ def test_run_walks_and_scores_a_store_candidate_on_its_own_world(tmp_path, monke
     monkeypatch.setattr(ch, "context", fake_context)
     walked = []
     def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
-                  workers=1, drop=(), train_top=None, refit_every=1):
+                  workers=1, drop=(), train_top=None, refit_every=1, copies=None):
         walked.append((store, k, every, Path(out).name))
-        return _walk(Path(out) / "preds.parquet", weeks[::every], k)
+        return _walk(Path(out) / "preds.parquet", weeks[::every], k, first=copies.start if copies else 1)
     monkeypatch.setattr(ch, "walk", fake_walk)
     seen_ctx = {}
     def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None):
@@ -258,14 +269,14 @@ def test_run_walks_and_scores_a_store_candidate_on_its_own_world(tmp_path, monke
     cand = ch.parse_candidate("store=data/w2", BASE)
     name = ch.candidate_name(cand)
     res = ch.run([cand], inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
-    assert walked == [("data/w2", ch.SAMPLE_K, ch.SAMPLE_EVERY, "sample"), ("data/w2", ch.FULL_K, 1, "select")]
+    assert walked == [("s", ch.FINAL_K, 1, "twin"), ("data/w2", ch.FULL_K, 1, "select")]   # the twin on the incumbent's world
     assert loaded == ["s", "data/w2"]                                  # the second world loaded once, lazily
-    assert seen_ctx[ch.FULL_K] == {"incumbent": "a", name: "b"}         # each walk scored on its own world
+    assert seen_ctx[2 * ch.FULL_K] == {"incumbent": "a", name: "b"}     # each walk scored on its own world (the incumbent at 32 copies)
     assert copied == ["a", "b"] and audited == [("data/w2", "b")]  # copies scored per world; audit on its own
     assert res["stage2"]["winner"] == name
 
 
-def test_run_cuts_stage_1_from_a_complete_select_walk(tmp_path, monkeypatch):
+def test_run_resumes_a_complete_select_walk(tmp_path, monkeypatch):
     weeks = list(pd.date_range("2006-01-06", periods=12, freq="W-FRI"))
     inc = _walk(tmp_path / "inc" / "select" / "preds.parquet", weeks, 16)
     monkeypatch.setattr(ch, "context", lambda store: (None, SimpleNamespace(weeks=weeks), 64))
@@ -273,8 +284,11 @@ def test_run_cuts_stage_1_from_a_complete_select_walk(tmp_path, monkeypatch):
     name = ch.candidate_name(cand)
     _walk(tmp_path / "ch" / name / "select" / "preds.parquet", weeks, 16)     # already walked every week
     walked = []
-    monkeypatch.setattr(ch, "walk", lambda store, lo, hi, label, ty, k, out, **kw: (walked.append(Path(out).name),
-                                                                                    Path(out) / "preds.parquet")[1])
+    def fake_walk(store, lo, hi, label, ty, k, out, copies=None, **kw):
+        walked.append(Path(out).name)
+        dst = Path(out) / "preds.parquet"
+        return dst if dst.exists() else _walk(dst, weeks, k, first=copies.start if copies else 1)
+    monkeypatch.setattr(ch, "walk", fake_walk)
     monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None: (
         {n: {3: 1.0, 6: 1.0, 10: 1.0} for n in walks},
         {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks}, len(weeks)))
@@ -285,7 +299,7 @@ def test_run_cuts_stage_1_from_a_complete_select_walk(tmp_path, monkeypatch):
     monkeypatch.setattr(ch, "leak_line", lambda la: "PASS")
     monkeypatch.setattr(ch, "record_trials", lambda rows: None)
     ch.run([cand], inc, tmp_path / "ch", store="s", log=lambda m: None, incumbent_recipe_ok=True)
-    assert walked == ["select"]                     # no sample walk; stage 2 resumes the complete one
+    assert walked == ["twin", "select"]            # the walk resumes the complete one (walk() is a no-op then)
 
 
 def test_adjudicate_walks_the_twin_and_the_candidate_on_the_window_and_decides(tmp_path, monkeypatch):

@@ -332,7 +332,8 @@ def main():
                    help="walk copies (seeds) A..B instead of 1..K, e.g. 17-32 for a seed twin")
 
     p = sub.add_parser("challenge", help="the challenger protocol: candidate recipes vs the incumbent "
-                       "(sample, every-week comparison, leak audit; --k16 adds the one look)")
+                       "(every candidate on every week against the incumbent's two seed sets, leak audit; no "
+                       "sample screen since 2026-09-24; --k16 adds the one look)")
     p.add_argument("--incumbent-recipe-ok", action="store_true",
                    help="accept an incumbent walked with a recipe other than the spec's (refused otherwise: the 2026-09-20 "
                         "leaky-yardstick guard)")
