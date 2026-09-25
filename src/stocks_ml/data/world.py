@@ -442,8 +442,31 @@ def bootstrap_live_store(live_dir, research_dir="data/sharadar_world2000",
     return store
 
 
+def _query_timed_out(err: Exception) -> bool:
+    """Sharadar's server-side limit: HTTP 503 'Query timed out' (15 s)."""
+    msg = str(err)
+    return "HTTP 503" in msg and "timed out" in msg.lower()
+
+
 def _fetch(table, key, fetch_fn, **filters):
-    df = fetch_table(table, key, fetch_fn=fetch_fn, **filters)
+    """fetch_table, and on Sharadar's 15-second query timeout a multi-ticker
+    request is split in half and each half fetched on its own, down to one
+    ticker (the error's own advice). A store that fell weeks behind asks for
+    whole re-adjusted histories under `lastupdated.gte` — every name that paid a
+    dividend since — and a 40-ticker batch of those timed out the 2026-09-25
+    re-seed; a weekly run a week behind never did. A single ticker that still
+    times out fails loudly."""
+    try:
+        df = fetch_table(table, key, fetch_fn=fetch_fn, **filters)
+    except RuntimeError as e:
+        tickers = str(filters.get("ticker", "")).split(",")
+        if not _query_timed_out(e) or len(tickers) < 2:
+            raise
+        half = len(tickers) // 2
+        parts = [_fetch(table, key, fetch_fn, **{**filters, "ticker": ",".join(t)})
+                 for t in (tickers[:half], tickers[half:])]
+        parts = [f for f in parts if not f.empty]
+        return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
     if fetch_fn is None:
         time.sleep(REQUEST_PAUSE_S)
     return df

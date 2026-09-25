@@ -636,3 +636,28 @@ def test_membership_sized_trims_or_tops_up_the_index_each_quarter():
     assert members_asof(big, "2010-07-01") == ["A", "B", "C", "D"]            # C left the index but is still 3rd by cap: a top-up
     exact = world.membership_sized(base, snaps, {"A", "B", "C", "D", "E"}, {}, n=3)
     assert members_asof(exact, "2010-04-01") == ["A", "B", "C"]
+
+
+def test_fetch_splits_a_batch_that_times_out_and_fails_loudly_on_one_ticker():
+    """Sharadar kills a query past 15 s (HTTP 503 'Query timed out'); a stale store's refresh
+    asked for 40 whole re-adjusted histories at once (2026-09-25). The batch is halved until
+    each request fits; a single ticker that still times out raises."""
+    calls = []
+    def fake(url, params, headers):
+        tk = params["ticker"].split(",")
+        calls.append(len(tk))
+        if len(tk) > 3:
+            raise RuntimeError('Sharadar stocks: HTTP 503: {"error":"Query timed out","description":"exceeded 15 seconds"}')
+        rows = [{"ticker": t, "date": "2026-09-24", "close": 1.0} for t in tk]
+        return {"count": len(rows), "data": rows[params["offset"]:params["offset"] + params["limit"]]}
+    tickers = [f"T{i:02d}" for i in range(10)]
+    df = world._fetch("stocks", "k", fake, ticker=",".join(tickers))
+    assert sorted(df["ticker"]) == tickers and calls[0] == 10 and max(c for c in calls if c <= 3) <= 3
+    def always(url, params, headers):
+        raise RuntimeError('Sharadar stocks: HTTP 503: {"error":"Query timed out"}')
+    with pytest.raises(RuntimeError, match="timed out"):
+        world._fetch("stocks", "k", always, ticker="AAA,BBB")
+    def forbidden(url, params, headers):
+        raise RuntimeError("Sharadar stocks: HTTP 403: Exceeds free tier")
+    with pytest.raises(RuntimeError, match="403"):                    # other errors are never retried
+        world._fetch("stocks", "k", forbidden, ticker="AAA,BBB")
