@@ -190,7 +190,7 @@ comes from the keychain through `git credential fill`; never print it).
    copies are a model improvement too (data/experiments/dv_fix_weekly/
    seeds_33_64). On one window this metric cannot resolve differences under
    ~4-5 points a year, by any number of seeds; the strategy layers are
-   `selection.decide_strategy` (book by cost-adjusted compounded %/yr;
+   `selection.decide_strategy` (book by cost-adjusted compounded %/yr on both seed sets, a smaller book only beyond BOOK_BAND_Z x the seed sd of the pair's difference — ties go to the larger book, owner's rule 2026-09-25;
    floor, stop, cap by Sharpe, stop and cap adopted only if higher). t
    statistics are reported, not gated. A doubt about a winner becomes a
    pre-registered falsification test, never a discretionary override.

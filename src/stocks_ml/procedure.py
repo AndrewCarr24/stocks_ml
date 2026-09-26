@@ -134,13 +134,14 @@ def live_strategy(spec: dict) -> dict:
             "vol_cut": st.get("vol_cut")}
 
 
-def load_walk(preds_path: Path, k: int, weeks: list, lo, hi) -> pd.DataFrame:
-    """The saved walk on [lo, hi]: all K copies, every rank week of the
-    window present, nothing at or past the holdout."""
+def load_walk(preds_path: Path, k: int, weeks: list, lo, hi, copies=None) -> pd.DataFrame:
+    """The saved walk on [lo, hi]: all K copies (or the named `copies`: a
+    seed twin holds c17..c32), every rank week of the window present,
+    nothing at or past the holdout."""
     from stocks_ml.selection import HOLDOUT_START
     preds = pd.read_parquet(preds_path)
     preds["week"] = pd.to_datetime(preds["week"])
-    cols = [f"c{c}" for c in range(1, k + 1)]
+    cols = [f"c{c}" for c in (copies if copies is not None else range(1, k + 1))]
     missing = [c for c in cols if c not in preds.columns]
     if missing:
         raise RuntimeError(f"{preds_path} lacks copies {missing}: the procedure reads K={k}")
@@ -158,6 +159,34 @@ def load_walk(preds_path: Path, k: int, weeks: list, lo, hi) -> pd.DataFrame:
     return preds[["week", "ticker", *cols]].sort_values(["week", "ticker"]).reset_index(drop=True)
 
 
+BAND_DRAWS = 40   # random half-ensembles behind the book bands (challenge.BAND_DRAWS)
+
+
+def book_bands(sel, ctx, preds: pd.DataFrame, copies, lo, hi, draws: int = BAND_DRAWS) -> dict:
+    """The seed sd of the DIFFERENCE between each pair of books' metrics
+    across `draws` random half-ensembles of `copies`, scaled to the full
+    ensemble (/sqrt 2, as challenge.seed_band): what decide_book reads a
+    smaller book's lead against. The books share their copies, so the
+    difference's band is the honest one (narrower than the two bands
+    combined in quadrature)."""
+    import numpy as np
+    from stocks_ml.backtest import holdings, selection_metric
+    copies = list(copies)
+    rng = np.random.default_rng(0)
+    rows = []
+    for _ in range(draws):
+        sub = sorted(rng.choice(copies, max(2, len(copies) // 2), replace=False))
+        m = selection_metric(sel, holdings(sel, ctx, preds, sub), lo, hi)
+        rows.append({b: m.get(b, float("nan")) for b in sel.BOOKS})
+    d = pd.DataFrame(rows)
+    books = sorted(sel.BOOKS)
+    out = {f"{a}-{b}": round(float((d[a] - d[b]).std(ddof=1) / np.sqrt(2)), 3)
+           for i, a in enumerate(books) for b in books[i + 1:]}
+    out["per_book"] = {str(b): round(float(d[b].std(ddof=1) / np.sqrt(2)), 3) for b in books}
+    out["draws"], out["copies"] = draws, len(copies)
+    return out
+
+
 def decide(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], log=print) -> dict:
     """Rank the walk as live ranks and run the cascade's strategy layers on
     the selection window. Returns the decision, its evidence and the record
@@ -170,29 +199,40 @@ def decide(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], log=prin
     preds_path = Path(preds_path)
     model = walk_recipe(preds_path)
     preds = load_walk(preds_path, k, ctx.weeks, lo, hi)
-    log(f"procedure: {preds_path}, K={k}, {preds.week.nunique()} rank weeks "
-        f"{preds.week.min().date()} -> {preds.week.max().date()} on {store} "
+    copies = list(range(1, k + 1))
+    twin = preds_path.parent.parent / "twin" / "preds.parquet"      # the seed twin (challenge.twin_dir)
+    if twin.exists():                                                 # both seed sets decide: 32 copies, not one draw of 16
+        from stocks_ml.challenge import merged_copies, twin_copies
+        preds = merged_copies(preds, load_walk(twin, k, ctx.weeks, lo, hi, copies=twin_copies()))
+        copies = list(range(1, 2 * k + 1))
+    log(f"procedure: {preds_path}, K={len(copies)}{' (select + seed twin)' if twin.exists() else ''}, "
+        f"{preds.week.nunique()} rank weeks {preds.week.min().date()} -> {preds.week.max().date()} on {store} "
         f"(price_basis {ctx.cfg.price_basis}, delist_labels {ctx.delist_labels}); "
         f"walk recipe {model['label']} / {model['train_years']}y from {model['record']}")
-    hold, _ = sel.ensemble_holdings(ctx, preds, range(1, k + 1), HORIZON)
+    hold, _ = sel.ensemble_holdings(ctx, preds, copies, HORIZON)
     hold = hold.sort_values("week").reset_index(drop=True)
-    layers = sel.decide_strategy(ctx, hold, HORIZON, lo, hi)
+    band = book_bands(sel, ctx, preds, copies, lo, hi)
+    log(f"procedure: book bands (seed sd of the pair's difference, K={len(copies)}): "
+        + ", ".join(f"{k_} ±{v}" for k_, v in band.items() if "-" in k_) + f"; a smaller book needs {sel.BOOK_BAND_Z}x that")
+    layers = sel.decide_strategy(ctx, hold, HORIZON, lo, hi, book_band=band)
     series = sel.simulate(ctx, hold, HORIZON, layers["book"], layers["cap"], layers["stop"],
                           layers["floor"], vol_cut=layers["vol_cut"])
     grade_hi = hi + pd.Timedelta(days=1)
     spy = ctx.wret["SPY"].reindex(series.index)
     return {
         "code": "stocks_ml.procedure.decide -> selection.decide_strategy (stocks-ml procedure)",
-        "registration": "selection_procedure (this file): book by cost-adjusted compounded %/yr; "
-                        "floor, stop, cap by Sharpe of the simulated weekly series, each at the "
-                        "picks above it; every layer reads every rank week of the selection window",
+        "registration": "selection_procedure (this file): book by cost-adjusted compounded %/yr on both "
+                        "seed sets, a smaller book only beyond BOOK_BAND_Z x the seed sd of the pair's "
+                        "difference (ties go to the larger book, 2026-09-25); floor, stop, cap by Sharpe of "
+                        "the simulated weekly series, each at the picks above it; every layer reads every "
+                        "rank week of the selection window",
         "selection_window": [str(lo.date()), str(hi.date())],
         "world": store,
         "price_basis": ctx.cfg.price_basis,
         "delist_labels": ctx.delist_labels,
         "horizon": HORIZON,
         "model": model,
-        "k_copies": k,
+        "k_copies": len(copies), "k_requested": k, "twin": str(twin) if twin.exists() else None,
         "preds": {"path": str(preds_path),
                   "sha256": hashlib.sha256(preds_path.read_bytes()).hexdigest(),
                   "rank_weeks": int(preds.week.nunique()),

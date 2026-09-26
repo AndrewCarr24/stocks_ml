@@ -344,12 +344,30 @@ def compounded_pct(df, col, kweeks, lo, hi):
     return float(np.mean(out))
 
 
-def decide_book(df, horizon, lo, hi):
+BOOK_BAND_Z = 2.0   # a smaller book displaces a larger one only by more than this x the seed sd of their difference
+
+
+def decide_book(df, horizon, lo, hi, band=None):
     """Cost-adjusted compounded %/yr of each book on the chosen window's
-    population holdings (the frame the cascade grades) decides."""
+    population holdings (the frame the cascade grades) decides.
+
+    With `band` — {"3-6": sd, "3-10": sd, "6-10": sd}, the seed sd of the
+    DIFFERENCE between two books' metrics scaled to the full ensemble
+    (procedure.book_bands) — the choice starts at the largest book and a
+    smaller one takes over only by more than BOOK_BAND_Z x its pair's band:
+    ties go to the diversified book. The plain argmax (no band: the rolling
+    rule, walks without copies) picked top-3 on the 2026-09-24 champion by
+    1.1 points at K=16, a lead top-3 held in 35% of seed draws — the most
+    concentrated book on a 2009 rebound (owner's rule 2026-09-25)."""
     kw = HORIZONS[horizon]["kweeks"]
     res = {k: compounded_pct(df, f"top{k}", kw, lo, label_end(hi, kw)) for k in BOOKS}
-    return max(res, key=res.get), res
+    if not band:
+        return max(res, key=res.get), res
+    choice = max(BOOKS)
+    for b in sorted(BOOKS, reverse=True)[1:]:
+        if res[b] - res[choice] > BOOK_BAND_Z * float(band[f"{b}-{choice}"]):
+            choice = b
+    return choice, res
 
 
 def vol_context(ctx, t, names):
@@ -494,17 +512,18 @@ def metrics(series, lo, hi):
             "n_weeks": len(x)}
 
 
-def decide_strategy(ctx, holdings, horizon, lo, hi):
+def decide_strategy(ctx, holdings, horizon, lo, hi, book_band=None):
     """The strategy layers, book down, on the holdings frame the run grades,
     over the selection window [lo, hi] only: book by cost-adjusted compounded
-    %/yr (decide_book); the volatility cut, floor, stop and cap by Sharpe of
-    the simulated weekly series, each at the picks above it, a cut, stop or
-    cap adopted only if higher.
+    %/yr (decide_book; with `book_band`, ties go to the larger book); the
+    volatility cut, floor, stop and cap by Sharpe of the simulated weekly
+    series, each at the picks above it, a cut, stop or cap adopted only if
+    higher.
     This is the whole of what decides the deployed strategy settings —
     `stocks-ml procedure` writes its result into models/champion_spec.json."""
     lo, hi = pd.Timestamp(lo), pd.Timestamp(hi)
     hold = holdings[(holdings.week >= lo) & (holdings.week <= hi)]
-    book, bres = decide_book(hold, horizon, lo, hi)
+    book, bres = decide_book(hold, horizon, lo, hi, band=book_band)
     # the volatility cut, by Sharpe at the book, the layers below still
     # neutral; adopted only if higher than no cut. VOL_CUT_MENU holds what is
     # searched: the two cuts (ledger.VOL_CUTS) won the selection window by a
@@ -526,6 +545,7 @@ def decide_strategy(ctx, holdings, horizon, lo, hi):
     cap = None if cres["None"] >= cres["2"] else 2
     return {"book": int(book), "floor": floor, "stop": stop, "cap": cap, "vol_cut": vol_cut,
             "evidence": {"book": {str(k): round(v, 2) for k, v in bres.items()},
+                         **({"book_band": {**book_band, "z": BOOK_BAND_Z}} if book_band else {}),
                          "vol_cut": {k: round(v, 3) for k, v in vres.items()},
                          "floor": {k: round(v, 3) for k, v in fres.items()},
                          "stop": {k: round(v, 3) for k, v in sres.items()},

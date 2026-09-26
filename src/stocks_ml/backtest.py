@@ -102,13 +102,19 @@ def is_champion_walk(records: list[dict], spec_path: Path = SPEC_PATH) -> bool:
     return bool(records)
 
 
-def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END) -> dict:
+def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END, preds=None, copies=None) -> dict:
     """The walk's own strategy layers: the procedure's decision function on
-    its selection-window holdings (2006-2015 only; nothing later is read)."""
+    its selection-window holdings (2006-2015 only; nothing later is read).
+    With `preds` and `copies` the book reads its seed bands (procedure.book_bands),
+    as `stocks-ml procedure` does."""
     if not ((hold.week >= lo) & (hold.week <= hi)).sum() > 52:
         raise SystemExit("this walk does not cover the selection window, so its settings cannot "
                          "be decided; pass --book/--floor/--stop/--cap explicitly")
-    d = sel.decide_strategy(ctx, hold, "4w", lo, hi)
+    band = None
+    if preds is not None and copies is not None:
+        from stocks_ml.procedure import book_bands
+        band = book_bands(sel, ctx, preds, copies, pd.Timestamp(lo), pd.Timestamp(hi))
+    d = sel.decide_strategy(ctx, hold, "4w", lo, hi, book_band=band)
     return dict(book=d["book"], floor=d["floor"], stop=d["stop"], cap=d["cap"], vol_cut=d["vol_cut"])
 
 
@@ -200,7 +206,7 @@ def run(preds_paths, store: str, st: dict | None = None, k: int | None = None,
     elif is_champion_walk(records):
         st, source = spec_settings(), "the spec (this is the champion's walk)"
     else:
-        st, source = own_settings(sel, ctx, hold), "the procedure's decision on this walk's 2006-2015"
+        st, source = own_settings(sel, ctx, hold, preds=preds, copies=range(1, k + 1)), "the procedure's decision on this walk's 2006-2015"
     log(f"backtest: {name} — {preds.week.nunique()} rank weeks {preds.week.min().date()} -> "
         f"{preds.week.max().date()}, K={k}, {settings_label(st)} (settings: {source})")
     metric = selection_metric(sel, hold)

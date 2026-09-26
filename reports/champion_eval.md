@@ -1,31 +1,31 @@
 # champion: the one look
 
-Walk `data/experiments/dv_fix_weekly` (sector-relative 4w rank label / 8y / top-3 / 60/40 / cap none) at K=16, settings top-3 / 60/40 / stop None / cap None decided by `stocks-ml procedure`'s code on its 2006-2015 segment. $100 at each span's start; pre-tax (Roth); pre-holdout only. Generated 2026-09-19 14:36:41 by `stocks-ml eval`.
+Walk `data/experiments/week_label_weekly` (4w label / 8y / top-10 / halfgate / cap 2) at K=16, settings top-10 / halfgate / stop None / cap 2 decided by `stocks-ml procedure`'s code on its 2006-2015 segment. $100 at each span's start; pre-tax (Roth); pre-holdout only. Generated 2026-09-25 21:58:34 by `stocks-ml eval`.
 
 | model | 2006-2024: $100, %/yr | SR, DD | 2016-2024: $100, %/yr | SR, DD | 2006-2015: $100, %/yr | SR, DD | weekly t vs sp500 (06-24 / 16-24) |
 |---|---|---|---|---|---|---|---|
-| champion | $2,945, +20.0% | 0.76, 55% | $701, +25.5% | 0.98, 38% | $420, +15.4% | 0.61, 55% | +2.32 / +1.79 |
-| incumbent (rank_k16, top-3 / halfgate / stop None / cap 2) | $4,940, +23.4% | 0.82, 49% | $844, +28.2% | 0.92, 38% | $585, +19.3% | 0.73, 49% | +2.53 / +1.71 |
+| champion | $983, +13.1% | 0.58, 60% | $251, +11.3% | 0.52, 43% | $391, +14.6% | 0.64, 60% | +1.06 / -0.05 |
+| incumbent (clean_weekly, top-10 / halfgate / stop None / cap 2) | $830, +12.1% | 0.58, 53% | $252, +11.4% | 0.54, 41% | $329, +12.6% | 0.61, 53% | +0.83 / -0.13 |
 | sp500 | $621, +10.3% | 0.64, 55% | $316, +14.3% | 0.87, 32% | $197, +7.0% | 0.46, 55% | — |
 
-Falsification (paired weekly excess vs the incumbent on 2016-2024, t < -2.0 rejects): 2016-2024 t -0.89 on 446 weeks -> **not rejected**. Edge over the incumbent, %/yr: 2006-2015 -3.89 (selection window), 2016-2024 -2.75 (the one look).
+Falsification (paired weekly excess vs the incumbent on 2016-2024, t < -2.0 rejects): 2016-2024 t +0.15 on 446 weeks -> **not rejected**. Edge over the incumbent, %/yr: 2006-2015 +1.98 (selection window), 2016-2024 -0.07 (the one look).
 
-Leak audit: PASS — select: identity PASS, score-vs-split-factor +0.007 (t +1.1), IC +0.0046 (t +0.6), retention 1.165; extend: identity PASS, score-vs-split-factor -0.017 (t -3.2), IC +0.0432 (t +5.4), retention 1.002; feature scan: 6 of 64 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.21, f_book_to_market +0.17, f_sf_roe -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15).
+Leak audit: PASS — select: identity PASS, score-vs-split-factor +0.062 (t +8.8), IC +0.0045 (t +0.4), retention 1.368; extend: identity PASS, score-vs-split-factor +0.078 (t +9.3), IC +0.0048 (t +0.4), retention 1.106; feature scan: 6 of 50 beyond 0.15 (f_sf_debt_ebitda +0.21, f_sf_book_to_market +0.21, f_sf_roe -0.16, f_sf_gross_prof -0.16, f_sf_sales_to_price +0.16, f_sfi_buyers_13w +0.15); missingness scan: 0 of 50 whose blanks predict; sector map: one vintage applied to all history (9 sectors), used by label_4w_sector* (the training target) and the book's sector cap.
 
 | window | metric | point | seed-only 95% | history-only 95% | nested 95% |
 |---|---|---|---|---|---|
-| 2016-2024 | excess CAGR vs sp500 %/yr | +9.8 | +7.9 … +12.6 | -2.3 … +23.5 | -1.3 … +23.8 |
-| 2016-2024 | CAGR %/yr | +25.6 | +23.5 … +28.8 | +5.6 … +49.0 | +6.5 … +49.3 |
-| 2016-2024 | terminal $100 | $701 | $606 … $867 | $159 … $3,028 | $172 … $3,079 |
-| 2016-2024 | P(excess > 0), nested | 0.95 | | | |
-| 2006-2024 | excess CAGR vs sp500 %/yr | +8.8 | +6.5 … +10.3 | +0.1 … +19.0 | -0.2 … +18.6 |
-| 2006-2024 | CAGR %/yr | +20.1 | +17.5 … +21.8 | +6.0 … +37.5 | +5.8 … +36.2 |
-| 2006-2024 | terminal $100 | $2,945 | $1,978 … $3,822 | $291 … $36,258 | $284 … $30,531 |
-| 2006-2024 | P(excess > 0), nested | 0.97 | | | |
-| 2006-2015 | excess CAGR vs sp500 %/yr | +7.9 | +3.9 … +9.5 | -4.0 … +23.2 | -4.7 … +22.7 |
-| 2006-2015 | CAGR %/yr | +15.5 | +11.2 … +17.2 | -3.4 … +39.5 | -4.1 … +39.0 |
-| 2006-2015 | terminal $100 | $420 | $287 … $487 | $71 … $2,755 | $66 … $2,655 |
-| 2006-2015 | P(excess > 0), nested | 0.87 | | | |
+| 2016-2024 | excess CAGR vs sp500 %/yr | -2.6 | -4.4 … -0.8 | -14.5 … +10.1 | -13.8 … +10.4 |
+| 2016-2024 | CAGR %/yr | +11.4 | +9.4 … +13.4 | -7.8 … +33.4 | -7.0 … +33.8 |
+| 2016-2024 | terminal $100 | $251 | $215 … $294 | $50 … $1,177 | $54 … $1,205 |
+| 2016-2024 | P(excess > 0), nested | 0.35 | | | |
+| 2006-2024 | excess CAGR vs sp500 %/yr | +2.5 | +0.5 … +4.2 | -5.7 … +11.8 | -6.3 … +11.7 |
+| 2006-2024 | CAGR %/yr | +13.1 | +10.9 … +15.1 | -0.4 … +28.9 | -0.9 … +28.2 |
+| 2006-2024 | terminal $100 | $983 | $677 … $1,341 | $93 … $10,912 | $84 … $9,933 |
+| 2006-2024 | P(excess > 0), nested | 0.68 | | | |
+| 2006-2015 | excess CAGR vs sp500 %/yr | +7.2 | +3.5 … +9.5 | -4.2 … +20.4 | -4.8 … +20.7 |
+| 2006-2015 | CAGR %/yr | +14.7 | +10.7 … +17.2 | -4.1 … +37.2 | -4.4 … +37.4 |
+| 2006-2015 | terminal $100 | $391 | $276 … $485 | $66 … $2,343 | $64 … $2,364 |
+| 2006-2015 | P(excess > 0), nested | 0.85 | | | |
 
 Seed noise: the K copies resampled with replacement and re-simulated (200 draws). History noise: a circular block bootstrap of the weeks, 8-week blocks, strategy and S&P on the same weeks (4000 draws). Nested: both.
 

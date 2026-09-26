@@ -41,7 +41,8 @@ def test_procedure_record_names_what_it_read():
     assert p["selection_window"] == ["2006-01-01", "2015-12-31"]          # selection only
     assert pd.Timestamp(p["preds"]["last"]) < sel.HOLDOUT_START
     assert pd.Timestamp(p["preds"]["last"]) <= pd.Timestamp(p["selection_window"][1])
-    assert p["k_copies"] == sel.K_COPIES and p["horizon"] == "4w"
+    assert p.get("k_requested", p["k_copies"]) == sel.K_COPIES and p["horizon"] == "4w"
+    assert p["k_copies"] in (sel.K_COPIES, 2 * sel.K_COPIES)              # 32 when the seed twin decided too
     # the model fields were read from the walk's own record, never typed
     assert p["model"]["label"] == SPEC["horizon"]["label"] in sel.LABELS_4W
     assert p["model"]["train_years"] == SPEC["training_window_years"]
@@ -56,7 +57,15 @@ def test_procedure_record_names_what_it_read():
     assert p["preds"]["rank_weeks"] >= 500                                # every week of 2006-2015
     ev = p["evidence"]
     dec = p["decision"]
-    assert max(ev["book"], key=ev["book"].get) == str(dec["book_size"])   # the argmax, no override
+    band = ev.get("book_band")
+    if band:                                                              # the tie rule (2026-09-25): largest book unless
+        choice = max(sel.BOOKS)                                           # a smaller one leads by > z x the pair's band
+        for b in sorted(sel.BOOKS, reverse=True)[1:]:
+            if ev["book"][str(b)] - ev["book"][str(choice)] > band["z"] * band[f"{b}-{choice}"]:
+                choice = b
+        assert choice == dec["book_size"]
+    else:
+        assert max(ev["book"], key=ev["book"].get) == str(dec["book_size"])   # the argmax, no override
     assert max(ev["floor"], key=ev["floor"].get) == dec["floor"]
     assert (ev["stop"]["None"] >= ev["stop"]["-0.25"]) == (dec["stop_loss"] is None)
     assert (ev["cap"]["None"] >= ev["cap"]["2"]) == (dec["sector_cap"] is None)
@@ -271,3 +280,44 @@ def test_procedure_run_writes_spec_card_and_ledger(tmp_path, monkeypatch):
     assert "median of its sector" in text
     assert led[0]["kind"] == "procedure" and led[0]["pre_holdout_sharpe"] == 0.5
     proc.run("p", check=True, spec_path=spec_path, card_path=card, log=lambda m: None)  # matches now
+
+
+def test_book_bands_are_the_seed_sd_of_each_pairs_difference(monkeypatch):
+    """40 half-ensembles, each scored per book; the band of a pair is the sd of the difference
+    scaled to the full ensemble (/sqrt 2), as challenge.seed_band scales its score."""
+    import numpy as np
+    import stocks_ml.backtest as bt
+    rng = np.random.default_rng(1)
+    drawn = []
+    monkeypatch.setattr(bt, "holdings", lambda sel_, ctx, preds, copies: list(copies))
+    def fake_metric(sel_, sub, lo, hi):
+        drawn.append(len(sub)); base = rng.normal(0, 1)
+        return {3: 10 + base + rng.normal(0, 2), 6: 11 + base + rng.normal(0, 1), 10: 12 + base}
+    monkeypatch.setattr(bt, "selection_metric", fake_metric)
+    out = proc.book_bands(sel, None, None, range(1, 33), "2006-01-01", "2015-12-31")
+    assert set(out) == {"3-6", "3-10", "6-10", "per_book", "draws", "copies"}
+    assert out["draws"] == 40 and out["copies"] == 32 and set(drawn) == {16}
+    assert out["3-10"] > out["6-10"] > 0                                   # the noisier book, the wider band
+    assert 1.0 < out["3-10"] < 2.0                                         # sd(2 vs 0 noise) ~ 2 -> /sqrt2 ~ 1.4
+
+
+def test_load_walk_reads_a_seed_twins_copies(tmp_path):
+    weeks = list(pd.date_range("2006-01-06", periods=6, freq="W-FRI"))
+    rows = [{"week": w, "ticker": t, **{f"c{c}": 1.0 for c in range(17, 33)}} for w in weeks for t in "AB"]
+    p = tmp_path / "preds.parquet"; pd.DataFrame(rows).to_parquet(p, index=False)
+    tw = proc.load_walk(p, 16, weeks, weeks[0], weeks[-1], copies=range(17, 33))
+    assert list(tw.columns) == ["week", "ticker"] + [f"c{c}" for c in range(17, 33)]
+    with pytest.raises(RuntimeError, match="lacks copies"):
+        proc.load_walk(p, 16, weeks, weeks[0], weeks[-1])                 # c1..c16 are not there
+
+
+def test_decide_strategy_passes_the_band_into_the_book_and_records_it(monkeypatch):
+    weeks = pd.date_range("2006-01-06", periods=120, freq="W-FRI")
+    hold = pd.DataFrame({"week": weeks, "top3": 0.011, "top6": 0.010, "top10": 0.0095,
+                         "spy": 0.0, "rand_mean": 0.0, "top15": "A"})
+    monkeypatch.setattr(sel, "simulate", lambda *a, **k: pd.Series(np.full(len(weeks), 0.01), index=weeks))
+    monkeypatch.setattr(sel, "sharpe", lambda series, lo, hi: 0.5)
+    band = {"3-6": 9.0, "3-10": 9.0, "6-10": 9.0}
+    got = sel.decide_strategy(None, hold, "4w", weeks[0], weeks[-1], book_band=band)
+    assert got["book"] == 10 and got["evidence"]["book_band"] == {**band, "z": sel.BOOK_BAND_Z}
+    assert sel.decide_strategy(None, hold, "4w", weeks[0], weeks[-1])["book"] == 3    # no band: the argmax

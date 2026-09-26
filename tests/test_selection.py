@@ -366,3 +366,24 @@ def test_simulate_settings_table_equals_the_fixed_call_and_switches_the_book():
     with pytest.raises(ValueError):
         simulate(ctx, holdings, "1w", 1, None, None, "none",
                  settings=switch.iloc[1:])                        # no decision at the first week
+
+
+def test_decide_book_ties_go_to_the_larger_book_when_a_band_is_given():
+    """The 2026-09-25 rule: a smaller book displaces a larger one only by more than
+    BOOK_BAND_Z x the seed sd of the pair's difference; without a band, the argmax."""
+    from stocks_ml.selection import BOOK_BAND_Z
+    weeks = pd.date_range("2010-01-01", periods=104, freq="W-FRI")
+    df = _frame(weeks, top6=0.010, top3=0.011, top10=0.0095)            # top-3 leads, but only just
+    b, res = decide_book(df, "4w", weeks[0], weeks[-1])
+    assert b == 3                                                         # the argmax, no band
+    lead = res[3] - res[10]
+    assert lead > 0
+    band = {"3-6": lead / BOOK_BAND_Z + 0.1, "3-10": lead / BOOK_BAND_Z + 0.1, "6-10": 9.0}
+    assert decide_book(df, "4w", weeks[0], weeks[-1], band=band)[0] == 10   # inside the band: the larger book
+    band = {"3-6": 0.0, "3-10": 0.0, "6-10": 0.0}
+    assert decide_book(df, "4w", weeks[0], weeks[-1], band=band)[0] == 3    # a decided lead still wins
+    # the chain: 6 beats 10 decisively, 3 ties 6 -> 6
+    df = _frame(weeks, top6=0.02, top3=0.021, top10=0.005)
+    res = decide_book(df, "4w", weeks[0], weeks[-1])[1]
+    band = {"6-10": 0.0, "3-6": (res[3] - res[6]) / BOOK_BAND_Z + 0.1, "3-10": 0.0}
+    assert decide_book(df, "4w", weeks[0], weeks[-1], band=band)[0] == 6

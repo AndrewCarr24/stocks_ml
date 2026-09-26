@@ -86,7 +86,8 @@ def procedure_menus() -> dict:
     stale."""
     import stocks_ml.selection as sel
     from stocks_ml.ledger import FLOORS
-    return {"books": list(sel.BOOKS), "floors": list(FLOORS), "vol_cuts": [str(v) for v in sel.VOL_CUT_MENU]}
+    return {"books": list(sel.BOOKS), "floors": list(FLOORS), "vol_cuts": [str(v) for v in sel.VOL_CUT_MENU],
+            "book_band_z": sel.BOOK_BAND_Z}          # the tie rule of 2026-09-25: a decision without it is stale
 
 
 def walk_settings(walk: Path, store: str = STORE, k: int | None = None, log=log) -> dict:
@@ -101,7 +102,7 @@ def walk_settings(walk: Path, store: str = STORE, k: int | None = None, log=log)
     menus = procedure_menus()
     if cache.exists():
         proc = json.loads(cache.read_text())
-        if proc["preds"]["sha256"] == sha and (k is None or proc["k_copies"] == k) \
+        if proc["preds"]["sha256"] == sha and (k is None or proc.get("k_requested", proc["k_copies"]) == k) \
                 and proc.get("menus") == menus:               # decided under these menus, on this file
             return proc
         log(f"procedure cache {cache}: decided under other menus ({proc.get('menus')}); re-deciding")

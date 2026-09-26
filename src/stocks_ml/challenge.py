@@ -589,8 +589,9 @@ def window_table(sel, ctx, ctx_c, name: str, inc_select: Path, cand_select: Path
     span = f"{lo.year}-{hi.year}"
     spans = {span: (lo, hi + pd.Timedelta(days=1))}
     sel_weeks = lambda c: [t for t in c.weeks if SELECT[0] <= t <= SELECT[1]]  # noqa: E731
-    st_inc = own_settings(sel, ctx, holdings(sel, ctx, cut_walk(inc_select, sel_weeks(ctx), FINAL_K), range(1, FINAL_K + 1)))
-    st_c = own_settings(sel, ctx_c, holdings(sel, ctx_c, load_preds([cand_select]), range(1, FINAL_K + 1)))
+    p_inc, p_c = cut_walk(inc_select, sel_weeks(ctx), FINAL_K), load_preds([cand_select])
+    st_inc = own_settings(sel, ctx, holdings(sel, ctx, p_inc, range(1, FINAL_K + 1)), preds=p_inc, copies=range(1, FINAL_K + 1))
+    st_c = own_settings(sel, ctx_c, holdings(sel, ctx_c, p_c, range(1, FINAL_K + 1)), preds=p_c, copies=range(1, FINAL_K + 1))
     r_inc = simulate_holdings(sel, ctx, H["incumbent"], st_inc)
     r_c = simulate_holdings(sel, ctx_c, H[name], st_c)
     spy = ctx.wret["SPY"]

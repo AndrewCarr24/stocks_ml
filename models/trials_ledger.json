@@ -26388,11 +26388,11 @@
   "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/clean_weekly replayed by selection.simulate at K=16 for reports/champion_explorer.html: $219 (+9.6%/yr, SR 0.43, DD 49%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
  },
  {
-  "date": "2026-09-21",
+  "date": "2026-09-25",
   "kind": "rolling_lookback",
   "name": "rolling_lookback_2010-2015_trailing_3_c4",
-  "pre_holdout_sharpe": 0.649,
-  "notes": "{\"choice\": \"trailing_3_c4\", \"metric\": {\"expanding_c4\": 10.2, \"trailing_3_c4\": 10.57}, \"graded_on\": [\"2010-01-01\", \"2015-12-31\"], \"one_look_2016_2024\": {\"trailing_3_c4 (rolling)\": {\"terminal_100\": 304.5, \"cagr_pct\": 13.86, \"sharpe\": 0.649, \"max_dd\": 0.363, \"n_weeks\": 446}, \"spec settings, fixed\": {\"terminal_100\": 219.2, \"cagr_pct\": 9.58, \"sharpe\": 0.429, \"max_dd\": 0.489, \"n_weeks\": 446}, \"sp500\": {\"terminal_100\": 315.7, \"cagr_pct\": 14.34, \"sharpe\": 0.867, \"max_dd\": 0.318, \"n_weeks\": 446}}, \"paired_t_rolling_vs_fixed\": 0.24}"
+  "pre_holdout_sharpe": 0.662,
+  "notes": "{\"choice\": \"trailing_3_c4\", \"metric\": {\"expanding_c4\": 4.41, \"trailing_3_c4\": 9.9}, \"graded_on\": [\"2010-01-01\", \"2015-12-31\"], \"one_look_2016_2024\": {\"trailing_3_c4 (rolling)\": {\"terminal_100\": 331.9, \"cagr_pct\": 15.01, \"sharpe\": 0.662, \"max_dd\": 0.4, \"n_weeks\": 446}, \"spec settings, fixed\": {\"terminal_100\": 266.7, \"cagr_pct\": 12.11, \"sharpe\": 0.538, \"max_dd\": 0.458, \"n_weeks\": 446}, \"sp500\": {\"terminal_100\": 315.7, \"cagr_pct\": 14.34, \"sharpe\": 0.867, \"max_dd\": 0.318, \"n_weeks\": 446}}, \"paired_t_rolling_vs_fixed\": 0.69}"
  },
  {
   "date": "2026-09-24",
@@ -28188,31 +28188,38 @@
   "notes": "{\"walk\": \"data/experiments/week_label_weekly\", \"settings\": {\"book\": 3, \"floor\": \"60/40\", \"stop\": null, \"cap\": 2, \"vol_cut\": null}, \"2016_2024\": {\"terminal_100\": 266.7, \"cagr_pct\": 12.11, \"sharpe\": 0.538, \"max_dd\": 0.458, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 1152.1, \"cagr_pct\": 14.06, \"sharpe\": 0.576, \"max_dd\": 0.503, \"n_weeks\": 966}, \"falsification_t\": 0.13, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
  },
  {
-  "date": "2026-09-24",
+  "date": "2026-09-25",
   "kind": "procedure",
   "name": "procedure_2006-01-01_2015-12-31_week_label_weekly_select",
-  "pre_holdout_sharpe": 0.606,
-  "notes": "{\"decision\": {\"book_size\": 3, \"floor\": \"60/40\", \"stop_loss\": null, \"sector_cap\": 2, \"vol_cut\": null}, \"evidence\": {\"book\": {\"3\": 11.54, \"6\": 10.22, \"10\": 10.4}, \"vol_cut\": {\"None\": 0.515}, \"floor\": {\"none\": 0.515, \"halfgate\": 0.543, \"80/20\": 0.532, \"70/30\": 0.543, \"60/40\": 0.561}, \"stop\": {\"None\": 0.561, \"-0.25\": 0.549}, \"cap\": {\"None\": 0.561, \"2\": 0.606}}, \"preds_sha256\": \"427978a071df\", \"changed\": {\"floor\": [\"halfgate\", \"60/40\"], \"label\": [\"label_4w_sector_rank\", \"label_4w\"], \"features\": [[\"x_dollar_vol\", \"x_short_dtc\", \"x_evt_filed_5d\", \"x_days_since_filing\", \"x_pead\", \"x_evt_8k_7d\", \"x_evt_earnings_8k_7d\", \"x_days_since_earnings_8k\"], [\"x_dollar_vol\", \"x_short_dtc\", \"x_evt_filed_5d\", \"x_days_since_filing\", \"x_pead\", \"x_evt_8k_7d\", \"x_evt_earnings_8k_7d\", \"x_days_since_earnings_8k\", \"x_mkt_dispersion\"]], \"drop_features\": [[\"f_dollar_vol\", \"f_short_dtc\", \"f_asset_growth\", \"f_book_to_market\", \"f_cf_to_price\", \"f_earnings_yield\", \"f_gross_profitability\", \"f_leverage\", \"f_log_mktcap\", \"f_ocf_to_assets\", \"f_roe\", \"f_sales_to_price\", \"f_evt_filed_5d\", \"f_days_since_filing\", \"f_pead\", \"f_evt_8k_7d\", \"f_evt_earnings_8k_7d\", \"f_days_since_earnings_8k\", \"f_short_ratio\", \"f_insider_net_13w\", \"f_insider_buyers_13w\", \"f_evt_insider_buy_2w\"], [\"f_dollar_vol\", \"f_short_dtc\", \"f_asset_growth\", \"f_book_to_market\", \"f_cf_to_price\", \"f_earnings_yield\", \"f_gross_profitability\", \"f_leverage\", \"f_log_mktcap\", \"f_ocf_to_assets\", \"f_roe\", \"f_sales_to_price\", \"f_evt_filed_5d\", \"f_days_since_filing\", \"f_pead\", \"f_evt_8k_7d\", \"f_evt_earnings_8k_7d\", \"f_days_since_earnings_8k\", \"f_short_ratio\", \"f_insider_net_13w\", \"f_insider_buyers_13w\", \"f_evt_insider_buy_2w\", \"f_mkt_dispersion\"]]}}"
+  "pre_holdout_sharpe": 0.65,
+  "notes": "{\"decision\": {\"book_size\": 10, \"floor\": \"halfgate\", \"stop_loss\": null, \"sector_cap\": 2, \"vol_cut\": null}, \"evidence\": {\"book\": {\"3\": 12.07, \"6\": 13.11, \"10\": 12.28}, \"book_band\": {\"3-6\": 1.659, \"3-10\": 1.584, \"6-10\": 0.754, \"per_book\": {\"3\": 1.78, \"6\": 1.364, \"10\": 1.08}, \"draws\": 40, \"copies\": 32, \"z\": 2.0}, \"vol_cut\": {\"None\": 0.529}, \"floor\": {\"none\": 0.529, \"halfgate\": 0.615, \"80/20\": 0.548, \"70/30\": 0.561, \"60/40\": 0.577}, \"stop\": {\"None\": 0.615, \"-0.25\": 0.584}, \"cap\": {\"None\": 0.615, \"2\": 0.65}}, \"preds_sha256\": \"427978a071df\", \"changed\": {\"book_size\": [3, 10], \"floor\": [\"60/40\", \"halfgate\"]}}"
  },
  {
-  "date": "2026-09-24",
+  "date": "2026-09-25",
   "kind": "app",
   "name": "app_champion_week_label_weekly_k16",
   "config": {
    "horizon": "4w",
-   "book": 3,
-   "floor": "60/40",
+   "book": 10,
+   "floor": "halfgate",
    "stop": null,
    "cap": 2,
    "vol_cut": null,
    "train_years": 8,
    "fills": "next open"
   },
-  "terminal_100": 266.7,
-  "cagr_pct": 12.11,
-  "sharpe": 0.538,
-  "max_dd": 0.458,
+  "terminal_100": 251.2,
+  "cagr_pct": 11.34,
+  "sharpe": 0.52,
+  "max_dd": 0.427,
   "n_weeks": 446,
-  "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/week_label_weekly replayed by selection.simulate at K=16 for reports/champion_explorer.html: $267 (+12.1%/yr, SR 0.54, DD 46%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
+  "notes": "2016-01 \u2192 2024-07, the spec's walk data/experiments/week_label_weekly replayed by selection.simulate at K=16 for reports/champion_explorer.html: $251 (+11.3%/yr, SR 0.52, DD 43%) vs SPY $316 (+14.3%/yr, SR 0.87, DD 32%) (stocks-ml app)"
+ },
+ {
+  "date": "2026-09-25",
+  "kind": "eval",
+  "name": "eval_champion_week_label_weekly_k16",
+  "pre_holdout_sharpe": 0.583,
+  "notes": "{\"walk\": \"data/experiments/week_label_weekly\", \"settings\": {\"book\": 10, \"floor\": \"halfgate\", \"stop\": null, \"cap\": 2, \"vol_cut\": null}, \"2016_2024\": {\"terminal_100\": 251.2, \"cagr_pct\": 11.34, \"sharpe\": 0.52, \"max_dd\": 0.427, \"n_weeks\": 446}, \"pre_holdout\": {\"terminal_100\": 982.7, \"cagr_pct\": 13.09, \"sharpe\": 0.583, \"max_dd\": 0.599, \"n_weeks\": 966}, \"falsification_t\": 0.15, \"verdict\": \"not rejected\", \"leak\": \"PASS\"}"
  }
 ]

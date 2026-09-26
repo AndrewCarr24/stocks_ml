@@ -364,7 +364,7 @@ def test_window_table_scores_each_model_at_its_own_settings_with_the_sp500_row(t
     ctx_b = SimpleNamespace(weeks=sel_weeks + adj_weeks, name="b")
     decided = []
     monkeypatch.setattr(bt, "holdings", lambda sel, ctx_, p, copies: pd.DataFrame({"week": sel_weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}))
-    monkeypatch.setattr(bt, "own_settings", lambda sel, ctx_, h, lo=None, hi=None: (decided.append(ctx_.name),
+    monkeypatch.setattr(bt, "own_settings", lambda sel, ctx_, h, lo=None, hi=None, **kw: (decided.append(ctx_.name),
                                                                                 {"book": 3 if ctx_.name == "a" else 6, "floor": "halfgate", "stop": None, "cap": 2, "vol_cut": None})[1])
     monkeypatch.setattr(bt, "simulate_holdings", lambda sel, ctx_, h, st: pd.Series(0.002 if st["book"] == 3 else 0.001, index=pd.DatetimeIndex(adj_weeks)))
     monkeypatch.setattr(ch, "holdings", bt.holdings)
