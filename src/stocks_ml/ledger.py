@@ -226,6 +226,7 @@ class Ledger:
     trades: list = field(default_factory=list)       # [fill_date, ticker, units, price, fee]
     bench: dict = field(default_factory=dict)        # SPY buy-and-hold: cash, units, ref
     started: str | None = None
+    settings: dict | None = None                      # the rolling rule's decision in force (rolling.decide_live), if any
 
     @classmethod
     def new(cls, capital: float, t) -> "Ledger":

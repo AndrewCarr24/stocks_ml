@@ -2,6 +2,7 @@
 for its whole window, the followed rule uses the decision in force, and the
 lookback is chosen by argmax on the common span."""
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -38,7 +39,7 @@ def test_decisions_call_decide_strategy_on_each_window_in_process(monkeypatch):
                          "spy": 0.0, "rand_mean": 0.0, "top15": "A"})
     seen = []
 
-    def fake(ctx, holdings, horizon, lo, hi):
+    def fake(ctx, holdings, horizon, lo, hi, **kw):
         seen.append((lo, hi))
         book = 10 if hi.year >= 2010 else 6
         return {"book": book, "floor": "halfgate", "stop": None, "cap": None, "vol_cut": None,
@@ -105,3 +106,61 @@ def test_choose_is_the_argmax_on_the_common_span_and_refuses_a_late_rule(tmp_pat
                          0.003 + wig, 0.002 + wig, 0.001 + wig, spec)
     with pytest.raises(SystemExit):
         roll.choose([a, late], "2010-01-01", "2015-12-31", log=lambda m: None)
+
+
+# ---- the live side (2026-09-25) ----
+def _walk_file(path, weeks, k, base=1.0):
+    rows = [{"week": w, "ticker": t, **{f"c{c}": base * c * (i + 1) for c in range(1, k + 1)}}
+            for w in weeks for i, t in enumerate("AB")]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    return path
+
+
+def test_history_from_walks_stores_the_ensemble_mean_and_a_later_file_wins(tmp_path):
+    weeks = list(pd.date_range("2006-01-06", periods=4, freq="W-FRI"))
+    a = _walk_file(tmp_path / "a.parquet", weeks[:3], 16)
+    b = _walk_file(tmp_path / "b.parquet", weeks[2:], 4, base=10.0)      # overlaps week 3
+    out = roll.history_from_walks([a, b], tmp_path / "h" / "preds.parquet", log=lambda m: None)
+    h = pd.read_parquet(out)
+    assert list(h.columns) == ["week", "ticker", "c1"] and h.week.nunique() == 4
+    assert h[(h.week == weeks[0]) & (h.ticker == "A")].c1.iloc[0] == pytest.approx(np.mean(range(1, 17)))
+    assert h[(h.week == weeks[2]) & (h.ticker == "A")].c1.iloc[0] == pytest.approx(10 * np.mean(range(1, 5)))   # b won
+
+
+def test_append_history_replaces_a_rerun_week(tmp_path):
+    p = tmp_path / "preds.parquet"
+    t = pd.Timestamp("2026-09-18")
+    roll.append_history(p, t, pd.Series({"A": 1.0, "B": 2.0}))
+    h = roll.append_history(p, t, pd.Series({"A": 5.0, "B": 6.0}))
+    assert len(h) == 2 and h.c1.tolist() == [5.0, 6.0]
+    h = roll.append_history(p, t + pd.Timedelta(days=7), pd.Series({"A": 0.0}))
+    assert h.week.nunique() == 2 and len(h) == 3
+
+
+def test_is_due_counts_rank_weeks():
+    assert roll.is_due(None, "2026-09-18", 4)
+    assert not roll.is_due("2026-09-04", "2026-09-18", 4)               # 2 weeks
+    assert roll.is_due("2026-08-21", "2026-09-18", 4)                   # 4 weeks
+    assert roll.is_due("2026-08-21", "2026-09-17", 4)                   # a holiday Thursday is its own week
+
+
+def test_decide_live_reads_the_trailing_window_and_the_rolling_stop_menu(monkeypatch):
+    from stocks_ml.selection import label_end
+    weeks = pd.date_range("2016-01-08", "2026-09-18", freq="W-FRI")
+    hist = pd.DataFrame({"week": np.repeat(weeks, 2), "ticker": ["A", "B"] * len(weeks), "c1": 1.0})
+    seen = {}
+    def fake_hold(ctx, preds, copies, horizon):
+        seen["copies"], seen["weeks"] = list(copies), sorted(preds.week.unique())
+        return pd.DataFrame({"week": sorted(preds.week.unique()), "top3": 0.01, "top6": 0.01, "top10": 0.01}), {}
+    def fake_decide(ctx, hold, horizon, lo, hi, book_band=None, stop_menu=None):
+        seen["lo"], seen["hi"], seen["stop_menu"] = lo, hi, stop_menu
+        return {"book": 10, "floor": "60/40", "stop": None, "cap": None, "vol_cut": None, "evidence": {"book": {}}}
+    fake_sel = SimpleNamespace(ensemble_holdings=fake_hold, decide_strategy=fake_decide)
+    d = roll.decide_live(fake_sel, None, hist, "2026-09-18", 3)
+    assert seen["copies"] == [1] and seen["stop_menu"] == roll.STOP_MENU_ROLLING == (None,)
+    assert seen["lo"] == pd.Timestamp("2023-09-18") and seen["hi"] == label_end(pd.Timestamp("2026-09-18"), 4)
+    assert seen["weeks"][0] >= seen["lo"] and seen["weeks"][-1] <= seen["hi"]     # nothing past label_end(t)
+    assert d["book"] == 10 and d["decided"] == "2026-09-18" and d["weeks"] == len(seen["weeks"])
+    with pytest.raises(SystemExit, match="shorter than the 3-year window"):
+        roll.decide_live(fake_sel, None, hist[hist.week >= "2025-01-01"], "2026-09-18", 3)

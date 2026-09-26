@@ -512,7 +512,10 @@ def metrics(series, lo, hi):
             "n_weeks": len(x)}
 
 
-def decide_strategy(ctx, holdings, horizon, lo, hi, book_band=None):
+STOP_MENU = (None, -0.25)
+
+
+def decide_strategy(ctx, holdings, horizon, lo, hi, book_band=None, stop_menu=STOP_MENU):
     """The strategy layers, book down, on the holdings frame the run grades,
     over the selection window [lo, hi] only: book by cost-adjusted compounded
     %/yr (decide_book; with `book_band`, ties go to the larger book); the
@@ -538,8 +541,8 @@ def decide_strategy(ctx, holdings, horizon, lo, hi, book_band=None):
             for f in FLOORS}
     floor = max(fres, key=fres.get)
     sres = {str(s): sharpe(simulate(ctx, hold, horizon, book, None, s, floor, vol_cut=vol_cut), lo, hi)
-            for s in (None, -0.25)}
-    stop = None if sres["None"] >= sres["-0.25"] else -0.25
+            for s in stop_menu}
+    stop = None if len(sres) == 1 or sres["None"] >= sres["-0.25"] else -0.25
     cres = {str(c): sharpe(simulate(ctx, hold, horizon, book, c, stop, floor, vol_cut=vol_cut), lo, hi)
             for c in (None, 2)}
     cap = None if cres["None"] >= cres["2"] else 2

@@ -32,6 +32,8 @@ import pandas as pd
 HORIZON = "4w"
 MIN_YEARS = 3                 # expanding: the first decision reads at least this much
 COLS = ["book", "floor", "stop", "cap", "vol_cut"]
+STOP_MENU_ROLLING = (None,)   # the rolling rule never adopts the stop: live/r5.py does not implement it, and the
+                              # backtest must follow what live can do (2026-09-25; the stop had been in force 8% of the time)
 
 
 def parse_lookback(v: str):
@@ -79,7 +81,7 @@ def _init(store, hold):
 
 def _decide(args):
     t, lo, hi = args
-    d = _G["sel"].decide_strategy(_G["ctx"], _G["hold"], HORIZON, lo, hi)
+    d = _G["sel"].decide_strategy(_G["ctx"], _G["hold"], HORIZON, lo, hi, stop_menu=STOP_MENU_ROLLING)
     return {"t": t, "lo": lo, "hi": hi, **{c: d[c] for c in COLS}, "evidence": d["evidence"]}
 
 
@@ -114,6 +116,80 @@ def decisions(sel, ctx, store: str, hold: pd.DataFrame, lookback, cadence: int =
                 if i % 50 == 0 or i == len(w):
                     log(f"  {i}/{len(w)} decisions")
     return pd.DataFrame(rows).set_index("t").sort_index()
+
+
+# ---- the live side: the champion's own prediction history, one decision at a time ----
+def history_from_walks(paths, out, log=print) -> Path:
+    """The prediction history the live rolling rule reads: (week, ticker, c1)
+    with c1 the ensemble MEAN of a walk's copies — what holdings() computes
+    from the copies themselves — over every rank week of the given walks,
+    concatenated, a later file winning a shared week. Predictions only: this
+    module never grades a week, and weeks at or past the holdout may be stored
+    here (the live rule needs its trailing window) but nothing scores them."""
+    frames = []
+    for p in paths:
+        df = pd.read_parquet(p)
+        df["week"] = pd.to_datetime(df["week"])
+        cs = [c for c in df.columns if c.startswith("c") and c[1:].isdigit()]
+        frames.append(pd.DataFrame({"week": df["week"], "ticker": df["ticker"], "c1": df[cs].mean(axis=1)}))
+    h = (pd.concat(frames, ignore_index=True).drop_duplicates(["week", "ticker"], keep="last")
+           .sort_values(["week", "ticker"]).reset_index(drop=True))
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    h.to_parquet(out, index=False)
+    log(f"history: {h.week.nunique()} weeks {h.week.min().date()} -> {h.week.max().date()}, "
+        f"{len(h):,} rows -> {out}")
+    return out
+
+
+def append_history(path, t, preds: pd.Series) -> pd.DataFrame:
+    """Add the live job's ensemble mean for week t to the history (replacing
+    the week if it is there: a rerun of the same week), and return it."""
+    path = Path(path)
+    t = pd.Timestamp(t)
+    new = pd.DataFrame({"week": t, "ticker": preds.index, "c1": preds.to_numpy(dtype=float)})
+    if path.exists():
+        h = pd.read_parquet(path)
+        h["week"] = pd.to_datetime(h["week"])
+        h = pd.concat([h[h.week != t], new], ignore_index=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        h = new
+    h = h.sort_values(["week", "ticker"]).reset_index(drop=True)
+    tmp = path.with_suffix(".tmp.parquet")
+    h.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+    return h
+
+
+def is_due(last_decided, t, cadence: int) -> bool:
+    """A new decision is due when none exists or `cadence` rank weeks have
+    passed since the last (week_index, so a holiday Thursday counts)."""
+    from stocks_ml.ledger import week_index
+    return last_decided is None or week_index(pd.Timestamp(t)) - week_index(pd.Timestamp(last_decided)) >= cadence
+
+
+def decide_live(sel, ctx, history: pd.DataFrame, t, lookback, min_years: int = MIN_YEARS) -> dict:
+    """One rolling decision at rank week t, as the backtest's `decisions`
+    makes it: the window [t - lookback years, label_end(t)] of the history
+    (from its first week when `lookback` is None), the holdings frame the
+    backtest grades, selection.decide_strategy with the rolling stop menu.
+    Refuses a history shorter than the rule's window."""
+    from stocks_ml.selection import label_end
+    t = pd.Timestamp(t)
+    history = history.assign(week=pd.to_datetime(history["week"]))
+    need = min_years if lookback is None else lookback
+    if history.week.min() > t - pd.DateOffset(years=need):
+        raise SystemExit(f"the prediction history starts {history.week.min().date()}: shorter than the "
+                         f"{need}-year window the rolling rule reads at {t.date()}")
+    lo = history.week.min() if lookback is None else t - pd.DateOffset(years=lookback)
+    hi = label_end(t, 4)
+    h = history[(history.week >= lo) & (history.week <= hi)]
+    hold, _ = sel.ensemble_holdings(ctx, h, [1], HORIZON)
+    hold = hold.sort_values("week").reset_index(drop=True)
+    d = sel.decide_strategy(ctx, hold, HORIZON, lo, hi, stop_menu=STOP_MENU_ROLLING)
+    return {"decided": str(t.date()), "lo": str(lo.date()), "hi": str(hi.date()), "weeks": int(len(hold)),
+            **{c: d[c] for c in COLS}, "evidence": d["evidence"]}
 
 
 def follow(sel, ctx, hold: pd.DataFrame, dec: pd.DataFrame) -> pd.Series:
