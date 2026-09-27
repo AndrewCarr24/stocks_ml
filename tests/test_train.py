@@ -227,3 +227,9 @@ def test_walk_takes_a_block_sample_at_the_cadence(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="consecutive"):
         train.walk("data/w", weeks[0], weeks[-1], "label_4w_sector", 8, 1, tmp_path / "c", weeks=weeks[0:3] + weeks[5:6],
                    sample="broken", refit_every=4, log=lambda m: None)
+
+
+def test_recipe_records_the_universe_filter_in_canonical_text():
+    assert train.recipe("label_4w", 8, filt="x_dollar_vol:0.20:1.0") == {"label": "label_4w", "train_years": 8,
+                                                                          "filter": "x_dollar_vol:0.2:1"}
+    assert "filter" not in train.recipe("label_4w", 8, filt=None)

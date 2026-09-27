@@ -1,6 +1,6 @@
 # Procedure card
 
-Blueprint of the production procedure (generated 2026-09-25 by
+Blueprint of the production procedure (generated 2026-09-27 by
 `stocks-ml procedure-card` from models/champion_spec.json — edit the spec,
 not this file). Rationale and history: AGENTS.md.
 
@@ -16,6 +16,7 @@ not this file). Rationale and history: AGENTS.md.
 | Ensemble | K=16 copies (random_state + whole-week bootstrap), predictions averaged |
 | Book | top-10, equal weight, 4 staggered sleeves rotating weekly, 4-week holds; weekly re-leveling; max 2/sector (blocked slots to next-ranked other-sector name); no stop; no volatility cut |
 | Ballast | halfgate: book 100/83/67/50% of NAV by SPY trend gates down (30/40/52w), rest IEF — the book shrinks one sixth of NAV per breached SPY trailing MA, the freed money sits in IEF (no fixed SPY ballast) |
+| Live rule | the book, floor and cap above are the 2006-2015 decision, the FALLBACK: live, the settings are re-decided every 4 rank weeks by `selection.decide_strategy` on the trailing 3 years of the champion's own prediction history (`rolling_history.parquet`; stop never on the menu); the decision in force is in the ledger and each signal. Chosen by `stocks_ml.rolling.choose` on 2010-2015 (trailing_3_c4 +9.8%/yr vs expanding_c4 +4.4); one look 2016-2024: $337, +15.2%/yr, SR 0.67, DD 40% vs S&P 500 $316, +14.3%/yr |
 | Decided by | `stocks-ml procedure` on data/experiments/week_label_weekly/select/preds.parquet (K=32, 522 rank weeks of 2006-01-01 -> 2015-12-31, world data/sharadar_world2000_nominal_dl), 2026-09-25 21:57:07: book 10 / floor halfgate / stop None / cap 2; model fields from the walk's own record: label_4w / 8-year window — tests hold the spec's model and strategy fields and the live job to this record |
 | Honest expectation | no demonstrated edge over the S&P 500 out of sample: 2016-2024 $267, +12.1%/yr against the index's +14.3%/yr (excess -2.0%/yr, 95% nested CI -14.3..+13.7, P(excess>0) 0.42, paired weekly t -0.29); better than the champion it replaced on the same years (+9.6%/yr; +2.5%/yr, falsification t +0.13, not rejected) but still behind the index. 2006-2024 reads +3.4%/yr over the index (-6.8..+14.8, 0.73), carried by the selection window (+8.2%/yr on 2006-2015). A factor decomposition of the previous clean champion found the picks to be volatile, high-beta 12-month losers with no alpha after those exposures out of sample; expect this one to share that character until shown otherwise. Drawdowns of 46-50% are on the record, deeper than the index's 32% on the same years. Every pre-holdout number carries design-iteration shine: the label won a 35-way re-selection on 2006-2015 (a tie there) and a head-to-head on 2016-2019, a window this label family had been read on before |
 

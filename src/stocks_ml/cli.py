@@ -61,7 +61,7 @@ def cmd_world(args, cfg):
         return
     if args.append_sec:
         from stocks_ml.data.world import append_sec_columns
-        append_sec_columns(args.dir)
+        append_sec_columns(args.dir, replace=args.replace)
         return
     if args.append_mkt:
         from stocks_ml.data.world import append_market_dispersion
@@ -105,7 +105,7 @@ def cmd_train(args, cfg):
          every=args.every, features=[f for f in (args.features or "").split(",") if f],
          params=_params(args.params), workers=args.workers, copies=copies,
          drop=[f for f in (args.drop or "").split(",") if f], train_top=args.train_top,
-         refit_every=args.refit_every)
+         refit_every=args.refit_every, filt=args.filter, holdout_history=args.holdout_history)
 
 
 def cmd_challenge(args, cfg):
@@ -149,14 +149,27 @@ def cmd_procedure(args, cfg):
     window) read from the walk's own record, written into
     models/champion_spec.json — the only way those fields change."""
     if args.lookback:
-        from stocks_ml.rolling import choose
-        choose(args.lookback, args.sel_start, args.sel_end)
+        from pathlib import Path
+        from stocks_ml.rolling import adopt, choose
+        rec = choose(args.lookback, args.sel_start, args.sel_end)
+        if args.adopt:
+            from stocks_ml.procedure import SPEC_PATH
+            from stocks_ml.procedure_card import write_card
+            adopt(Path(args.lookback[0]).parent / f"lookback_choice_{rec['graded_on'][0][:4]}-{rec['graded_on'][1][:4]}.json", SPEC_PATH)
+            write_card()
         return
     if not args.preds:
         raise SystemExit("procedure needs --preds (or --lookback <rolling json files>)")
     from stocks_ml.procedure import run
-    run(args.preds, store=args.store, k=args.k, lo=args.sel_start, hi=args.sel_end,
-        check=args.check)
+    proc = run(args.preds, store=args.store, k=args.k, lo=args.sel_start, hi=args.sel_end,
+               check=args.check)
+    if args.check:
+        import json
+        from stocks_ml.procedure import SPEC_PATH
+        from stocks_ml.rolling import check as rolling_check
+        bad = rolling_check(json.loads(SPEC_PATH.read_text()))
+        if bad:
+            raise SystemExit(f"the spec's rolling block drifted from its registered choice: {bad}")
 
 
 def cmd_procedure_card(args, cfg):
@@ -289,6 +302,9 @@ def main():
     p.add_argument("--append-sec", action="store_true",
                    help="append the filing/PEAD and 8-K features recomputed from the refetched SEC tables to the "
                         "panel as x_ columns (append-only)")
+    p.add_argument("--replace", action="store_true",
+                   help="with --append-sec: recompute x_ columns already present (a world carved from an older "
+                        "world inherits its survivor-only SEC features until its own --refetch-sec)")
     p.add_argument("--append-sr", action="store_true",
                    help="append sector-relative ranks of the admitted features (x_sr_*) to the panel, derived from "
                         "its own ranked columns (append-only)")
@@ -328,6 +344,14 @@ def main():
                    help="fit on the largest N names by market cap at each row's date (a top-N world); score every member")
     p.add_argument("--refit-every", type=int, default=1, metavar="N",
                    help="screening cadence: one fit per N weeks, every week scored (the record stays weekly)")
+    p.add_argument("--holdout-history", action="store_true",
+                   help="walk INSIDE the holdout (--start at or after it) for the live rolling rule's prediction history "
+                        "only; the record is marked and no backtest, eval, procedure or challenge will read it "
+                        "(owner's go 2026-09-27)")
+    p.add_argument("--filter", default=None, metavar="RULES",
+                   help="the universe filter, col:lo:hi terms joined by +, e.g. x_dollar_vol:0.2:1 — keep a name whose "
+                        "within-week percentile of col among the rankable names lies in [lo, hi]; applied when the "
+                        "ranking is read (backtest and live alike), recorded in the walk, never fitted")
     p.add_argument("--copies", default=None, metavar="A-B",
                    help="walk copies (seeds) A..B instead of 1..K, e.g. 17-32 for a seed twin")
 
@@ -410,6 +434,9 @@ def main():
     p.add_argument("--lookback", nargs="+", default=None, metavar="ROLLING_JSON",
                    help="choose among rolling rules (backtest --rolling outputs) on [--sel-start, "
                         "--sel-end] by the rule's compounded %/yr; then the one look at the choice")
+    p.add_argument("--adopt", action="store_true",
+                   help="with --lookback: write the choice into the spec's `rolling` block — the rule the live job "
+                        "follows (settings re-decided on the trailing window; the strategy block stays the fallback)")
 
     sub.add_parser("procedure-card", help="regenerate PROCEDURE.md from models/champion_spec.json")
 

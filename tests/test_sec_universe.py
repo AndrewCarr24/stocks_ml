@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from stocks_ml.data import world
 from stocks_ml.data.store import DataStore
@@ -127,6 +128,38 @@ def test_append_sec_columns_matches_the_panels_own_features_and_fills_the_depart
     assert (old["f_days_since_filing"] == 0.0).all()          # survivor-only: neutral-filled, no history
     assert old["x_days_since_filing"].abs().sum() > 0           # every-name: a real filing distance
     assert list(out.columns[:len(panel.columns)]) == list(panel.columns)     # existing columns untouched
+
+
+def test_append_sec_columns_replace_recomputes_a_carved_worlds_inherited_aliases(tmp_path):
+    """A world carved from an older world (--derive-from) has x_ columns aliased to that world's
+    survivor-only f_ columns; after its own refetch, --append-sec --replace recomputes them."""
+    from stocks_ml.features.events import filing_features, sec8k_features
+    from stocks_ml.features.ranking import rank_normalize
+    store, days = _world(tmp_path)
+    dates = pd.DatetimeIndex([d for d in days if d.weekday() == 4][-8:])
+    rows = pd.MultiIndex.from_product([dates, ["AAA", "OLD"]], names=["date", "ticker"]).to_frame(index=False)
+    f = filing_features(store.read("edgar"), store.read("prices"), dates).merge(
+        sec8k_features(store.read("sec8k"), ["AAA", "OLD"], dates), on=["date", "ticker"])
+    panel = rank_normalize(rows.merge(f, on=["date", "ticker"], how="left"), [c for c in f.columns if c.startswith("f_")])
+    for c in world.SEC_COLS:                                   # build_world_panel's aliases
+        panel[c] = panel["f_" + c[2:]]
+    panel.to_parquet(tmp_path / "panel_sf.parquet", index=False)
+
+    assert world.append_sec_columns(tmp_path, log=lambda m: None) == []                # present: append-only
+    with pytest.raises(RuntimeError, match="no every-name SEC refetch"):                # nothing refetched yet
+        world.append_sec_columns(tmp_path, log=lambda m: None, replace=True)
+    cfg = SimpleNamespace(user_agent="ua", edgar_concepts={"revenue": ["Revenues"]})
+    world.refetch_sec_universe(tmp_path, cfg, log=lambda m: None,
+                               fetch_facts_fn=lambda cik, ua: facts(cik, filed="2024-05-10"),
+                               fetch_submissions_fn=lambda cik: submissions(cik, filed="2024-05-09"),
+                               fetch_file_fn=lambda name: {}, data_dir=tmp_path / "no_project_pull")
+    assert world.append_sec_columns(tmp_path, log=lambda m: None) == []                # still append-only
+    assert world.append_sec_columns(tmp_path, log=lambda m: None, replace=True) == world.SEC_COLS
+    out = pd.read_parquet(tmp_path / "panel_sf.parquet")
+    old = out[out["ticker"] == "OLD"]
+    assert (old["f_days_since_filing"] == 0.0).all()          # the inherited alias's source: blank
+    assert old["x_days_since_filing"].abs().sum() > 0           # replaced: a real filing distance
+    assert list(out.columns) == list(panel.columns)             # same columns, in place
 
 
 def test_refetch_form4_from_sf2_covers_every_past_member_and_keeps_the_old_table(tmp_path):

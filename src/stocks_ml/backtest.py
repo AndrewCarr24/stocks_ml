@@ -51,6 +51,9 @@ def load_preds(paths) -> pd.DataFrame:
     refused if any week is at or past the holdout."""
     frames = []
     for p in paths:
+        rec = Path(p).parent / "spec.json"
+        if rec.exists() and json.loads(rec.read_text()).get("holdout_history"):
+            raise RuntimeError(f"{p} is a holdout-history walk (the live rolling rule's predictions): never graded")
         df = pd.read_parquet(p)
         df["week"] = pd.to_datetime(df["week"])
         frames.append(df)
@@ -102,7 +105,16 @@ def is_champion_walk(records: list[dict], spec_path: Path = SPEC_PATH) -> bool:
     return bool(records)
 
 
-def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END, preds=None, copies=None) -> dict:
+def record_filter(records: list) -> str | None:
+    """The recipe's universe filter from a walk's records (selection.parse_filter
+    grammar); the segments must agree."""
+    filts = {(r.get("recipe") or {}).get("filter") for r in records if r}
+    if len(filts) > 1:
+        raise SystemExit(f"the walk's segments carry different universe filters {filts}")
+    return next(iter(filts), None)
+
+
+def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END, preds=None, copies=None, filt=None) -> dict:
     """The walk's own strategy layers: the procedure's decision function on
     its selection-window holdings (2006-2015 only; nothing later is read).
     With `preds` and `copies` the book reads its seed bands (procedure.book_bands),
@@ -113,15 +125,16 @@ def own_settings(sel, ctx, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END, p
     band = None
     if preds is not None and copies is not None:
         from stocks_ml.procedure import book_bands
-        band = book_bands(sel, ctx, preds, copies, pd.Timestamp(lo), pd.Timestamp(hi))
+        band = book_bands(sel, ctx, preds, copies, pd.Timestamp(lo), pd.Timestamp(hi), filt=filt)
     d = sel.decide_strategy(ctx, hold, "4w", lo, hi, book_band=band)
     return dict(book=d["book"], floor=d["floor"], stop=d["stop"], cap=d["cap"], vol_cut=d["vol_cut"])
 
 
-def holdings(sel, ctx, preds: pd.DataFrame, copies) -> pd.DataFrame:
+def holdings(sel, ctx, preds: pd.DataFrame, copies, filt=None) -> pd.DataFrame:
     """The per-week holdings frame for the mean of `copies`: the books'
-    forward returns (top3/top6/top10), the universe mean, the top-15 names."""
-    hold, _ = sel.ensemble_holdings(ctx, preds, copies)
+    forward returns (top3/top6/top10), the universe mean, the top-15 names.
+    `filt`: the recipe's universe filter (selection.parse_filter)."""
+    hold, _ = sel.ensemble_holdings(ctx, preds, copies, filt=filt)
     return hold.sort_values("week").reset_index(drop=True)
 
 
@@ -132,9 +145,9 @@ def simulate_holdings(sel, ctx, hold: pd.DataFrame, st: dict) -> pd.Series:
                         vol_cut=st.get("vol_cut"))
 
 
-def weekly_returns(sel, ctx, preds: pd.DataFrame, copies, st: dict) -> pd.Series:
+def weekly_returns(sel, ctx, preds: pd.DataFrame, copies, st: dict, filt=None) -> pd.Series:
     """The strategy's weekly returns for the mean of `copies` at settings st."""
-    return simulate_holdings(sel, ctx, holdings(sel, ctx, preds, copies), st)
+    return simulate_holdings(sel, ctx, holdings(sel, ctx, preds, copies, filt=filt), st)
 
 
 def selection_metric(sel, hold: pd.DataFrame, lo=SELECT_START, hi=SELECT_END) -> dict:
@@ -200,15 +213,17 @@ def run(preds_paths, store: str, st: dict | None = None, k: int | None = None,
     if k > copies_in(preds):
         raise SystemExit(f"the walk holds {copies_in(preds)} copies, --k {k} asked")
     sel, ctx, _ = context(store)
-    hold = holdings(sel, ctx, preds, range(1, k + 1))
+    filt = record_filter(records)                   # the recipe's universe filter, applied as live applies it
+    hold = holdings(sel, ctx, preds, range(1, k + 1), filt=filt)
     if st is not None:
         source = "given"
     elif is_champion_walk(records):
         st, source = spec_settings(), "the spec (this is the champion's walk)"
     else:
-        st, source = own_settings(sel, ctx, hold, preds=preds, copies=range(1, k + 1)), "the procedure's decision on this walk's 2006-2015"
+        st, source = own_settings(sel, ctx, hold, preds=preds, copies=range(1, k + 1), filt=filt), "the procedure's decision on this walk's 2006-2015"
     log(f"backtest: {name} — {preds.week.nunique()} rank weeks {preds.week.min().date()} -> "
-        f"{preds.week.max().date()}, K={k}, {settings_label(st)} (settings: {source})")
+        f"{preds.week.max().date()}, K={k}, {settings_label(st)} (settings: {source})"
+        + (f"; universe filter {filt}" if filt else ""))
     metric = selection_metric(sel, hold)
     if metric:
         score = float(np.mean(list(metric.values())))

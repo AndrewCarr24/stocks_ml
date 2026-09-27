@@ -152,7 +152,7 @@ def copy_preds(sel, ctx, t, c: int, label: str, train_years: int, features=(),
 
 
 def recipe(label: str, train_years: int, features=(), params: dict | None = None, drop=(),
-           train_top: int | None = None) -> dict:
+           train_top: int | None = None, filt=None) -> dict:
     """A candidate model as `train` walks it: the label, the training window,
     extra panel columns the model gets beyond the panel's f_ columns, and
     overrides of selection.MODEL_PARAMS. Empty features/params are left out,
@@ -165,6 +165,8 @@ def recipe(label: str, train_years: int, features=(), params: dict | None = None
         r["drop"] = list(drop)                  # admitted f_ columns withheld from the model
     if train_top:
         r["train_top"] = int(train_top)         # fit on the largest N names only; score every member
+    if filt:
+        r["filter"] = sel.filter_text(filt)     # the universe filter: which names the book may be picked from (rank time)
     if params:
         from stocks_ml.models.xgb import RANK_PARAMS
         allowed = {**sel.MODEL_PARAMS, **RANK_PARAMS}
@@ -179,14 +181,14 @@ def recipe(label: str, train_years: int, features=(), params: dict | None = None
 def record(store: str, lo, hi, label: str, train_years: int, k: int, every: int,
            delist: str, price_basis: str, features=(), params: dict | None = None,
            sample: str | None = None, copies=None, drop=(), train_top: int | None = None,
-           refit_every: int = 1) -> dict:
+           refit_every: int = 1, filt=None, holdout_history: bool = False) -> dict:
     """The walk's record (spec.json): what made it, on what, over which weeks.
     `sample` describes an explicit week list (challenge-fast's stratified
     random sample); such a record is marked a sample like `every` > 1."""
     import stocks_ml.selection as sel
     span = f"{pd.Timestamp(lo).date()} -> {pd.Timestamp(hi).date()}"
     rec = {"code": "stocks_ml.train.walk",
-           "recipe": recipe(label, train_years, features, params, drop, train_top),
+           "recipe": recipe(label, train_years, features, params, drop, train_top, filt),
            "k": int(k), "store": store, "delist": delist, "price_basis": price_basis,
            "base_params": {p: str(v) for p, v in sel.MODEL_PARAMS.items()},
            "every": int(every),
@@ -198,6 +200,11 @@ def record(store: str, lo, hi, label: str, train_years: int, k: int, every: int,
     if int(refit_every) > 1:
         rec["refit_every"] = int(refit_every)      # the screening cadence: a fit serves N weeks
         rec["weeks"] += f", refit every {int(refit_every)} weeks (screening cadence)"
+    if holdout_history:
+        # predictions inside the holdout for the rolling rule's trailing window (owner's go 2026-09-27,
+        # "make C the champion"): never graded — backtest.load_preds refuses the marker and the weeks
+        rec["holdout_history"] = True
+        rec["weeks"] += " — HOLDOUT HISTORY: predictions for the live rolling rule only, never graded"
     copies = list(copies) if copies is not None else list(range(1, int(k) + 1))
     if copies != list(range(1, int(k) + 1)):
         rec["copies"] = [int(copies[0]), int(copies[-1])]      # e.g. a seed twin: 17..32
@@ -235,7 +242,7 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
          every: int = 1, checkpoint: int = CHECKPOINT, log=log, features=(),
          params: dict | None = None, weeks=None, sample: str | None = None,
          workers: int = 1, copies=None, drop=(), train_top: int | None = None,
-         refit_every: int = 1) -> Path:
+         refit_every: int = 1, filt=None, holdout_history: bool = False) -> Path:
     """Copies 1..k (or the explicit `copies`, e.g. seeds 17..32 for a seed
     twin) at every rank week of [lo, hi] (every `every`th week for a sample;
     or the explicit `weeks`, described by `sample`), checkpointed and
@@ -246,9 +253,11 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
     if label not in LABELS_4W:
         raise SystemExit(f"label must be one of {tuple(LABELS_4W)}, got {label!r}")
     lo, hi, out = pd.Timestamp(lo), pd.Timestamp(hi), Path(out)
-    if hi >= HOLDOUT_START:
+    if hi >= HOLDOUT_START and not holdout_history:
         raise SystemExit(f"--end {hi.date()} reaches the holdout ({HOLDOUT_START.date()}); "
                          "the holdout is never walked without the owner's go")
+    if holdout_history and lo < HOLDOUT_START:
+        raise SystemExit(f"--holdout-history walks the holdout only: --start {lo.date()} is before {HOLDOUT_START.date()}")
     sel, ctx, n_feat = context(store)
     missing = [c for c in features if c not in ctx.pan.columns]
     if missing:
@@ -267,7 +276,7 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
         raise ValueError("refit_every applies to a walk of every week or a block sample, not an every-Nth sample")
     rec = record(store, lo, hi, label, train_years, k, every, ctx.delist_labels,
                  getattr(ctx.cfg, "price_basis", "closeadj"), features, params, sample, copies, drop, train_top,
-                 refit_every)
+                 refit_every, filt=filt, holdout_history=holdout_history)   # the filter is recorded, not fitted: it acts when the ranking is read
     guard(out, rec)
     path = out / "preds.parquet"
     frames, done = [], set()
@@ -300,6 +309,7 @@ def walk(store: str, lo, hi, label: str, train_years: int, k: int, out: Path,
         + (f", params {rec['recipe']['params']}" if params else "")
         + (f", minus {len(drop)} dropped" if drop else "")
         + (f", trained on the largest {train_top}" if train_top else "")
+        + (f", universe filter {rec['recipe']['filter']} (at rank time)" if filt else "")
         + (f", one fit per {refit_every} weeks ({len(todo_blocks)} blocks)" if refit_every > 1 else "")
         + f", store {store}")
     t0 = time.time()

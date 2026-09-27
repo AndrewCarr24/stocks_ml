@@ -387,3 +387,58 @@ def test_decide_book_ties_go_to_the_larger_book_when_a_band_is_given():
     res = decide_book(df, "4w", weeks[0], weeks[-1])[1]
     band = {"6-10": 0.0, "3-6": (res[3] - res[6]) / BOOK_BAND_Z + 0.1, "3-10": 0.0}
     assert decide_book(df, "4w", weeks[0], weeks[-1], band=band)[0] == 6
+
+
+# ---- the universe filter (a recipe field, 2026-09-26) ----
+def test_universe_filter_grammar_and_pool():
+    from stocks_ml.selection import filter_pool, filter_text, parse_filter
+    assert parse_filter(None) is None and parse_filter("") is None
+    assert parse_filter("x_dollar_vol:0.2:1") == (("x_dollar_vol", 0.2, 1.0),)
+    assert parse_filter("x_dollar_vol:0.2:1+f_vol_12w:0:0.9") == (("x_dollar_vol", 0.2, 1.0), ("f_vol_12w", 0.0, 0.9))
+    assert parse_filter(parse_filter("a:0:1")) == (("a", 0.0, 1.0),)                 # idempotent on parsed rules
+    assert filter_text("x_dollar_vol:0.20:1.0+f_vol_12w:0:0.90") == "x_dollar_vol:0.2:1+f_vol_12w:0:0.9"
+    for bad in ("x:0.5", "x:0.9:0.2", "x:-0.1:1", "x:0:1.5"):
+        with pytest.raises(ValueError):
+            parse_filter(bad)
+    names = [f"n{i}" for i in range(10)]
+    vals = {"v": pd.Series(range(10), index=names, dtype=float)}     # n0 lowest: percentile 0.1, n1 0.2, ... n9 1.0
+    assert filter_pool(names, vals, "v:0.2:1") == names[1:]           # the bottom tenth out; the 0.2 name is kept
+    assert filter_pool(names, vals, "v:0:0.9") == names[:9]           # the top tenth out
+    assert filter_pool(names, vals, "v:0.2:1+v:0:0.9") == names[1:9]
+    assert filter_pool(names, vals, None) == names
+    shuffled = names[::-1]
+    assert filter_pool(shuffled, vals, "v:0.2:1") == shuffled[:-1]    # order preserved
+    vals["v"]["n5"] = np.nan                                           # a name without a value passes
+    assert "n5" in filter_pool(names, vals, "v:0.9:1")
+
+
+class _FilterCtx(SimpleNamespace):
+    from stocks_ml.selection import Ctx as _Ctx
+    values_at = _Ctx.values_at
+
+
+def _filter_world():
+    from stocks_ml.selection import price_frames
+    days = pd.bdate_range("2023-06-01", "2024-06-28")
+    tickers = [f"T{i:03d}" for i in range(150)]
+    cl = pd.DataFrame({**{n: 10.0 + i for i, n in enumerate(tickers)}, "SPY": 500.0}, index=days)
+    frames = price_frames(cl.copy(), (cl - 0.1).copy(), delist="last_print")
+    t = pd.Timestamp("2024-03-01")
+    pan = pd.DataFrame({"date": t, "ticker": tickers, "x_dollar_vol": np.arange(150, dtype=float)})   # T000 least liquid
+    ctx = _FilterCtx(**frames, members={t: tickers}, smap={}, delist_labels="last_print", pan=pan, _by_week={})
+    preds = pd.Series(np.arange(150, 0, -1, dtype=float), index=tickers)    # the model likes the illiquid names most
+    return ctx, t, tickers, preds, cl
+
+
+def test_slice_row_applies_the_recipes_universe_filter_before_the_ranking_is_read():
+    from stocks_ml.selection import slice_row
+    ctx, t, tickers, preds, _ = _filter_world()
+    plain = slice_row(ctx, t, "4w", preds)["top15"].split(",")
+    assert plain[:3] == ["T000", "T001", "T002"]
+    row = slice_row(ctx, t, "4w", preds, filt="x_dollar_vol:0.2:1")
+    picks = row["top15"].split(",")
+    assert picks[:3] == ["T029", "T030", "T031"]       # the bottom fifth is out (T029 sits at 0.2 exactly and stays)
+    assert "T000" not in picks and "T000" not in row["top30"].split(",")
+    assert slice_row(ctx, t, "4w", preds, filt="x_dollar_vol:0.95:1") is None        # too few names pass: no signal
+    with pytest.raises(KeyError):
+        slice_row(ctx, t, "4w", preds, filt="no_such_column:0:1")

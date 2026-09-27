@@ -169,12 +169,20 @@ def is_due(last_decided, t, cadence: int) -> bool:
     return last_decided is None or week_index(pd.Timestamp(t)) - week_index(pd.Timestamp(last_decided)) >= cadence
 
 
-def decide_live(sel, ctx, history: pd.DataFrame, t, lookback, min_years: int = MIN_YEARS) -> dict:
+WINDOW_COVERAGE = 0.9         # the live window must hold this share of its rank weeks: a hole in the history
+                              # (a skipped holdout walk) would otherwise decide on a fraction of the window
+
+
+def decide_live(sel, ctx, history: pd.DataFrame, t, lookback, min_years: int = MIN_YEARS, filt=None,
+                coverage: float = WINDOW_COVERAGE) -> dict:
     """One rolling decision at rank week t, as the backtest's `decisions`
     makes it: the window [t - lookback years, label_end(t)] of the history
     (from its first week when `lookback` is None), the holdings frame the
-    backtest grades, selection.decide_strategy with the rolling stop menu.
-    Refuses a history shorter than the rule's window."""
+    backtest grades (under the recipe's universe filter, if any),
+    selection.decide_strategy with the rolling stop menu — no book band: the
+    rule as it produced its one look. Refuses a history shorter than the
+    rule's window, or one with fewer than `coverage` of the window's rank
+    weeks (ctx.weeks) present."""
     from stocks_ml.selection import label_end
     t = pd.Timestamp(t)
     history = history.assign(week=pd.to_datetime(history["week"]))
@@ -185,11 +193,75 @@ def decide_live(sel, ctx, history: pd.DataFrame, t, lookback, min_years: int = M
     lo = history.week.min() if lookback is None else t - pd.DateOffset(years=lookback)
     hi = label_end(t, 4)
     h = history[(history.week >= lo) & (history.week <= hi)]
-    hold, _ = sel.ensemble_holdings(ctx, h, [1], HORIZON)
+    want = [w for w in getattr(ctx, "weeks", []) if lo <= w <= hi]
+    if want:
+        have = len(set(h.week.unique()) & set(want))
+        if have < coverage * len(want):
+            raise SystemExit(f"the prediction history holds {have} of the {len(want)} rank weeks of "
+                             f"{lo.date()} -> {hi.date()}: below {coverage:.0%}; the rolling rule needs the whole window")
+    hold, _ = sel.ensemble_holdings(ctx, h, [1], HORIZON, filt=filt)
     hold = hold.sort_values("week").reset_index(drop=True)
     d = sel.decide_strategy(ctx, hold, HORIZON, lo, hi, stop_menu=STOP_MENU_ROLLING)
     return {"decided": str(t.date()), "lo": str(lo.date()), "hi": str(hi.date()), "weeks": int(len(hold)),
             **{c: d[c] for c in COLS}, "evidence": d["evidence"]}
+
+
+HISTORY_FILE = "rolling_history.parquet"     # the live store's prediction history (history_from_walks + append_history)
+
+
+def adopt(choice_path, spec_path, history: str = HISTORY_FILE, log=print) -> dict:
+    """`stocks-ml procedure --lookback ... --adopt`: write the registered
+    choice (choose()'s record) into the spec as its `rolling` block — the
+    rule the live job follows: lookback, cadence, the rolling stop menu, the
+    history file, and the record of how it was chosen and the one look. The
+    spec's `strategy` stays the 2006-2015 fixed decision: the fallback before
+    the first live decision, never in force once the history is long enough."""
+    choice = json.loads(Path(choice_path).read_text())
+    rec = json.loads(Path(choice["inputs"][choice["choice"]]["path"]).read_text())
+    block = {"variant": rec["variant"], "lookback_years": rec["lookback_years"], "cadence": int(rec["cadence"]),
+             "min_years": int(rec["min_years"]), "stop_menu": [None], "history": history,
+             "decision_window": "[t - lookback, label_end(t)] of the prediction history at every cadence-th rank week; "
+                                "selection.decide_strategy (book by cost-adjusted %/yr, then floor and cap by Sharpe); "
+                                "the decision in force is in the ledger (settings) and each signal",
+             "chosen_by": {"code": "stocks_ml.rolling.choose", "path": str(choice_path), "graded_on": choice["graded_on"],
+                           "metric": choice["metric"], "common_weeks": choice["common_weeks"],
+                           "candidates": {n: {k: t[k] for k in ("cagr_pct", "sharpe", "max_dd", "decisions", "changes")}
+                                          for n, t in choice["candidates"].items()},
+                           "choice": choice["choice"]},
+             "one_look": {"window": "2016-2024", "paired_t_rolling_vs_fixed": choice["one_look"]["paired_t_rolling_vs_fixed"],
+                          "rows": {n: r.get("2016-2024") for n, r in choice["one_look"]["rows"].items()},
+                          "decisions": choice["one_look"]["decisions_2016_2024"]},
+             "open_items": ["4- and 6-year lookbacks and cadences other than 4 were not on the menu: a widened menu is "
+                            "a second look at 2016-2024 and needs the owner's go"],
+             "adopted_at": str(pd.Timestamp.now().floor("s"))}
+    spec = json.loads(Path(spec_path).read_text())
+    spec["rolling"] = block
+    Path(spec_path).write_text(json.dumps(spec, indent=1, ensure_ascii=False) + "\n")
+    log(f"rolling: adopted {block['variant']} (lookback {block['lookback_years']}y, every {block['cadence']} rank weeks) "
+        f"into {spec_path} as the live rule; strategy block unchanged (the fallback)")
+    return block
+
+
+def check(spec: dict) -> dict:
+    """`procedure --check` for the rolling block: it must still be the
+    registered choice on its recorded inputs. Returns the disagreements."""
+    block = spec.get("rolling")
+    if not block:
+        return {}
+    out = {}
+    path = Path(block["chosen_by"]["path"])
+    if not path.exists():
+        return {"chosen_by.path": (str(path), "missing")}
+    choice = json.loads(path.read_text())
+    if choice["choice"] != block["variant"]:
+        out["variant"] = (block["variant"], choice["choice"])
+    rec = json.loads(Path(choice["inputs"][choice["choice"]]["path"]).read_text())
+    for k in ("lookback_years", "cadence", "min_years"):
+        if rec[k] != block[k]:
+            out[k] = (block[k], rec[k])
+    if list(block["stop_menu"]) != list(STOP_MENU_ROLLING):
+        out["stop_menu"] = (block["stop_menu"], list(STOP_MENU_ROLLING))
+    return out
 
 
 def follow(sel, ctx, hold: pd.DataFrame, dec: pd.DataFrame) -> pd.Series:
@@ -245,7 +317,8 @@ def run(preds_paths, store: str, lookback, cadence: int = 1, min_years: int = MI
     preds = load_preds(preds_paths)
     k = k or copies_in(preds)
     sel, ctx, _ = context(store)
-    hold = holdings(sel, ctx, preds, range(1, k + 1))
+    from stocks_ml.backtest import record_filter, walk_records
+    hold = holdings(sel, ctx, preds, range(1, k + 1), filt=record_filter(walk_records(preds_paths)))
     name = variant_name(lookback, cadence)
     log(f"rolling: {name} on {hold.week.nunique()} rank weeks {hold.week.min().date()} -> "
         f"{hold.week.max().date()}, K={k}")

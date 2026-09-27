@@ -284,5 +284,110 @@
   "f_evt_insider_buy_2w",
   "f_mkt_dispersion"
  ],
- "train_top": null
+ "train_top": null,
+ "rolling": {
+  "variant": "trailing_3_c4",
+  "lookback_years": 3,
+  "cadence": 4,
+  "min_years": 3,
+  "stop_menu": [
+   null
+  ],
+  "history": "rolling_history.parquet",
+  "decision_window": "[t - lookback, label_end(t)] of the prediction history at every cadence-th rank week; selection.decide_strategy (book by cost-adjusted %/yr, then floor and cap by Sharpe); the decision in force is in the ledger (settings) and each signal",
+  "chosen_by": {
+   "code": "stocks_ml.rolling.choose",
+   "path": "data/experiments/week_label_weekly/rolling/lookback_choice_2010-2015.json",
+   "graded_on": [
+    "2010-01-01",
+    "2015-12-31"
+   ],
+   "metric": "cost-adjusted compounded %/yr of the rule followed",
+   "common_weeks": 313,
+   "candidates": {
+    "trailing_3_c4": {
+     "cagr_pct": 9.85,
+     "sharpe": 0.526,
+     "max_dd": 0.379,
+     "decisions": 203,
+     "changes": 42
+    },
+    "expanding_c4": {
+     "cagr_pct": 4.41,
+     "sharpe": 0.295,
+     "max_dd": 0.425,
+     "decisions": 203,
+     "changes": 21
+    }
+   },
+   "choice": "trailing_3_c4"
+  },
+  "one_look": {
+   "window": "2016-2024",
+   "paired_t_rolling_vs_fixed": 0.95,
+   "rows": {
+    "trailing_3_c4 (rolling)": {
+     "terminal_100": 336.8,
+     "cagr_pct": 15.21,
+     "sharpe": 0.668,
+     "max_dd": 0.4,
+     "n_weeks": 446
+    },
+    "spec settings, fixed": {
+     "terminal_100": 251.2,
+     "cagr_pct": 11.34,
+     "sharpe": 0.52,
+     "max_dd": 0.427,
+     "n_weeks": 446
+    },
+    "sp500": {
+     "terminal_100": 315.7,
+     "cagr_pct": 14.34,
+     "sharpe": 0.867,
+     "max_dd": 0.318,
+     "n_weeks": 446
+    }
+   },
+   "decisions": {
+    "decisions": 111,
+    "changes": 18,
+    "first": "2016-01-29",
+    "last": "2024-07-05",
+    "mode": {
+     "book": "10",
+     "floor": "60/40",
+     "stop": "none",
+     "cap": "none",
+     "vol_cut": "none"
+    },
+    "share_by_layer": {
+     "book": {
+      "10": 0.703,
+      "3": 0.297
+     },
+     "floor": {
+      "60/40": 0.883,
+      "none": 0.081,
+      "70/30": 0.027,
+      "80/20": 0.009
+     },
+     "stop": {
+      "none": 1.0
+     },
+     "cap": {
+      "none": 0.586,
+      "2": 0.414
+     },
+     "vol_cut": {
+      "none": 1.0
+     }
+    },
+    "share_equal_to_spec": 0.0
+   }
+  },
+  "open_items": [
+   "4- and 6-year lookbacks and cadences other than 4 were not on the menu: a widened menu is a second look at 2016-2024 and needs the owner's go"
+  ],
+  "adopted_at": "2026-09-27 11:34:23"
+ }
 }

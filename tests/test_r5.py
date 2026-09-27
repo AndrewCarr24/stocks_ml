@@ -191,3 +191,59 @@ def test_guard_as_of_refuses_history_rewrites():
     r5._guard_as_of(led, D("2026-08-28"), "2026-08-28", True)      # dry runs may look back
     r5._guard_as_of(led, D("2026-09-04"), "2026-09-04", False)     # same-week rerun is fine
     r5._guard_as_of(led, D("2026-09-11"), None, False)             # the scheduled run
+
+
+def test_live_and_backtest_agree_on_the_universe_filter():
+    """One synthetic week: the live path (rank_members -> apply_filter) and the
+    backtest's slice_row(filt=) pick the same names — emulation by construction
+    (both call selection.filter_pool on the same rankable set)."""
+    from stocks_ml.selection import apply_filter, slice_row
+    from tests.test_selection import _filter_world
+    ctx, t, tickers, preds, cl = _filter_world()
+    rule = "x_dollar_vol:0.2:1"
+    prices = cl.drop(columns="SPY").stack().rename("close").reset_index()
+    prices.columns = ["date", "ticker", "close"]
+    ranked = r5.rank_members(preds, prices, t)
+    live = apply_filter(ctx, t, list(ranked.index), rule)[:15]
+    back = slice_row(ctx, t, "4w", preds, filt=rule)["top15"].split(",")
+    assert live == back and live[0] == "T029"
+
+
+def test_live_spec_reads_the_universe_filter(tmp_path):
+    import json
+    from pathlib import Path
+    spec = json.loads(Path("models/champion_spec.json").read_text())
+    spec["universe_filter"] = "x_dollar_vol:0.2:1"
+    spec["procedure"]["model"]["filter"] = "x_dollar_vol:0.2:1"
+    p = tmp_path / "spec.json"; p.write_text(json.dumps(spec))
+    assert r5.load_spec(p)["filter"] == "x_dollar_vol:0.2:1"
+    assert r5.SPEC["filter"] == spec.get("procedure", {}).get("model", {}).get("filter", None) or r5.SPEC["filter"] is None
+
+
+def test_rolling_rule_decides_when_due_and_the_settings_in_force_follow_it(monkeypatch, tmp_path):
+    """The live side of the rolling rule: the week's scores go into the history; a due week decides on
+    the trailing window and the ledger holds the decision (never the evidence); the settings the job
+    trades come from that decision, the spec only before the first one."""
+    import stocks_ml.rolling as roll
+    from stocks_ml.ledger import Ledger
+    calls = []
+    monkeypatch.setitem(r5.SPEC, "rolling", {"lookback_years": 3, "cadence": 4, "min_years": 3, "history": "h.parquet"})
+    monkeypatch.setattr(roll, "append_history", lambda path, t, preds: calls.append(("append", str(path), str(pd.Timestamp(t).date()))) or pd.DataFrame({"week": [pd.Timestamp(t)]}))
+    monkeypatch.setattr(roll, "decide_live", lambda sel, ctx, hist, t, lb, min_years=3, filt=None: {
+        "decided": str(pd.Timestamp(t).date()), "lo": "2023-09-18", "hi": "2026-08-15", "weeks": 150,
+        "book": 10, "floor": "60/40", "stop": None, "cap": None, "vol_cut": None, "evidence": {"book": {"3": 1.0}}})
+    led = Ledger.new(100.0, "2026-09-18")
+    assert r5.settings_in_force(led) == {k: r5.SPEC.get(k) for k in r5.SETTINGS_KEYS}     # before any decision: the spec
+    new = r5.rolling_decision(led, None, tmp_path, "2026-09-18", pd.Series({"A": 0.1}), log=lambda m: None)
+    assert new["book"] == 10 and "evidence" not in led.settings and led.settings["decided"] == "2026-09-18"
+    assert calls == [("append", str(tmp_path / "h.parquet"), "2026-09-18")]
+    assert r5.settings_in_force(led)["book"] == 10
+    assert r5.rolling_decision(led, None, tmp_path, "2026-09-25", pd.Series({"A": 0.1}), log=lambda m: None) is None   # not due
+    assert led.settings["decided"] == "2026-09-18" and len(calls) == 2                   # the history still grows weekly
+    assert r5.rolling_decision(led, None, tmp_path, "2026-10-16", pd.Series({"A": 0.1}), log=lambda m: None)["decided"] == "2026-10-16"
+    led.save(tmp_path / "ledger.json")
+    assert Ledger.load(tmp_path / "ledger.json").settings["book"] == 10                   # persisted for next week
+    md = r5.render_markdown({"date": "2026-10-16", "sleeve_due": 0, "rotated": [], "sleeves": {}, "ballast": {}, "book_fraction": 0.6,
+                             "weights": {}, "nav": 100.0, "spy_nav": 100.0, "cash": 0.0, "held_value": {}, "fills": [], "rebase_factors": {},
+                             "top": [], "n_ranked": 0, "positions": {}, "freshness": {}, "elapsed_s": 1, "settings": led.settings}, {})
+    assert "top-10 four-sleeve stagger" in md and "re-decided by the rolling rule every 4 rank weeks" in md

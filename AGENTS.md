@@ -65,9 +65,12 @@ maps what was removed to where it went.
 - **The paper ledger** (ledger_r5.json, signals_r5/) has run since
   2026-09-01; the first live signal on the rank-label champion will be 2026-09-19.
   Real money waits for the ledger to accumulate.
-- **The holdout (2024-07-19 →)** has never been read. It is graded once, on
-  the owner's go, with the champion frozen; the result never feeds
-  re-selection.
+- **The holdout (2024-07-19 →)** has never been graded. It is graded once,
+  on the owner's go, with the champion frozen; the result never feeds
+  re-selection. Since 2026-09-27 the champion's recipe has been WALKED
+  through it, predictions only (`train --holdout-history`, record marked
+  `holdout_history`), so the live rolling rule has its trailing window;
+  `backtest.load_preds` refuses that walk and any frame reaching the holdout.
 
 ## The tree
 
@@ -123,6 +126,10 @@ uv run stocks-ml app                                                 # reports/c
 uv run stocks-ml world --dir data/<new_world> --top 2000                    # a NEW research world: the top-N universe by market cap at each quarter end, built once
 uv run stocks-ml world --dir data/<w> --top N --derive-from data/<top-M world> [--membership-from data/<store>]   # carve a top-N (or another store's membership: a control) out of a built world; tables shared, panel rebuilt
 uv run stocks-ml world --dir data/<w> --append-sf                            # append the Sharadar columns a frozen panel lacks, after every existing one recomputes exactly
+uv run stocks-ml procedure --lookback <walk>/rolling/*.json --sel-start 2010-01-08 --sel-end 2015-12-31 [--adopt]   # the rolling menu's argmax + its one look; --adopt writes the spec's `rolling` block (the live rule)
+uv run stocks-ml train --holdout-history --start 2024-07-19 --end <panel's last week> ... --out <walk>/holdout_history   # predictions inside the holdout for the rolling rule's window ONLY (marked; never graded; owner's go 2026-09-27)
+uv run stocks-ml world --dir data/<w> --refetch-sec | --refetch-form4 | --append-sec [--replace]   # SEC tables for EVERY name ever (by Sharadar's CIK), then the survivorship-free x_ columns; --replace recomputes the aliases a carved world inherits
+uv run stocks-ml train ... --filter x_dollar_vol:0.2:1+f_vol_12w:0:0.9        # the universe filter (a recipe field, 2026-09-26): col:lo:hi terms — a name is picked only if its within-week percentile of col among the rankable names lies in [lo, hi]; applied when the ranking is read (slice_row and live r5 alike, through selection.filter_pool), recorded in the walk, copied to the spec as universe_filter, never fitted; `challenge --candidate filter=...`
 uv run stocks-ml train ... --refit-every 4                                   # screening cadence: one fit per 4 weeks, every week scored (4 keeps the champion within a point of weekly; 8 loses 3 and reorders — 2026-09-18); the record stays weekly
 uv run stocks-ml challenge --out <dir> --candidate label=L --candidate train_years=N [--candidate "features=a+b"] [--candidate "drop=f_x+f_y"] [--candidate "params=name:v"] [--candidate "store=data/<world>,train_top=500"] [--adjudicate] [--k16]
 uv run stocks-ml challenge-fast --out <dir> --candidate ... [--per-year 26] [--seed 0]   # the prototype: stratified sample, K=16, seed-twin null, ranks only
@@ -153,7 +160,11 @@ comes from the keychain through `git credential fill`; never print it).
    fix the code, never the test.
 2. **The holdout (2024-07-19 onward) is untouchable.** `train`, `backtest`,
    `eval`, `leak_audit` and `app` refuse it in code. It is read once, on the
-   owner's go, after every choice is frozen.
+   owner's go, after every choice is frozen. The one exception (owner's go
+   2026-09-27, "make C the champion"): `train --holdout-history` walks it for
+   the live rolling rule's prediction history — predictions the rule reads
+   to set the book, floor and cap, never a grade; the record is marked and
+   every grader refuses it.
 3. **Selection is mechanical.** A candidate model is a recipe (label,
    window, features, drop, params, and optionally the world it is walked on —
    `store=`, a wider universe scored with that world's own members and
@@ -370,6 +381,38 @@ comes from the keychain through `git credential fill`; never print it).
 - Let the paper ledger accumulate before real money; write the r5
   sizing/kill/promotion contract before any real order.
 - The holdout exam (2024-07-19 →): once, on the owner's go.
+- **The clean top-2000 world (2026-09-26, owner's direction: "expand the
+  universe to 2000 … filter out the bad bets, rank the viable subset").**
+  `data/sharadar_top2000v2_nominal_dl`: the 2026-09-18 top-2000 tables
+  carved again under the current rules — the point-in-time corrupt-series
+  cut (9 cuts; the old world dropped 789 names whole-history, i.e. the
+  bankruptcies a filter is meant to catch), no today's-exchange test, the
+  every-name SEC refetch by Sharadar CIK (the inherited edgar/sec8k tables
+  covered 17-31% of the names that later left vs 95-97% of those that
+  stayed; Form 4 was already SF2-derived: 94% vs 95%). The old world is
+  untouched (its tables stay linked; edgar/sec8k were copied before the
+  refetch). Filters are universe rules — decided on 2006-2015, adjudicated
+  on 2016-2019, never "exclude what went bust" — prototyped by
+  `data/runs/bad_bets.py` (each candidate filter applied before the top-10
+  is taken, scored as the weekly difference to the unfiltered book).
+- **The universe filter (2026-09-26, "try A").** A recipe field, not a
+  strategy layer: `filter=col:lo:hi[+...]` keeps a name only if its
+  within-week percentile of `col` among that week's rankable names lies in
+  [lo, hi]; `selection.filter_pool` is the one rule, called by `slice_row`
+  (backtest, challenge, procedure) and by the live job after
+  `rank_members`, so emulation is by construction (tests/test_r5.py). It
+  acts after the tradability rule and before the ranking is read, so it
+  changes no model score and needs no refit — a filter candidate grades on
+  existing preds — but it changes which names the book can hold, which is
+  why it sits inside what the challenge scores rather than in
+  `decide_strategy`. Recorded in the walk (`recipe.filter`), copied to the
+  spec as `universe_filter` by the procedure, checked by `--check`; the
+  card says it. First read (the top-2000 baseline on 2006-2015 sample
+  weeks, K=4, common weeks with the S&P champion): no filter -1.3, keep
+  dollar-volume percentile ≥ 0.2 +2.9, plus 12-week volatility ≤ 0.9
+  +17.7, vs the champion +23.0 / +4.8 (its two seed sets — K=4 is loud).
+  The two filters were the best of 21 tried on the same picks, so the
+  2006-2015 gain is the selection step; 2016-2019 is the test.
 - Not started, owner's call: the `ls_w8_x` arm (the package with 16
   engineered features — a K=16 walk would be a second read of 2016-2024);
   a taxable post-tax table (the account is a Roth, so post-tax = pre-tax

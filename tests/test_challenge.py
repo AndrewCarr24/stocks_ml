@@ -80,7 +80,7 @@ def test_run_samples_advances_three_compares_audits_and_records(tmp_path, monkey
     walked = []
 
     def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
-                  workers=1, drop=(), train_top=None, refit_every=1, copies=None):
+                  workers=1, drop=(), train_top=None, refit_every=1, copies=None, filt=None):
         walked.append((label, train_years, k, every, Path(out).name, tuple(features), params))
         return _walk(Path(out) / "preds.parquet", weeks[::every], k, first=copies.start if copies else 1)
     monkeypatch.setattr(ch, "walk", fake_walk)
@@ -88,7 +88,7 @@ def test_run_samples_advances_three_compares_audits_and_records(tmp_path, monkey
     score = {"label_4w_sector_rank_8y": 11.0, "label_4w_sector_log_8y": 6.1,
              "label_4w_sector_clip_8y": 4.0, "label_4w_sector_5y": 2.0, "incumbent": 6.75}
 
-    def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None):
+    def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None, filts=None):
         H = {n: pd.DataFrame({"week": weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}) for n in walks}
         return {n: {3: score[n], 6: score[n], 10: score[n]} for n in walks}, H, len(weeks)
     monkeypatch.setattr(ch, "metrics_on_common", fake_metrics)
@@ -147,7 +147,7 @@ def test_leak_audit_failure_removes_a_candidate_from_the_argmax(tmp_path, monkey
     monkeypatch.setattr(ch, "context", lambda store: (None, SimpleNamespace(weeks=weeks), 64))
     monkeypatch.setattr(ch, "walk", lambda store, lo, hi, label, ty, k, out, every=1, copies=None, **kw:
                         _walk(Path(out) / "preds.parquet", weeks[::every], k, first=copies.start if copies else 1))
-    monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None:
+    monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None, filts=None:
                         ({n: {b: (9.0 if n != "incumbent" else 5.0) for b in (3, 6, 10)} for n in walks},
                          {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks},
                          len(weeks)))
@@ -190,7 +190,7 @@ def test_run_fast_walks_the_sample_flags_by_the_null_and_prints_the_promotion(tm
     walked = []
 
     def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
-                  weeks=None, sample=None, workers=1, copies=None, drop=(), train_top=None, refit_every=1):
+                  weeks=None, sample=None, workers=1, copies=None, drop=(), train_top=None, refit_every=1, filt=None):
         walked.append((label, k, Path(out).name, len(weeks), sample))
         return _walk(Path(out) / "preds.parquet", weeks, k)
     monkeypatch.setattr(ch, "walk", fake_walk)
@@ -200,7 +200,7 @@ def test_run_fast_walks_the_sample_flags_by_the_null_and_prints_the_promotion(tm
     monkeypatch.setattr(ch, "null_gaps", lambda *a, **k: null)
     score = {"label_4w_sector_rank_8y": 8.0, "label_4w_sector_log_8y": 3.0, "label_4w_sector_clip_8y": -2.0,
              "incumbent": 1.0, "incumbent (twin seeds)": 2.0}            # the luckier seed set is the bar
-    monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None:
+    monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None, filts=None:
                         ({n: {3: score[n], 6: score[n], 10: score[n]} for n in walks},
                          {n: pd.DataFrame({"week": weeks[:5], "top3": 0.02, "top6": 0.02, "top10": 0.02,
                                            "rand_mean": 0.01}) for n in walks}, 5))
@@ -251,12 +251,12 @@ def test_run_walks_and_scores_a_store_candidate_on_its_own_world(tmp_path, monke
     monkeypatch.setattr(ch, "context", fake_context)
     walked = []
     def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
-                  workers=1, drop=(), train_top=None, refit_every=1, copies=None):
+                  workers=1, drop=(), train_top=None, refit_every=1, copies=None, filt=None):
         walked.append((store, k, every, Path(out).name))
         return _walk(Path(out) / "preds.parquet", weeks[::every], k, first=copies.start if copies else 1)
     monkeypatch.setattr(ch, "walk", fake_walk)
     seen_ctx = {}
-    def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None):
+    def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None, filts=None):
         key = k if isinstance(k, int) else max(k.values())            # stage 2 passes {name: copies}
         seen_ctx[key] = {n: (ctxs or {}).get(n, ctx_).name for n in walks}
         H = {n: pd.DataFrame({"week": weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}) for n in walks}
@@ -296,7 +296,7 @@ def test_run_resumes_a_complete_select_walk(tmp_path, monkeypatch):
         dst = Path(out) / "preds.parquet"
         return dst if dst.exists() else _walk(dst, weeks, k, first=copies.start if copies else 1)
     monkeypatch.setattr(ch, "walk", fake_walk)
-    monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None: (
+    monkeypatch.setattr(ch, "metrics_on_common", lambda sel, c, walks, k, lo=None, hi=None, ctxs=None, filts=None: (
         {n: {3: 1.0, 6: 1.0, 10: 1.0} for n in walks},
         {n: pd.DataFrame({"week": weeks, "top3": 0.0, "top6": 0.0, "top10": 0.0}) for n in walks}, len(weeks)))
     monkeypatch.setattr(ch, "copy_metrics", lambda *a, **k: [1.0])
@@ -322,7 +322,7 @@ def test_adjudicate_walks_the_twin_and_the_candidate_on_the_window_and_decides(t
         walked.append((store, str(lo.date()), str(hi.date()), k, Path(out).name, None if copies is None else list(copies)))
         return _walk(Path(out) / "preds.parquet", adj_weeks, k, first=1 if copies is None else copies.start)
     monkeypatch.setattr(ch, "walk", fake_walk)
-    def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None):
+    def fake_metrics(sel, ctx_, walks, k, lo=None, hi=None, ctxs=None, filts=None):
         sc = {"incumbent": 8.0, "incumbent (twin seeds)": 9.0}
         H = {n: pd.DataFrame({"week": adj_weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}) for n in walks}
         return {n: {3: sc.get(n, 12.0), 6: sc.get(n, 12.0), 10: sc.get(n, 12.0)} for n in walks}, H, len(adj_weeks)
@@ -363,7 +363,7 @@ def test_window_table_scores_each_model_at_its_own_settings_with_the_sp500_row(t
     ctx_a = SimpleNamespace(weeks=sel_weeks + adj_weeks, name="a", wret={"SPY": spy})
     ctx_b = SimpleNamespace(weeks=sel_weeks + adj_weeks, name="b")
     decided = []
-    monkeypatch.setattr(bt, "holdings", lambda sel, ctx_, p, copies: pd.DataFrame({"week": sel_weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}))
+    monkeypatch.setattr(bt, "holdings", lambda sel, ctx_, p, copies, filt=None: pd.DataFrame({"week": sel_weeks, "top3": 0.01, "top6": 0.01, "top10": 0.01}))
     monkeypatch.setattr(bt, "own_settings", lambda sel, ctx_, h, lo=None, hi=None, **kw: (decided.append(ctx_.name),
                                                                                 {"book": 3 if ctx_.name == "a" else 6, "floor": "halfgate", "stop": None, "cap": 2, "vol_cut": None})[1])
     monkeypatch.setattr(bt, "simulate_holdings", lambda sel, ctx_, h, st: pd.Series(0.002 if st["book"] == 3 else 0.001, index=pd.DatetimeIndex(adj_weeks)))
@@ -437,3 +437,42 @@ def test_incumbent_recipe_refuses_a_stale_yardstick(tmp_path):
     (w2 / "spec.json").write_text(json.dumps({"recipe": {"label": "label_4w_sector_rank", "train_years": 8,
                                                          "features": ["x_dollar_vol"], "drop": ["f_dollar_vol"]}}))
     assert ch.incumbent_recipe(w2 / "preds.parquet", spec_path=sp)["features"] == ["x_dollar_vol"]
+
+
+def test_candidate_filter_is_a_recipe_field():
+    c = ch.parse_candidate("filter=x_dollar_vol:0.2:1+f_vol_12w:0:0.9", BASE)
+    assert c["filter"] == "x_dollar_vol:0.2:1+f_vol_12w:0:0.9"
+    assert ch.candidate_name(c) != ch.candidate_name(ch.parse_candidate("", BASE))
+    assert ch.candidate_text(c, BASE) == "filter=x_dollar_vol:0.2:1+f_vol_12w:0:0.9"
+    assert "filter" not in ch.parse_candidate("", BASE)
+
+
+def test_filter_candidates_share_one_fit_walk(tmp_path, monkeypatch):
+    """Two candidates that differ only in their universe filter fit once: the second reads the
+    first's walk through a link, each with a record naming its own filter."""
+    import json
+    fitted = []
+
+    def fake_walk(store, lo, hi, label, train_years, k, out, every=1, log=None, features=(), params=None,
+                  workers=1, drop=(), train_top=None, refit_every=1, copies=None, filt=None, weeks=None, sample=None):
+        out = Path(out); out.mkdir(parents=True, exist_ok=True)
+        if not (out / "preds.parquet").exists():
+            fitted.append(out.parent.name)
+            pd.DataFrame({"week": [pd.Timestamp("2010-01-08")] * 2, "ticker": ["A", "B"], "c1": [0.1, 0.2]}).to_parquet(out / "preds.parquet")
+            (out / "spec.json").write_text(json.dumps({"recipe": ch.recipe(label, train_years, features, params, drop, train_top, filt), "k": k}))
+        return out / "preds.parquet"
+    monkeypatch.setattr(ch, "walk", fake_walk)
+    worlds = SimpleNamespace(store_of=lambda c: "w")
+    base = {"label": "label_4w", "train_years": 8}
+    plain = ch.parse_candidate("", base)
+    liq = ch.parse_candidate("filter=x_dollar_vol:0.2:1", base)
+    both = ch.parse_candidate("filter=x_dollar_vol:0.2:1+f_vol_12w:0:0.9", base)
+    out = tmp_path / "ch"
+    paths = {ch.candidate_name(c): ch.fit_walk(worlds, ch.candidate_name(c), c, out, "select", "2006-01-01", "2015-12-31", 4, workers=1)
+             for c in (plain, liq, both)}
+    assert fitted == [ch.candidate_name(plain)]                       # one fit for three candidates
+    for c in (liq, both):
+        p = paths[ch.candidate_name(c)]
+        assert p.is_symlink() and pd.read_parquet(p).shape[0] == 2
+        assert json.loads((p.parent / "spec.json").read_text())["recipe"]["filter"] == c["filter"]
+    assert "filter" not in json.loads((paths[ch.candidate_name(plain)].parent / "spec.json").read_text())["recipe"]

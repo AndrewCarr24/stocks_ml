@@ -53,7 +53,8 @@ def walk_recipe(preds_path: Path) -> dict:
                            f"train on (selection.LABELS_4W knows {tuple(LABELS_4W)})")
     return {"label": rec["label"], "train_years": int(rec["train_years"]),
             "features": list(rec.get("features") or []), "params": dict(rec.get("params") or {}),
-            "drop": list(rec.get("drop") or []), "train_top": rec.get("train_top"), "record": str(rec_path)}
+            "drop": list(rec.get("drop") or []), "train_top": rec.get("train_top"),
+            "filter": rec.get("filter"), "record": str(rec_path)}
 
 
 def model_params(model: dict) -> dict:
@@ -118,6 +119,9 @@ def live_strategy(spec: dict) -> dict:
     if spec.get("train_top") != model.get("train_top"):
         raise RuntimeError(f"spec train_top {spec.get('train_top')} but the procedure's recipe has "
                            f"{model.get('train_top')}: the spec was edited by hand; run stocks-ml procedure")
+    if spec.get("universe_filter") != model.get("filter"):
+        raise RuntimeError(f"spec universe_filter {spec.get('universe_filter')!r} but the procedure's recipe has "
+                           f"{model.get('filter')!r}: the spec was edited by hand; run stocks-ml procedure")
     if list(spec.get("drop_features") or []) != list(model.get("drop") or []):
         raise RuntimeError(f"spec drop_features {spec.get('drop_features')} but the procedure's recipe has "
                            f"{model.get('drop')}: the spec was edited by hand; run stocks-ml procedure")
@@ -131,7 +135,7 @@ def live_strategy(spec: dict) -> dict:
                            f"(selection.LABELS_4W knows {tuple(LABELS_4W)})")
     return {"horizon": HORIZON, "label": model["label"], "train_years": int(model["train_years"]),
             "book": int(st["book_size"]), "cap": st["sector_cap"], "floor": live_floor(spec),
-            "vol_cut": st.get("vol_cut")}
+            "vol_cut": st.get("vol_cut"), "filter": spec.get("universe_filter")}
 
 
 def load_walk(preds_path: Path, k: int, weeks: list, lo, hi, copies=None) -> pd.DataFrame:
@@ -162,7 +166,7 @@ def load_walk(preds_path: Path, k: int, weeks: list, lo, hi, copies=None) -> pd.
 BAND_DRAWS = 40   # random half-ensembles behind the book bands (challenge.BAND_DRAWS)
 
 
-def book_bands(sel, ctx, preds: pd.DataFrame, copies, lo, hi, draws: int = BAND_DRAWS) -> dict:
+def book_bands(sel, ctx, preds: pd.DataFrame, copies, lo, hi, draws: int = BAND_DRAWS, filt=None) -> dict:
     """The seed sd of the DIFFERENCE between each pair of books' metrics
     across `draws` random half-ensembles of `copies`, scaled to the full
     ensemble (/sqrt 2, as challenge.seed_band): what decide_book reads a
@@ -176,7 +180,7 @@ def book_bands(sel, ctx, preds: pd.DataFrame, copies, lo, hi, draws: int = BAND_
     rows = []
     for _ in range(draws):
         sub = sorted(rng.choice(copies, max(2, len(copies) // 2), replace=False))
-        m = selection_metric(sel, holdings(sel, ctx, preds, sub), lo, hi)
+        m = selection_metric(sel, holdings(sel, ctx, preds, sub, filt=filt), lo, hi)
         rows.append({b: m.get(b, float("nan")) for b in sel.BOOKS})
     d = pd.DataFrame(rows)
     books = sorted(sel.BOOKS)
@@ -209,9 +213,12 @@ def decide(preds_path, store=STORE, k=None, lo=SELECT[0], hi=SELECT[1], log=prin
         f"{preds.week.nunique()} rank weeks {preds.week.min().date()} -> {preds.week.max().date()} on {store} "
         f"(price_basis {ctx.cfg.price_basis}, delist_labels {ctx.delist_labels}); "
         f"walk recipe {model['label']} / {model['train_years']}y from {model['record']}")
-    hold, _ = sel.ensemble_holdings(ctx, preds, copies, HORIZON)
+    filt = model.get("filter")                     # the recipe's universe filter: the book is picked from what passes it
+    if filt:
+        log(f"procedure: universe filter {filt} (the recipe's; applied before the ranking is read, as live applies it)")
+    hold, _ = sel.ensemble_holdings(ctx, preds, copies, HORIZON, filt=filt)
     hold = hold.sort_values("week").reset_index(drop=True)
-    band = book_bands(sel, ctx, preds, copies, lo, hi)
+    band = book_bands(sel, ctx, preds, copies, lo, hi, filt=filt)
     log(f"procedure: book bands (seed sd of the pair's difference, K={len(copies)}): "
         + ", ".join(f"{k_} ±{v}" for k_, v in band.items() if "-" in k_) + f"; a smaller book needs {sel.BOOK_BAND_Z}x that")
     layers = sel.decide_strategy(ctx, hold, HORIZON, lo, hi, book_band=band)
@@ -261,6 +268,7 @@ def apply(spec: dict, proc: dict) -> dict:
     spec["features"] = list(proc["model"].get("features") or [])
     spec["drop_features"] = list(proc["model"].get("drop") or [])
     spec["train_top"] = proc["model"].get("train_top")
+    spec["universe_filter"] = proc["model"].get("filter")
     spec["model"]["params"] = model_params(proc["model"])
     spec["strategy"]["book_size"] = dec["book_size"]
     spec["strategy"]["stop_loss"] = dec["stop_loss"]
@@ -286,6 +294,8 @@ def drift(spec: dict, proc: dict) -> dict:
         out["features"] = (feats, proc["model"].get("features") or [])
     if spec.get("train_top") != proc["model"].get("train_top"):
         out["train_top"] = (spec.get("train_top"), proc["model"].get("train_top"))
+    if spec.get("universe_filter") != proc["model"].get("filter"):
+        out["universe_filter"] = (spec.get("universe_filter"), proc["model"].get("filter"))
     dropped = list(spec.get("drop_features") or [])
     if dropped != list(proc["model"].get("drop") or []):
         out["drop_features"] = (dropped, proc["model"].get("drop") or [])

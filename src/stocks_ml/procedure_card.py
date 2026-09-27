@@ -36,7 +36,7 @@ not this file). Rationale and history: AGENTS.md.
 | Ensemble | K={k_copies} copies (random_state + whole-week bootstrap), predictions averaged |
 | Book | top-{book_size}, equal weight, {sleeves} staggered sleeves rotating weekly, {hold_weeks}-week holds; weekly re-leveling; {cap_summary}; {stop_summary} |
 | Ballast | {ballast_row} |
-| Decided by | `stocks-ml procedure` on {proc_preds} (K={proc_k}, {proc_weeks} rank weeks of {proc_lo} -> {proc_hi}, world {proc_world}), {proc_at}: book {proc_book} / floor {proc_floor} / stop {proc_stop} / cap {proc_cap}; model fields from the walk's own record: {proc_label} / {proc_years}-year window — tests hold the spec's model and strategy fields and the live job to this record |
+{rolling_row}| Decided by | `stocks-ml procedure` on {proc_preds} (K={proc_k}, {proc_weeks} rank weeks of {proc_lo} -> {proc_hi}, world {proc_world}), {proc_at}: book {proc_book} / floor {proc_floor} / stop {proc_stop} / cap {proc_cap}; model fields from the walk's own record: {proc_label} / {proc_years}-year window — tests hold the spec's model and strategy fields and the live job to this record |
 | Honest expectation | {honest_expectation} |
 
 ## Cadences
@@ -70,7 +70,43 @@ procedure: {inflation}.
 """
 
 
+def rolling_words(s: dict) -> str | None:
+    """The live rule, when the spec carries one (rolling.adopt)."""
+    r = s.get("rolling")
+    if not r:
+        return None
+    ol = (r.get("one_look") or {}).get("rows") or {}
+    look = next((v for k, v in ol.items() if "rolling" in k), None)
+    spy = ol.get("sp500")
+    return (f"the book, floor and cap above are the 2006-2015 decision, the FALLBACK: live, the settings are "
+            f"re-decided every {r['cadence']} rank weeks by `selection.decide_strategy` on the trailing "
+            f"{r['lookback_years']} years of the champion's own prediction history (`{r['history']}`; stop never on the "
+            f"menu); the decision in force is in the ledger and each signal. Chosen by `stocks_ml.rolling.choose` on "
+            f"{'-'.join(x[:4] for x in r['chosen_by']['graded_on'])} ({r['variant']} "
+            f"{r['chosen_by']['candidates'][r['variant']]['cagr_pct']:+.1f}%/yr vs "
+            + ", ".join(f"{n} {t['cagr_pct']:+.1f}" for n, t in r['chosen_by']['candidates'].items() if n != r['variant'])
+            + f"); one look 2016-2024: ${look['terminal_100']:,.0f}, {look['cagr_pct']:+.1f}%/yr, SR {look['sharpe']:.2f}, "
+              f"DD {look['max_dd']:.0%} vs S&P 500 ${spy['terminal_100']:,.0f}, {spy['cagr_pct']:+.1f}%/yr"
+            if look and spy else ")")
+
+
+def rolling_row(s: dict) -> str:
+    w = rolling_words(s)
+    return f"| Live rule | {w} |\n" if w else ""
+
+
 def features_summary(s: dict) -> str:
+    """The model's inputs (columns_summary), plus the recipe's universe
+    filter when the spec carries one."""
+    out = columns_summary(s)
+    if s.get("universe_filter"):
+        out += (f"; universe filter `{s['universe_filter']}` (col:lo:hi — a name is picked only if its within-week "
+                "percentile of that column among the rankable names lies in [lo, hi]; applied by the backtest and "
+                "the live job alike before the ranking is read; never fitted)")
+    return out
+
+
+def columns_summary(s: dict) -> str:
     """The model's inputs: the panel's standing f_ columns plus any extra
     panel columns the spec names (`features`; none since 2026-09-11)."""
     feats = s.get("features") or []
@@ -146,6 +182,7 @@ def render(spec: dict, today: str | None = None) -> str:
         cap_summary=cap_summary,
         stop_summary=stop_summary,
         ballast_row=ballast_row(s),
+        rolling_row=rolling_row(s),
         proc_preds=proc["preds"]["path"], proc_k=proc["k_copies"],
         proc_weeks=proc["preds"]["rank_weeks"], proc_lo=proc["selection_window"][0],
         proc_hi=proc["selection_window"][1], proc_world=proc["world"], proc_at=proc["decided_at"],
@@ -191,6 +228,7 @@ def champion_block(spec: dict, ev: dict) -> str:
     cap = f"at most {st['sector_cap']} per sector" if st["sector_cap"] else "no sector cap"
     stop = (f"stop-loss at {st['stop_loss']:.0%}" if st["stop_loss"] else "no stop-loss") + "; " + VOL_CUT_WORDS[st.get("vol_cut")]
     feats = f" plus {len(s.get('features') or [])} named columns" if s.get("features") else ""
+    feats += f"; universe filter {s['universe_filter']} (names outside it are never picked)" if s.get("universe_filter") else ""
     settings = [
         "| Component | Setting |", "|---|---|",
         f"| Model | {s['model']['summary']} (`selection.MODEL_PARAMS`) |",
@@ -203,6 +241,7 @@ def champion_block(spec: dict, ev: dict) -> str:
         f"| Book | top-{st['book_size']} per sleeve, equal weight, {st['sleeves']} staggered sleeves — one "
         f"rotates each week, so every name is held {st['hold_weeks']} weeks; {cap}; {stop} |",
         f"| Ballast | {ballast_row(s)} |",
+        *([f"| Live rule | {rolling_words(s)} |"] if s.get("rolling") else []),
         f"| Costs | {s['costs_assumed_bps_oneway']} bp one-way, fills at the next session's open |"]
     lab = ev["label"]
     tab = ev["table"]

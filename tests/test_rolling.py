@@ -150,7 +150,7 @@ def test_decide_live_reads_the_trailing_window_and_the_rolling_stop_menu(monkeyp
     weeks = pd.date_range("2016-01-08", "2026-09-18", freq="W-FRI")
     hist = pd.DataFrame({"week": np.repeat(weeks, 2), "ticker": ["A", "B"] * len(weeks), "c1": 1.0})
     seen = {}
-    def fake_hold(ctx, preds, copies, horizon):
+    def fake_hold(ctx, preds, copies, horizon, filt=None):
         seen["copies"], seen["weeks"] = list(copies), sorted(preds.week.unique())
         return pd.DataFrame({"week": sorted(preds.week.unique()), "top3": 0.01, "top6": 0.01, "top10": 0.01}), {}
     def fake_decide(ctx, hold, horizon, lo, hi, book_band=None, stop_menu=None):
@@ -164,3 +164,48 @@ def test_decide_live_reads_the_trailing_window_and_the_rolling_stop_menu(monkeyp
     assert d["book"] == 10 and d["decided"] == "2026-09-18" and d["weeks"] == len(seen["weeks"])
     with pytest.raises(SystemExit, match="shorter than the 3-year window"):
         roll.decide_live(fake_sel, None, hist[hist.week >= "2025-01-01"], "2026-09-18", 3)
+
+
+def test_decide_live_refuses_a_window_with_a_hole_and_passes_the_filter(monkeypatch):
+    weeks = pd.date_range("2016-01-08", "2026-09-18", freq="W-FRI")
+    hist = pd.DataFrame({"week": np.repeat(weeks, 2), "ticker": ["A", "B"] * len(weeks), "c1": 1.0})
+    seen = {}
+    def fake_hold(ctx, preds, copies, horizon, filt=None):
+        seen["filt"] = filt
+        return pd.DataFrame({"week": sorted(preds.week.unique()), "top3": 0.01, "top6": 0.01, "top10": 0.01}), {}
+    def fake_decide(ctx, hold, horizon, lo, hi, book_band=None, stop_menu=None):
+        return {"book": 10, "floor": "60/40", "stop": None, "cap": None, "vol_cut": None, "evidence": {}}
+    fake_sel = SimpleNamespace(ensemble_holdings=fake_hold, decide_strategy=fake_decide)
+    ctx = SimpleNamespace(weeks=list(weeks))
+    d = roll.decide_live(fake_sel, ctx, hist, "2026-09-18", 3, filt="x_dollar_vol:0.2:1")
+    assert d["book"] == 10 and seen["filt"] == "x_dollar_vol:0.2:1"
+    hole = hist[(hist.week < "2024-07-19") | (hist.week > "2026-06-01")]     # a skipped holdout walk
+    with pytest.raises(SystemExit, match="below 90%"):
+        roll.decide_live(fake_sel, ctx, hole, "2026-09-18", 3)
+
+
+def test_adopt_writes_the_registered_choice_into_the_spec_and_check_sees_drift(tmp_path):
+    import json
+    rec = {"variant": "trailing_3_c4", "lookback_years": 3, "cadence": 4, "min_years": 3}
+    (tmp_path / "trailing_3_c4.json").write_text(json.dumps(rec))
+    choice = {"choice": "trailing_3_c4", "graded_on": ["2010-01-01", "2015-12-31"], "metric": "x", "common_weeks": 313,
+              "candidates": {"trailing_3_c4": {"cagr_pct": 9.85, "sharpe": 0.53, "max_dd": 0.38, "decisions": 203, "changes": 42, "first": "2009-01-09"},
+                             "expanding_c4": {"cagr_pct": 4.41, "sharpe": 0.3, "max_dd": 0.43, "decisions": 203, "changes": 21, "first": "2009-01-09"}},
+              "one_look": {"paired_t_rolling_vs_fixed": 0.95, "decisions_2016_2024": {"changes": 18},
+                           "rows": {"trailing_3_c4 (rolling)": {"2016-2024": {"terminal_100": 336.8, "cagr_pct": 15.21, "sharpe": 0.668, "max_dd": 0.4}},
+                                    "sp500": {"2016-2024": {"terminal_100": 315.7, "cagr_pct": 14.34, "sharpe": 0.87, "max_dd": 0.32}}}},
+              "inputs": {"trailing_3_c4": {"path": str(tmp_path / "trailing_3_c4.json")}}}
+    cp = tmp_path / "lookback_choice_2010-2015.json"; cp.write_text(json.dumps(choice))
+    spec_path = tmp_path / "spec.json"; spec_path.write_text(json.dumps({"strategy": {"book_size": 3}}))
+    block = roll.adopt(cp, spec_path, log=lambda m: None)
+    spec = json.loads(spec_path.read_text())
+    assert spec["strategy"] == {"book_size": 3}                       # the fallback is untouched
+    assert spec["rolling"]["variant"] == "trailing_3_c4" and spec["rolling"]["cadence"] == 4
+    assert spec["rolling"]["stop_menu"] == [None] and spec["rolling"]["history"] == roll.HISTORY_FILE
+    assert spec["rolling"]["one_look"]["rows"]["sp500"]["cagr_pct"] == 14.34
+    assert roll.check(spec) == {}
+    spec["rolling"]["cadence"] = 1                                      # a hand edit
+    assert roll.check(spec) == {"cadence": (1, 4)}
+    from stocks_ml.procedure_card import rolling_words
+    w = rolling_words(spec)
+    assert "trailing 3 years" in w and "$337" in w and "S&P 500 $316" in w

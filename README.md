@@ -27,6 +27,7 @@ edited by hand.
 | Features | the point-in-time panel's `f_` columns: prices, fundamentals, filings, insider trades, short interest, macro plus 9 named columns |
 | Book | top-10 per sleeve, equal weight, 4 staggered sleeves — one rotates each week, so every name is held 4 weeks; at most 2 per sector; no stop-loss; no volatility cut |
 | Ballast | halfgate: book 100/83/67/50% of NAV by SPY trend gates down (30/40/52w), rest IEF — the book shrinks one sixth of NAV per breached SPY trailing MA, the freed money sits in IEF (no fixed SPY ballast) |
+| Live rule | the book, floor and cap above are the 2006-2015 decision, the FALLBACK: live, the settings are re-decided every 4 rank weeks by `selection.decide_strategy` on the trailing 3 years of the champion's own prediction history (`rolling_history.parquet`; stop never on the menu); the decision in force is in the ledger and each signal. Chosen by `stocks_ml.rolling.choose` on 2010-2015 (trailing_3_c4 +9.8%/yr vs expanding_c4 +4.4); one look 2016-2024: $337, +15.2%/yr, SR 0.67, DD 40% vs S&P 500 $316, +14.3%/yr |
 | Costs | 5 bp one-way, fills at the next session's open |
 
 **Record** (`stocks-ml eval`, [reports/champion_eval.md](reports/champion_eval.md), 2026-09-25), $100 at the start of each span, costs included, holdout excluded:
@@ -96,7 +97,10 @@ columns (`features=a+b`), admitted columns withheld (`drop=f_x+f_y`),
 overrides of the model parameters, another world to walk on
 (`store=data/<world>`, e.g. the top-2000 universe built by
 `stocks-ml world --dir <world> --top 2000`), or a training universe
-(`train_top=500`: fit on the largest 500 names, score every member) —
+(`train_top=500`: fit on the largest 500 names, score every member), or a
+universe filter (`filter=x_dollar_vol:0.2:1`: a name is picked only if its
+within-week dollar-volume percentile is at least 0.2 — applied when the
+ranking is read, by the backtest and the live job alike, never fitted) —
 anything `train` can walk. Fields you don't name come from the incumbent's
 recipe. `--adjudicate` adds the head-to-head on 2016-2019: the incumbent
 was selected on 2006-2015 and its score there is inflated, so the
@@ -201,14 +205,25 @@ done
 stocks-ml procedure --lookback $W/rolling/*.json --sel-start 2010-01-08 --sel-end 2015-12-31
 ```
 
-Run on 2026-09-13 (ledger `rolling_lookback_2010-2015_trailing_5_c1`): the
-trailing rules change their mind every 5–7 weeks and almost never land on
-the champion's configuration; on 2010–2015 every rule, and the fixed
-settings too, trailed the S&P 500. The chosen rule (trailing 5 years) read
-$610 (+23.5%/yr, SR 0.89, DD 41%) on 2016–2024 against the fixed settings'
-$660 (+24.6%, 0.88, 33%), paired weekly t −0.35: the layers are within
-noise of each other, and the model, not the layers, carries the edge. The
-spec stays fixed.
+Run on 2026-09-13 on the previous (leaky) champion, the layers were within
+noise of each other and the spec stayed fixed. Re-run on 2026-09-25 on the
+clean week-label champion (ledger `rolling_lookback_2010-2015_trailing_3_c4`,
+a two-way menu: trailing 3 years vs expanding, decided every 4 rank weeks,
+the stop never on the menu): trailing 3 years won 2010–2015 (+9.9%/yr vs
++4.4), and its one look at 2016–2024 read $337 (+15.2%/yr, SR 0.67, DD 40%)
+against the fixed settings' $251 (+11.3%) and the S&P 500's $316 (+14.3%),
+paired weekly t +0.95 vs fixed. **Adopted 2026-09-27 as the live rule**
+(`stocks-ml procedure --lookback ... --adopt` writes the spec's `rolling`
+block; `--check` holds it to the registered choice): the live job appends
+its weekly ensemble scores to the store's prediction history
+(`rolling_history.parquet`, seeded from the champion's walks plus a
+predictions-only walk through the holdout — `train --holdout-history`, a
+record no grader will read) and, every 4 rank weeks, re-decides the book,
+floor and cap on the trailing 3 years exactly as the backtest did
+(`rolling.decide_live`); the decision in force lives in the ledger and each
+signal, and the spec's `strategy` block is only the fallback before the
+first decision. 4- and 6-year lookbacks and other cadences were not on the
+menu: widening it is a second look at 2016–2024 and needs the owner's go.
 
 ## The weekly job
 
@@ -223,12 +238,16 @@ spec stays fixed.
 2. **Rebuild the panel** with the research recipe, then fit the 16-copy
    ensemble on the spec's label and window and rank every current member —
    the same code `stocks-ml train` runs for one week.
-3. **Rotate the due sleeve**, set the ballast state from SPY's trailing
-   means, write target weights.
-4. **Keep the paper ledger** ([ledger_r5.json](ledger_r5.json)): fill last
+3. **Re-decide the settings** when due: the week's scores join the store's
+   prediction history, and every 4 rank weeks the rolling rule decides the
+   book, floor and cap on the trailing 3 years (the spec's `rolling` block);
+   the ledger holds the decision in force.
+4. **Rotate the due sleeve** at those settings, set the ballast state from
+   SPY's trailing means, write target weights.
+5. **Keep the paper ledger** ([ledger_r5.json](ledger_r5.json)): fill last
    week's targets at Monday's open, sells before buys, 5 bp each way, never
    overdrawn; mark NAV at Friday's close against SPY from the same $100.
-5. **Commit** `signals_r5/<friday>.md` (the book with per-name deltas, the
+6. **Commit** `signals_r5/<friday>.md` (the book with per-name deltas, the
    sleeves, the top-15 candidates, data freshness) and the ledger.
 
 A run fails loudly rather than signal on stale data. Manual runs
@@ -258,9 +277,12 @@ were fetched through the SEC's current-ticker map, i.e. for today's index
 members, so a 2016 row carried fundamentals only if the company was still in
 the index in 2026 — a look-ahead worth most of the old champion's
 out-of-sample record. They are now fetched by Sharadar's CIK for every name
-that was ever a member (`world --refetch-sec`, `--refetch-form4`), and
-`leak_audit.coverage_by_survival` checks per table, per year, that names
-which later left are covered as well as names that stayed.
+that was ever a member (`world --refetch-sec`, `--refetch-form4`, then
+`--append-sec` for the recomputed x_ columns — `--append-sec --replace` on a
+world carved from an older one, whose x_ columns are aliases of the
+inherited survivor-only features), and `leak_audit.coverage_by_survival`
+checks per table, per year, that names which later left are covered as
+well as names that stayed.
 
 Point-in-time rules: membership is effective-dated; filings become usable
 the next calendar day; FINRA and macro observations carry their publication

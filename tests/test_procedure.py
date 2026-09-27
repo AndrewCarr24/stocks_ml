@@ -181,7 +181,7 @@ def test_walk_recipe_is_read_from_the_record_beside_the_walk(tmp_path):
     with pytest.raises(RuntimeError, match="cannot train on"):
         walk_recipe(preds)
     rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8}}))
-    assert walk_recipe(preds) == {"label": "label_4w_sector", "train_years": 8, "features": [],
+    assert walk_recipe(preds) == {"label": "label_4w_sector", "train_years": 8, "features": [], "filter": None,
                                   "params": {}, "drop": [], "train_top": None, "record": str(rec)}
     rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w_sector", "train_years": 8,
                                                    "features": ["x_a"], "params": {"max_depth": 4}}}))
@@ -289,7 +289,7 @@ def test_book_bands_are_the_seed_sd_of_each_pairs_difference(monkeypatch):
     import stocks_ml.backtest as bt
     rng = np.random.default_rng(1)
     drawn = []
-    monkeypatch.setattr(bt, "holdings", lambda sel_, ctx, preds, copies: list(copies))
+    monkeypatch.setattr(bt, "holdings", lambda sel_, ctx, preds, copies, filt=None: list(copies))
     def fake_metric(sel_, sub, lo, hi):
         drawn.append(len(sub)); base = rng.normal(0, 1)
         return {3: 10 + base + rng.normal(0, 2), 6: 11 + base + rng.normal(0, 1), 10: 12 + base}
@@ -321,3 +321,24 @@ def test_decide_strategy_passes_the_band_into_the_book_and_records_it(monkeypatc
     got = sel.decide_strategy(None, hold, "4w", weeks[0], weeks[-1], book_band=band)
     assert got["book"] == 10 and got["evidence"]["book_band"] == {**band, "z": sel.BOOK_BAND_Z}
     assert sel.decide_strategy(None, hold, "4w", weeks[0], weeks[-1])["book"] == 3    # no band: the argmax
+
+
+# ---- the universe filter travels walk record -> procedure -> spec -> live (2026-09-26) ----
+def test_universe_filter_is_read_from_the_record_and_checked_in_the_spec(tmp_path):
+    from stocks_ml.procedure import live_strategy, walk_recipe
+    rec = tmp_path / "spec.json"; preds = tmp_path / "preds.parquet"
+    rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w", "train_years": 8, "filter": "x_dollar_vol:0.2:1"}}))
+    assert walk_recipe(preds)["filter"] == "x_dollar_vol:0.2:1"
+    rec.write_text(json.dumps({"k": 16, "recipe": {"label": "label_4w", "train_years": 8}}))
+    assert walk_recipe(preds)["filter"] is None
+    s = _spec()
+    proc = {"decision": dict(s["procedure"]["decision"]),
+            "model": {**s["procedure"]["model"], "filter": "x_dollar_vol:0.2:1"}, "evidence": {}, "decided_at": "x"}
+    out = apply(copy.deepcopy(s), proc)
+    assert out["universe_filter"] == "x_dollar_vol:0.2:1"
+    assert drift(out, proc) == {}
+    assert drift(s, proc).get("universe_filter") == (s.get("universe_filter"), "x_dollar_vol:0.2:1")
+    assert live_strategy(out)["filter"] == "x_dollar_vol:0.2:1"
+    out["universe_filter"] = None                                   # a hand edit
+    with pytest.raises(RuntimeError, match="universe_filter"):
+        live_strategy(out)

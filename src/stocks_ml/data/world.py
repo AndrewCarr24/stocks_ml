@@ -839,20 +839,26 @@ def sec_columns(store, panel: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out.to_numpy(), columns=SEC_COLS, index=panel.index)
 
 
-def append_sec_columns(root, log=_log) -> list[str]:
+def append_sec_columns(root, log=_log, replace: bool = False) -> list[str]:
     """Append the filing-window / PEAD and 8-K features recomputed from the
     store's (refetched, every-name) edgar and sec8k tables to a frozen panel
     as x_ columns, ranked within the week and neutral-filled like the f_
     originals: the survivorship-free versions, opt-in by recipe
-    (features=x_pead,...; drop=f_pead,...). Existing columns untouched."""
+    (features=x_pead,...; drop=f_pead,...). Existing columns untouched —
+    unless `replace`: a world carved from an older world (build_world_panel
+    aliases the x_ columns to its f_ columns, which came from that world's
+    survivor-only SEC tables) gets them recomputed after its own refetch.
+    Replace refuses a store whose manifest records no refetch."""
     from stocks_ml.features.ranking import rank_normalize
     root = Path(root)
     path = root / "panel_sf.parquet"
     panel = pd.read_parquet(path)
     have = [c for c in SEC_COLS if c in panel.columns]
-    if have:
-        log(f"{path}: {have} present; nothing to append")
+    if have and not replace:
+        log(f"{path}: {have} present; nothing to append (--replace recomputes them after a refetch)")
         return []
+    if replace and not _PanelStore(root).manifest.get("sec_universe"):
+        raise RuntimeError(f"{root}: no every-name SEC refetch on record (world --refetch-sec); nothing to replace with")
     panel["date"] = pd.to_datetime(panel["date"])
     x = sec_columns(_PanelStore(root), panel)
     ranked = rank_normalize(pd.concat([panel[["date", "ticker"]], x], axis=1), SEC_COLS)
@@ -861,7 +867,7 @@ def append_sec_columns(root, log=_log) -> list[str]:
     tmp = path.with_suffix(".tmp.parquet")          # atomic: a walk reading the panel sees the old file or the new
     panel.to_parquet(tmp, index=False)
     os.replace(tmp, path)
-    log(f"{path}: appended {SEC_COLS} (filing/PEAD and 8-K features from the every-name SEC tables)")
+    log(f"{path}: {'replaced' if have else 'appended'} {SEC_COLS} (filing/PEAD and 8-K features from the every-name SEC tables)")
     return SEC_COLS
 
 

@@ -167,6 +167,17 @@ class Ctx:
                         for d, g in self.pan[["date", "ticker"]].groupby("date")}
         self.weeks = sorted(self.members)
         self.extra: list[str] = []      # panel columns the model gets beyond feature_cols
+        self._by_week: dict = {}        # column -> {rank week: Series by ticker} (values_at; built on first use)
+
+    def values_at(self, col: str, t) -> pd.Series:
+        """A panel column's values at rank week t, by ticker (the universe
+        filter reads them; built per column on first use)."""
+        if col not in self._by_week:
+            if col not in self.pan.columns:
+                raise KeyError(f"the panel has no column {col!r}")
+            self._by_week[col] = {d: g.set_index("ticker")[col]
+                                  for d, g in self.pan[["date", "ticker", col]].groupby("date")}
+        return self._by_week[col].get(pd.Timestamp(t), pd.Series(dtype=float))
 
     def world_cfg(self, train_years):
         c = copy.copy(self.cfg)
@@ -270,7 +281,66 @@ def week_slot(index, t):
     return index[i] if i < len(index) else None
 
 
-def slice_row(ctx, t, horizon, preds):
+# ---- the universe filter (a recipe field, 2026-09-26) ----
+# "filter out the bad bets, rank the viable subset" (the owner, 2026-09-25): a rule on the names a
+# week's book may be picked from, applied AFTER the tradability rule and BEFORE the ranking is read,
+# identically in the backtest (slice_row) and the live job (r5.rank_members) through filter_pool.
+# Grammar: `col:lo:hi` terms joined by `+`, e.g. `x_dollar_vol:0.2:1+f_vol_12w:0:0.9` — keep a name
+# whose within-week percentile of `col` among that week's rankable names lies in [lo, hi]; a name
+# with no value is kept. It is part of the model's recipe (train --filter, challenge `filter=`),
+# recorded in the walk, copied to the spec as universe_filter by the procedure, never a strategy
+# layer: it changes which names the book can hold, so it must be inside what the challenge scores.
+FILTER_MIN_UNIVERSE = 100
+
+
+def parse_filter(text):
+    """`x_dollar_vol:0.2:1+f_vol_12w:0:0.9` -> ((col, lo, hi), ...); None/'' -> None."""
+    if text is None or (isinstance(text, str) and not text.strip()):
+        return None
+    if isinstance(text, (tuple, list)):
+        return tuple(tuple(r) for r in text)
+    rules = []
+    for term in [x.strip() for x in str(text).split("+") if x.strip()]:
+        parts = term.split(":")
+        if len(parts) != 3:
+            raise ValueError(f"filter term {term!r} is not col:lo:hi")
+        col, lo, hi = parts[0].strip(), float(parts[1]), float(parts[2])
+        if not (0.0 <= lo < hi <= 1.0):
+            raise ValueError(f"filter term {term!r}: need 0 <= lo < hi <= 1")
+        rules.append((col, lo, hi))
+    return tuple(rules)
+
+
+def filter_text(rules) -> str | None:
+    """The canonical text of parsed rules (what a record and the spec carry)."""
+    rules = parse_filter(rules)
+    return None if not rules else "+".join(f"{c}:{lo:g}:{hi:g}" for c, lo, hi in rules)
+
+
+def filter_pool(names: list, values: dict, rules) -> list:
+    """The names that pass every rule: for each (col, lo, hi), the name's
+    percentile rank of values[col] AMONG `names` (average ties, in (0, 1])
+    lies in [lo, hi]; a name without a value passes. Order preserved."""
+    rules = parse_filter(rules)
+    if not rules:
+        return list(names)
+    keep = pd.Series(True, index=list(names))
+    for col, lo, hi in rules:
+        v = pd.Series(values[col], dtype=float).reindex(keep.index)
+        pct = v.rank(pct=True)
+        keep &= pct.isna() | ((pct >= lo) & (pct <= hi))
+    return [n for n in names if keep[n]]
+
+
+def apply_filter(ctx, t, names: list, rules) -> list:
+    """filter_pool on the panel's values at rank week t."""
+    rules = parse_filter(rules)
+    if not rules:
+        return list(names)
+    return filter_pool(names, {c: ctx.values_at(c, t) for c, _, _ in rules}, rules)
+
+
+def slice_row(ctx, t, horizon, preds, filt=None):
     wk = week_slot(ctx.fwd[horizon].index, t)
     if wk is None:
         return None
@@ -284,7 +354,9 @@ def slice_row(ctx, t, horizon, preds):
         lp = ctx.last_print
         cut = pd.Timestamp(t) - pd.Timedelta(days=7)
         uni = [x for x in uni if lp.get(x) is not None and lp[x] > cut]
-    if len(uni) < 100 or pd.isna(r.get("SPY")):
+    if filt:
+        uni = apply_filter(ctx, t, uni, filt)          # the recipe's universe filter, as live applies it
+    if len(uni) < FILTER_MIN_UNIVERSE or pd.isna(r.get("SPY")):
         return None
     p = preds.loc[preds.index.intersection(pd.Index(uni))]
     order = p.sort_values(ascending=False).index
@@ -296,18 +368,20 @@ def slice_row(ctx, t, horizon, preds):
     return row
 
 
-def ensemble_holdings(ctx, preds, copies, horizon="4w"):
+def ensemble_holdings(ctx, preds, copies, horizon="4w", filt=None):
     """slice_row at every week of a saved walk (columns week, ticker, c1..cK)
     for the mean of the given copies, exactly as ensemble_preds ranks them
     (mean over copies; a week with fewer than 20 distinct scores is skipped).
-    Returns the holdings frame the cascade grades and the per-week scores."""
+    `filt`: the recipe's universe filter (parse_filter). Returns the holdings
+    frame the cascade grades and the per-week scores."""
     cols = [f"c{c}" for c in copies]
+    filt = parse_filter(filt)
     rows, means = [], {}
     for t, g in preds.groupby("week"):
         p = g.set_index("ticker")[[c for c in cols if c in g.columns]].mean(axis=1)
         if p.nunique() < 20:
             continue
-        row = slice_row(ctx, t, horizon, p)
+        row = slice_row(ctx, t, horizon, p, filt=filt)
         if row is not None:
             rows.append(row)
             means[t] = p

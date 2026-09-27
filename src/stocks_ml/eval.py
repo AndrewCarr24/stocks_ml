@@ -143,18 +143,18 @@ def _ci_stats(r: np.ndarray, spy: np.ndarray):
 
 
 def confidence(sel, ctx, preds, st: dict, k: int, spans: dict = SPANS,
-               seed_draws: int = CI_SEED_DRAWS, log=log) -> dict:
+               seed_draws: int = CI_SEED_DRAWS, log=log, filt=None) -> dict:
     """95% intervals: seed noise (K-copy ensembles drawn by resampling the
     copies with replacement, each re-simulated), history noise (circular
     block bootstrap of the weeks, strategy and SPY resampled on the same
     weeks) and the two nested."""
     rng = np.random.default_rng(CI_RNG_SEED)
-    point = weekly_returns(sel, ctx, preds, range(1, k + 1), st)
+    point = weekly_returns(sel, ctx, preds, range(1, k + 1), st, filt=filt)
     spy_all = ctx.wret["SPY"].reindex(point.index)
     draws, t0 = [], time.time()
     for b in range(seed_draws):
         copies = list(rng.integers(1, k + 1, size=k))
-        draws.append(weekly_returns(sel, ctx, preds, copies, st).reindex(point.index))
+        draws.append(weekly_returns(sel, ctx, preds, copies, st, filt=filt).reindex(point.index))
         if (b + 1) % 25 == 0:
             log(f"  ci: {b + 1}/{seed_draws} seed draws, {(time.time() - t0) / (b + 1):.1f} s/draw")
     A_all = pd.concat(draws, axis=1)
@@ -336,7 +336,8 @@ def run(walk: Path | None = None, incumbent: Path | None = None, store: str = ST
     preds = load_preds(paths)
     check_complete(ctx, preds, k, lo, hi)
     log(f"eval: {label} = {walk} ({who(rec, st)}), {preds.week.nunique()} rank weeks at K={k}")
-    pkg = weekly_returns(sel, ctx, preds, range(1, k + 1), st)
+    filt = (rec.get("recipe") or {}).get("filter")          # the recipe's universe filter
+    pkg = weekly_returns(sel, ctx, preds, range(1, k + 1), st, filt=filt)
     spy = ctx.wret["SPY"]
     rows = {label: row_vs_spy(sel, pkg, spy)}
     res = {"label": label, "walk": str(walk), "record": rec, "who": who(rec, st), "k": k,
@@ -349,7 +350,7 @@ def run(walk: Path | None = None, incumbent: Path | None = None, store: str = ST
         inc_st = settings_of(inc_proc)
         inc_preds = load_preds(inc_paths)
         check_complete(ctx, inc_preds, k, lo, hi)
-        inc = weekly_returns(sel, ctx, inc_preds, range(1, k + 1), inc_st)
+        inc = weekly_returns(sel, ctx, inc_preds, range(1, k + 1), inc_st, filt=(walk_records(inc_paths)[0].get("recipe") or {}).get("filter"))
         # Each model is graded at its own procedure-decided settings only. A
         # row of the walk at the incumbent's settings was dropped 2026-09-14
         # (owner: a challenger at another model's settings is misleading).
@@ -369,7 +370,7 @@ def run(walk: Path | None = None, incumbent: Path | None = None, store: str = ST
     res["leak_audit"] = audit_segments(store, [str(p) for p in paths], ctx)
     log(f"eval: leak audit {res['leak_audit']['VERDICT']} (worst retention {res['leak_audit']['worst_retention']})")
     if ci_draws:
-        res["confidence"] = confidence(sel, ctx, preds, st, k, seed_draws=ci_draws, log=log)
+        res["confidence"] = confidence(sel, ctx, preds, st, k, seed_draws=ci_draws, log=log, filt=filt)
     df = pd.DataFrame({"walk": pkg, "sp500": spy.reindex(pkg.index)})
     df = df[(df.index >= lo) & (df.index < HOLDOUT_START)]
     df.index.name = "week"

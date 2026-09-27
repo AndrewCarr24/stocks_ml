@@ -39,7 +39,7 @@ import pandas as pd
 
 from stocks_ml.ledger import (FUNDS, Ledger, ballast_state, due_sleeve, floor_split, friday_of,
                               rotate_sleeves, sleeve_counts, target_weights, vol_cut_pool, VOL_POOL)
-from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, ensemble_preds, vol_context
+from stocks_ml.selection import HORIZONS, K_COPIES, Ctx, apply_filter, ensemble_preds, vol_context
 
 
 
@@ -64,7 +64,8 @@ def load_spec(path: Path | None = None) -> dict:
     spec = json.loads((path or spec_path()).read_text())
     return {**live_strategy(spec), "top_n": 15, "features": list(spec.get("features") or []),
             "drop": list(spec.get("drop_features") or []), "params": dict(spec["model"]["params"]),
-            "train_top": spec.get("train_top")}
+            "train_top": spec.get("train_top"), "filter": spec.get("universe_filter"),
+            "rolling": spec.get("rolling")}          # the live rule (rolling.adopt): settings re-decided on the trailing window
 
 
 SPEC = load_spec()
@@ -189,12 +190,23 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     if preds is None:
         raise RuntimeError(f"no ensemble prediction for {t.date()}")
     ranked = rank_members(preds, ctx.prices, t)
+    if SPEC.get("filter"):                      # the recipe's universe filter, the backtest's rule (selection.apply_filter)
+        keep = apply_filter(ctx, t, list(ranked.index), SPEC["filter"])
+        log(f"universe filter ({SPEC['filter']}): {len(keep)} of {len(ranked)} rankable names pass")
+        ranked = ranked.reindex(keep)
+        if len(ranked) < MIN_UNIVERSE:
+            raise RuntimeError(f"only {len(ranked)} names pass the universe filter at {t.date()} (need {MIN_UNIVERSE})")
     from stocks_ml.leak_audit import archive_live_rows
     archive_live_rows(live_dir, ctx, t)          # this week's rows, as computed this week (leak_audit.live_vs_rebuilt)
     log(f"ranked {len(ranked)} names in {time.time() - t1:.0f}s; "
         f"top-{SPEC['top_n']}: {', '.join(ranked.index[:SPEC['top_n']])}")
 
     ledger = Ledger.load(ledger_path) or Ledger.new(capital, t)
+    if SPEC.get("rolling"):
+        rolling_decision(ledger, ctx, live_dir, t, preds, log=log)
+    st = settings_in_force(ledger)
+    log(f"settings in force: {settings_text(st)}" + (f" — the rolling rule's decision of {st['decided']} "
+        f"(window {st['lo']} -> {st['hi']}); spec fallback {settings_text(SPEC)}" if st.get("decided") else " (the spec's fixed decision)"))
     renames = ((report.get("refresh") or {}).get("sharadar") or {}).get("renames") or {}
     if renames:
         hit = ledger.rename(renames)
@@ -205,14 +217,14 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
     fills = ledger.fill_pending(ctx.closes, ctx.opens, t)
     nav, bench = ledger.mark(ctx.closes, t)
     pool = list(ranked.index)
-    if SPEC.get("vol_cut"):
+    if st.get("vol_cut"):
         vol, vs = vol_context(ctx, t, pool[:VOL_POOL])
-        pool = vol_cut_pool(pool, vol, vs, SPEC["vol_cut"], keep=SPEC["top_n"])
-        log(f"volatility cut ({SPEC['vol_cut']}): the sleeve picks from {', '.join(pool)}")
+        pool = vol_cut_pool(pool, vol, vs, st["vol_cut"], keep=SPEC["top_n"])
+        log(f"volatility cut ({st['vol_cut']}): the sleeve picks from {', '.join(pool)}")
     sleeves, rotated = rotate_sleeves(ledger.sleeves, t, pool, ctx.smap,
-                                      N_SLEEVES, SPEC["book"], SPEC["cap"], SPEC["top_n"])
+                                      N_SLEEVES, st["book"], st["cap"], SPEC["top_n"])
     ballast = ballast_state(ctx.spy_w, t)
-    frac, weights = book_weights(sleeves, ballast)
+    frac, weights = book_weights(sleeves, ballast, st["floor"])
     ledger.sleeves = sleeves
     ledger.pending = {"decision_date": str(t.date()), "weights": weights}
 
@@ -224,11 +236,12 @@ def run_weekly(live_dir, cfg, as_of=None, refresh=True, sec=True, dry_run=False,
         "held_value": held, "fills": fills, "rebase_factors": factors,
         "top": [(tk, float(v)) for tk, v in ranked.iloc[:SPEC["top_n"]].items()],
         "n_ranked": int(len(ranked)), "positions": ledger.positions,
+        "settings": st,
         "freshness": _freshness(ctx, report.get("refresh")),
         "elapsed_s": round(time.time() - t0),
     }
     report["signal"] = signal
-    md = render_markdown(signal, ctx.smap)
+    md = render_markdown(signal, ctx.smap, st)
     if dry_run:
         log("dry run: ledger and signal files not written")
     else:
@@ -257,12 +270,55 @@ def _freshness(ctx: Ctx, refresh: dict | None) -> dict:
     return out
 
 
-def book_weights(sleeves: dict, gates: dict) -> tuple[float, dict[str, float]]:
-    """This week's book fraction and target weights under the spec's floor —
-    ledger.floor_split then ledger.target_weights, exactly as
-    selection.simulate graded the champion."""
-    frac, ballast = floor_split(SPEC["floor"], gates)
+def book_weights(sleeves: dict, gates: dict, floor: str | None = None) -> tuple[float, dict[str, float]]:
+    """This week's book fraction and target weights under the floor in force
+    (the spec's unless given) — ledger.floor_split then ledger.target_weights,
+    exactly as selection.simulate graded the champion."""
+    frac, ballast = floor_split(floor or SPEC["floor"], gates)
     return frac, target_weights(sleeves, ballast, frac)
+
+
+# ---- the rolling rule (the spec's `rolling` block, stocks_ml.rolling): the settings re-decided live ----
+SETTINGS_KEYS = ("book", "floor", "stop", "cap", "vol_cut")
+
+
+def settings_in_force(ledger: Ledger) -> dict:
+    """The strategy settings this week trades: the rolling rule's decision
+    held in the ledger, else the spec's fixed decision (the fallback)."""
+    if ledger.settings:
+        return dict(ledger.settings)
+    return {k: SPEC.get(k) for k in SETTINGS_KEYS}
+
+
+def settings_text(st: dict) -> str:
+    return (f"top-{st['book']} / floor {st['floor']} / cap {st.get('cap') or 'none'} / "
+            f"volatility cut {st.get('vol_cut') or 'none'}")
+
+
+def rolling_decision(ledger: Ledger, ctx: Ctx, live_dir, t, preds: pd.Series, log=_log) -> dict | None:
+    """The live side of the rolling rule (rolling.py): this week's ensemble
+    scores go into the store's prediction history; when a decision is due
+    (every `cadence` rank weeks), the rule decides on its trailing window as
+    the backtest did (rolling.decide_live) and the ledger holds the decision
+    — book, floor, stop, cap, vol cut, the window — never the evidence (the
+    ledger is committed to a public repo). Returns the new decision, if any."""
+    import stocks_ml.selection as selmod
+    from stocks_ml.rolling import append_history, decide_live, is_due
+    rb = SPEC["rolling"]
+    hist = append_history(Path(live_dir) / rb["history"], t, preds)
+    last = (ledger.settings or {}).get("decided")
+    if not is_due(last, t, int(rb["cadence"])):
+        log(f"rolling rule: decision of {last} stands ({int(rb['cadence'])}-week cadence); history {hist.week.nunique()} weeks")
+        return None
+    d = decide_live(selmod, ctx, hist, t, rb["lookback_years"], min_years=int(rb["min_years"]), filt=SPEC.get("filter"))
+    new = {k: d[k] for k in ("decided", "lo", "hi", "weeks", *SETTINGS_KEYS)}
+    if new["stop"] is not None:
+        raise RuntimeError(f"the rolling rule decided a stop ({new['stop']}), which this job does not implement")
+    old = ledger.settings
+    ledger.settings = new
+    log(f"rolling rule: decided {settings_text(new)} on {new['weeks']} weeks {new['lo']} -> {new['hi']}"
+        + (f"; was {settings_text(old)} (decided {old['decided']})" if old else "; first decision"))
+    return new
 
 
 def label_text(label: str) -> str:
@@ -277,15 +333,18 @@ def label_text(label: str) -> str:
             "label_4w_sector11_rank": "Sharadar-sector-relative 4-week rank label"}[label]
 
 
-def render_markdown(sig: dict, smap: dict) -> str:
+def render_markdown(sig: dict, smap: dict, st: dict | None = None) -> str:
     nav, bench = sig["nav"], sig["spy_nav"]
     counts = sleeve_counts(sig["sleeves"])
     frac = sig.get("book_fraction")
     frac_text = f" (book {frac:.0%} of NAV this week)" if frac is not None else ""
+    st = st or sig.get("settings") or {k: SPEC.get(k) for k in SETTINGS_KEYS}
+    rule = (f" Settings re-decided by the rolling rule every {SPEC['rolling']['cadence']} rank weeks on the trailing "
+            f"{SPEC['rolling']['lookback_years']} years; this decision {st.get('decided', '—')}." if SPEC.get("rolling") else "")
     lines = [f"# r5 signal — {sig['date']}", "",
-             f"Champion r5 (PROCEDURE.md): {SPEC['floor']} trend ballast{frac_text}, "
-             f"top-{SPEC['book']} four-sleeve stagger, sector cap {SPEC['cap']}, volatility cut {SPEC.get('vol_cut') or 'none'}, "
-             f"{label_text(SPEC['label'])}, {SPEC['train_years']}-year window, K={K_COPIES}.", "",
+             f"Champion r5 (PROCEDURE.md): {st['floor']} trend ballast{frac_text}, "
+             f"top-{st['book']} four-sleeve stagger, sector cap {st.get('cap')}, volatility cut {st.get('vol_cut') or 'none'}, "
+             f"{label_text(SPEC['label'])}, {SPEC['train_years']}-year window, K={K_COPIES}.{rule}", "",
              f"Paper NAV **${nav:,.2f}** · SPY buy-and-hold ${bench:,.2f} · "
              f"cash ${sig['cash']:,.2f}", "",
              "## This week", "",
